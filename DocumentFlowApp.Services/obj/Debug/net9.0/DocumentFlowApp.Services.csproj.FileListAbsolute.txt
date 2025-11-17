@@ -1,0 +1,17 @@
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\bin\Debug\net9.0\DocumentFlowApp.Services.deps.json
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\bin\Debug\net9.0\DocumentFlowApp.Services.dll
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\bin\Debug\net9.0\DocumentFlowApp.Services.pdb
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\bin\Debug\net9.0\DocumentFlowApp.Core.dll
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\bin\Debug\net9.0\DocumentFlowApp.Infrastructure.dll
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\bin\Debug\net9.0\DocumentFlowApp.Core.pdb
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\bin\Debug\net9.0\DocumentFlowApp.Infrastructure.pdb
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\DocumentFlowApp.Services.csproj.AssemblyReference.cache
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\DocumentFlowApp.Services.GeneratedMSBuildEditorConfig.editorconfig
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\DocumentFlowApp.Services.AssemblyInfoInputs.cache
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\DocumentFlowApp.Services.AssemblyInfo.cs
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\DocumentFlowApp.Services.csproj.CoreCompileInputs.cache
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\Document.8CA3EB74.Up2Date
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\DocumentFlowApp.Services.dll
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\refint\DocumentFlowApp.Services.dll
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\DocumentFlowApp.Services.pdb
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\ref\DocumentFlowApp.Services.dll

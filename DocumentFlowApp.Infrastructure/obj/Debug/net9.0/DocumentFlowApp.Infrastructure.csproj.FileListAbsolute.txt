@@ -1,0 +1,17 @@
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\bin\Debug\net9.0\DocumentFlowApp.Infrastructure.deps.json
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\bin\Debug\net9.0\DocumentFlowApp.Infrastructure.runtimeconfig.json
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\bin\Debug\net9.0\DocumentFlowApp.Infrastructure.dll
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\bin\Debug\net9.0\DocumentFlowApp.Infrastructure.pdb
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\bin\Debug\net9.0\DocumentFlowApp.Core.dll
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\bin\Debug\net9.0\DocumentFlowApp.Core.pdb
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\obj\Debug\net9.0\DocumentFlowApp.Infrastructure.csproj.AssemblyReference.cache
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\obj\Debug\net9.0\DocumentFlowApp.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\obj\Debug\net9.0\DocumentFlowApp.Infrastructure.AssemblyInfoInputs.cache
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\obj\Debug\net9.0\DocumentFlowApp.Infrastructure.AssemblyInfo.cs
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\obj\Debug\net9.0\DocumentFlowApp.Infrastructure.csproj.CoreCompileInputs.cache
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\obj\Debug\net9.0\Document.BB6CDBCB.Up2Date
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\obj\Debug\net9.0\DocumentFlowApp.Infrastructure.dll
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\obj\Debug\net9.0\refint\DocumentFlowApp.Infrastructure.dll
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\obj\Debug\net9.0\DocumentFlowApp.Infrastructure.pdb
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\obj\Debug\net9.0\DocumentFlowApp.Infrastructure.genruntimeconfig.cache
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\obj\Debug\net9.0\ref\DocumentFlowApp.Infrastructure.dll
