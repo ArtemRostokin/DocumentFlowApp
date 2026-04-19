@@ -24,7 +24,7 @@ namespace DocumentFlowApp.Infrastructure.Repositories
         public async Task<Document?> GetByIdAsync(int id)
         {
             return await _context.Documents
-                .FirstOrDefaultAsync(d => d.Id == id);
+                .FirstOrDefaultAsync(d => d.DocumentId == id);
         }
 
         public async Task<List<Document>> GetAllAsync()
@@ -36,16 +36,18 @@ namespace DocumentFlowApp.Infrastructure.Repositories
 
         public async Task<List<Document>> GetByStatusAsync(DocumentStatus status)
         {
+            var statusString = status.ToString();
             return await _context.Documents
-                .Where(d => d.Status == status)
+                .Where(d => d.Status == statusString)
                 .OrderByDescending(d => d.CreatedDate)
                 .ToListAsync();
         }
 
         public async Task<List<Document>> GetByTypeAsync(DocumentType type)
         {
+            var typeString = type.ToString();
             return await _context.Documents
-                .Where(d => d.Type == type)
+                .Where(d => d.DocumentType == typeString)
                 .OrderByDescending(d => d.CreatedDate)
                 .ToListAsync();
         }

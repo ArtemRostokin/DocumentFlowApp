@@ -1,0 +1,11 @@
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.WPF\obj-wpf\Debug\net9.0-windows\DocumentFlowApp.WPF.csproj.AssemblyReference.cache
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.WPF\obj-wpf\Debug\net9.0-windows\MainWindow.baml
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.WPF\obj-wpf\Debug\net9.0-windows\MainWindow.g.cs
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.WPF\obj-wpf\Debug\net9.0-windows\App.g.cs
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.WPF\obj-wpf\Debug\net9.0-windows\DocumentFlowApp.WPF_MarkupCompile.cache
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.WPF\obj-wpf\Debug\net9.0-windows\DocumentFlowApp.WPF.g.resources
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.WPF\obj-wpf\Debug\net9.0-windows\DocumentFlowApp.WPF.GeneratedMSBuildEditorConfig.editorconfig
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.WPF\obj-wpf\Debug\net9.0-windows\DocumentFlowApp.WPF.AssemblyInfoInputs.cache
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.WPF\obj-wpf\Debug\net9.0-windows\DocumentFlowApp.WPF.AssemblyInfo.cs
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.WPF\obj-wpf\Debug\net9.0-windows\DocumentFlowApp.WPF.csproj.CoreCompileInputs.cache
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.WPF\obj-wpf\Debug\net9.0-windows\DocumentFlowApp.WPF.sourcelink.json

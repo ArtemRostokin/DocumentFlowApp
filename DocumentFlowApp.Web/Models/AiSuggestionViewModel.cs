@@ -1,0 +1,10 @@
+namespace DocumentFlowApp.Web.Models;
+
+public sealed class AiSuggestionViewModel
+{
+    public required string FieldKey { get; init; } // title|type|duedate|description|priority|tags
+    public required string Label { get; init; }
+    public required string SuggestedValue { get; init; }
+    public int Confidence { get; init; }
+}
+

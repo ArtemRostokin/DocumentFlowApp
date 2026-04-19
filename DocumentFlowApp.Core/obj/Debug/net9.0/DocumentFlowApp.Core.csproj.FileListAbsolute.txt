@@ -5,6 +5,7 @@ D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Core\obj\Debug\net9.0\DocumentFlo
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Core\obj\Debug\net9.0\DocumentFlowApp.Core.AssemblyInfoInputs.cache
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Core\obj\Debug\net9.0\DocumentFlowApp.Core.AssemblyInfo.cs
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Core\obj\Debug\net9.0\DocumentFlowApp.Core.csproj.CoreCompileInputs.cache
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Core\obj\Debug\net9.0\DocumentFlowApp.Core.sourcelink.json
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Core\obj\Debug\net9.0\DocumentFlowApp.Core.dll
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Core\obj\Debug\net9.0\refint\DocumentFlowApp.Core.dll
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Core\obj\Debug\net9.0\DocumentFlowApp.Core.pdb

@@ -1,5 +1,6 @@
 ﻿using DocumentFlowApp.Core.Entities;
 using DocumentFlowApp.Core.Enums;
+using DocumentFlowApp.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -19,6 +20,7 @@ namespace DocumentFlowApp.Core.Interfaces
 
         // Создать новый документ
         Task<Document> CreateDocumentAsync(string title, string description, DocumentType type);
+        Task<Document> CreateDocumentAsync(CreateDocumentRequest request);
 
         // Обновить документ
         Task UpdateDocumentAsync(Document document);

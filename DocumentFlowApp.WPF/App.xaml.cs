@@ -53,7 +53,7 @@ public partial class App : Application
         services.AddScoped<IDocumentService, DocumentService>();
 
         // 🎯 Регистрируем ViewModel
-        services.AddTransient<MainViewModel>();
+        services.AddTransient<KanbanBoardViewModel>();
 
         // 🪟 Регистрируем главное окно
         services.AddTransient<MainWindow>();
@@ -76,7 +76,7 @@ public partial class App : Application
             var context = new ApplicationDbContext(options);
             var repository = new DocumentRepository(context);
             var service = new DocumentService(repository);
-            var viewModel = new MainViewModel(service);
+            var viewModel = new KanbanBoardViewModel();
 
             // Создаем и показываем главное окно
             var mainWindow = new MainWindow(viewModel);

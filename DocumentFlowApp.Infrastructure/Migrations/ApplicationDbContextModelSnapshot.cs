@@ -22,19 +22,53 @@ namespace DocumentFlowApp.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("DocumentFlowApp.Core.Entities.Document", b =>
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.AiModel", b =>
                 {
-                    b.Property<int>("Id")
+                    b.Property<int>("ModelId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ModelId"));
 
-                    b.Property<string>("Author")
+                    b.Property<decimal?>("Accuracy")
+                        .HasColumnType("numeric");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastTrained")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ModelData")
+                        .HasColumnType("jsonb")
+                        .HasComment("JSON с данными модели");
+
+                    b.Property<string>("ModelName")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasComment("Автор документа");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ModelType")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Version")
+                        .HasColumnType("text");
+
+                    b.HasKey("ModelId");
+
+                    b.ToTable("AiModels", t =>
+                        {
+                            t.HasComment("AI модели");
+                        });
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.Document", b =>
+                {
+                    b.Property<int>("DocumentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("DocumentId"));
 
                     b.Property<DateTime>("CreatedDate")
                         .ValueGeneratedOnAdd()
@@ -42,55 +76,627 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                         .HasDefaultValueSql("NOW()")
                         .HasComment("Дата создания документа");
 
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasComment("Описание документа");
+                    b.Property<string>("DocumentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasComment("Тип документа");
+
+                    b.Property<DateTime?>("DueDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExtractedText")
+                        .HasColumnType("text")
+                        .HasComment("Извлечённый текст документа");
+
+                    b.Property<string>("FileHash")
+                        .HasColumnType("text");
 
                     b.Property<string>("FilePath")
-                        .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasComment("Путь к файлу документа");
 
+                    b.Property<long?>("FileSize")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("Priority")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
                         .HasComment("Статус документа");
 
+                    b.Property<string>("Tags")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("TemplateId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Title")
-                        .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasComment("Название документа");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasComment("Тип документа");
 
                     b.Property<DateTime?>("UpdatedDate")
                         .HasColumnType("timestamp with time zone")
                         .HasComment("Дата последнего обновления");
 
-                    b.HasKey("Id");
+                    b.Property<int?>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("DocumentId");
 
                     b.HasIndex("CreatedDate")
                         .HasDatabaseName("IX_Documents_CreatedDate");
 
+                    b.HasIndex("DocumentType")
+                        .HasDatabaseName("IX_Documents_Type");
+
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_Documents_Status");
 
-                    b.HasIndex("Type")
-                        .HasDatabaseName("IX_Documents_Type");
+                    b.HasIndex("TemplateId");
+
+                    b.HasIndex("UserId");
 
                     b.ToTable("Documents", t =>
                         {
                             t.HasComment("Таблица для хранения документов системы");
                         });
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.DocumentActivity", b =>
+                {
+                    b.Property<int>("ActivityId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ActivityId"));
+
+                    b.Property<DateTime?>("ActivityDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ActivityType")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Details")
+                        .HasColumnType("text");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("ActivityId");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("DocumentActivity");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.DocumentAiMetadata", b =>
+                {
+                    b.Property<int>("MetadataId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("MetadataId"));
+
+                    b.Property<string>("AiSummary")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AiTags")
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("ConfidenceScore")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ExtractedEntities")
+                        .HasColumnType("jsonb");
+
+                    b.Property<int?>("ModelId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ProcessingDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("MetadataId");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("ModelId");
+
+                    b.ToTable("DocumentAiMetadata");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.DocumentRelation", b =>
+                {
+                    b.Property<int>("RelationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("RelationId"));
+
+                    b.Property<decimal?>("AiConfidenceScore")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime?>("CreatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RelationType")
+                        .HasColumnType("text");
+
+                    b.Property<int>("SourceDocumentId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TargetDocumentId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("RelationId");
+
+                    b.HasIndex("SourceDocumentId");
+
+                    b.HasIndex("TargetDocumentId");
+
+                    b.ToTable("DocumentRelations");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.DocumentStatistic", b =>
+                {
+                    b.Property<int>("StatId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("StatId"));
+
+                    b.Property<double?>("AvgProcessingTime")
+                        .HasColumnType("double precision");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("EditCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("LastAccessed")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("SearchRankScore")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("UserEngagementScore")
+                        .HasColumnType("numeric");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ViewCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("StatId");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("DocumentStatistics");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.Permission", b =>
+                {
+                    b.Property<int>("PermissionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("PermissionId"));
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PermissionName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.HasKey("PermissionId");
+
+                    b.ToTable("Permissions");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.Role", b =>
+                {
+                    b.Property<int>("RoleId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("RoleId"));
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RoleName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("RoleId");
+
+                    b.ToTable("Roles");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.RolePermission", b =>
+                {
+                    b.Property<int>("RoleId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PermissionId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("RoleId", "PermissionId");
+
+                    b.HasIndex("PermissionId");
+
+                    b.ToTable("RolePermissions");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.SearchHistory", b =>
+                {
+                    b.Property<int>("SearchId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("SearchId"));
+
+                    b.Property<string>("ClickedDocuments")
+                        .HasColumnType("text");
+
+                    b.Property<string>("QueryText")
+                        .HasColumnType("text");
+
+                    b.Property<int>("ResultCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("SearchDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SearchFilters")
+                        .HasColumnType("jsonb");
+
+                    b.Property<int?>("SuccessRating")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("SearchId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("SearchHistory");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.Template", b =>
+                {
+                    b.Property<int>("TemplateId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("TemplateId"));
+
+                    b.Property<string>("AiSuggestedFields")
+                        .HasColumnType("jsonb")
+                        .HasComment("JSON предложенных полей AI");
+
+                    b.Property<string>("Category")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Content")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("CreatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<decimal?>("SuccessRate")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("UsageCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("TemplateId");
+
+                    b.ToTable("Templates", t =>
+                        {
+                            t.HasComment("Шаблоны документов");
+                        });
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.User", b =>
+                {
+                    b.Property<int>("UserId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("UserId"));
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("EmailConfirmed")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("FirstName")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastLogin")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int?>("RoleId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("Email")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Users_Email");
+
+                    b.HasIndex("RoleId");
+
+                    b.ToTable("Users", t =>
+                        {
+                            t.HasComment("Пользователи системы");
+                        });
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.UserSession", b =>
+                {
+                    b.Property<int>("SessionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("SessionId"));
+
+                    b.Property<DateTime?>("CreatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ExpiresDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IpAddress")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Token")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("UserAgent")
+                        .HasColumnType("text");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("SessionId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("UserSessions");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.Document", b =>
+                {
+                    b.HasOne("DocumentFlowApp.Core.Entities.Template", "Template")
+                        .WithMany("Documents")
+                        .HasForeignKey("TemplateId");
+
+                    b.HasOne("DocumentFlowApp.Core.Entities.User", "User")
+                        .WithMany("Documents")
+                        .HasForeignKey("UserId");
+
+                    b.Navigation("Template");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.DocumentActivity", b =>
+                {
+                    b.HasOne("DocumentFlowApp.Core.Entities.Document", "Document")
+                        .WithMany("Activities")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DocumentFlowApp.Core.Entities.User", "User")
+                        .WithMany("DocumentActivities")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Document");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.DocumentAiMetadata", b =>
+                {
+                    b.HasOne("DocumentFlowApp.Core.Entities.Document", "Document")
+                        .WithMany("AiMetadata")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DocumentFlowApp.Core.Entities.AiModel", "Model")
+                        .WithMany()
+                        .HasForeignKey("ModelId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Document");
+
+                    b.Navigation("Model");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.DocumentRelation", b =>
+                {
+                    b.HasOne("DocumentFlowApp.Core.Entities.Document", "SourceDocument")
+                        .WithMany("SourceRelations")
+                        .HasForeignKey("SourceDocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DocumentFlowApp.Core.Entities.Document", "TargetDocument")
+                        .WithMany("TargetRelations")
+                        .HasForeignKey("TargetDocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SourceDocument");
+
+                    b.Navigation("TargetDocument");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.DocumentStatistic", b =>
+                {
+                    b.HasOne("DocumentFlowApp.Core.Entities.Document", "Document")
+                        .WithMany("Statistics")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DocumentFlowApp.Core.Entities.User", "User")
+                        .WithMany("DocumentStatistics")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Document");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.RolePermission", b =>
+                {
+                    b.HasOne("DocumentFlowApp.Core.Entities.Permission", "Permission")
+                        .WithMany("RolePermissions")
+                        .HasForeignKey("PermissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DocumentFlowApp.Core.Entities.Role", "Role")
+                        .WithMany("RolePermissions")
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Permission");
+
+                    b.Navigation("Role");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.SearchHistory", b =>
+                {
+                    b.HasOne("DocumentFlowApp.Core.Entities.User", "User")
+                        .WithMany("SearchHistories")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.User", b =>
+                {
+                    b.HasOne("DocumentFlowApp.Core.Entities.Role", "Role")
+                        .WithMany("Users")
+                        .HasForeignKey("RoleId");
+
+                    b.Navigation("Role");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.UserSession", b =>
+                {
+                    b.HasOne("DocumentFlowApp.Core.Entities.User", "User")
+                        .WithMany("Sessions")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.Document", b =>
+                {
+                    b.Navigation("Activities");
+
+                    b.Navigation("AiMetadata");
+
+                    b.Navigation("SourceRelations");
+
+                    b.Navigation("Statistics");
+
+                    b.Navigation("TargetRelations");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.Permission", b =>
+                {
+                    b.Navigation("RolePermissions");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.Role", b =>
+                {
+                    b.Navigation("RolePermissions");
+
+                    b.Navigation("Users");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.Template", b =>
+                {
+                    b.Navigation("Documents");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.User", b =>
+                {
+                    b.Navigation("DocumentActivities");
+
+                    b.Navigation("DocumentStatistics");
+
+                    b.Navigation("Documents");
+
+                    b.Navigation("SearchHistories");
+
+                    b.Navigation("Sessions");
                 });
 #pragma warning restore 612, 618
         }

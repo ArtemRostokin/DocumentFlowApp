@@ -1,11 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using DocumentFlowApp.Core.Entities;
 using DocumentFlowApp.Core.Enums;
 using DocumentFlowApp.Core.Interfaces;
+using DocumentFlowApp.Core.Models;
 
 namespace DocumentFlowApp.Services
 {
@@ -17,6 +17,21 @@ namespace DocumentFlowApp.Services
         public DocumentService(IDocumentRepository documentRepository)
         {
             _documentRepository = documentRepository;
+        }
+
+        private static DateTime? NormalizeToUtc(DateTime? value)
+        {
+            if (value is null)
+                return null;
+
+            return value.Value.Kind switch
+            {
+                DateTimeKind.Utc => value.Value,
+                DateTimeKind.Local => value.Value.ToUniversalTime(),
+                // Для timestamptz Npgsql требует UTC, поэтому явно помечаем как UTC.
+                DateTimeKind.Unspecified => DateTime.SpecifyKind(value.Value, DateTimeKind.Utc),
+                _ => DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
+            };
         }
 
         public async Task<Document?> GetDocumentByIdAsync(int id)
@@ -31,21 +46,37 @@ namespace DocumentFlowApp.Services
 
         public async Task<Document> CreateDocumentAsync(string title, string description, DocumentType type)
         {
-            //Бизнес-логика: валидация и создание документа
-            if (string.IsNullOrWhiteSpace(title))
+            return await CreateDocumentAsync(new CreateDocumentRequest
+            {
+                Title = title,
+                Description = description,
+                Type = type
+            });
+        }
+
+        public async Task<Document> CreateDocumentAsync(CreateDocumentRequest request)
+        {
+            // Бизнес-логика: валидация и создание документа
+            if (string.IsNullOrWhiteSpace(request.Title))
                 throw new ArgumentException("Название документа не может быть пустым");
 
-            if (title.Length > 200)
+            if (request.Title.Length > 200)
                 throw new ArgumentException("Название документа слишком длинное");
 
             var document = new Document
             {
-                Title = title.Trim(),
-                Description = description?.Trim() ?? string.Empty,
-                Type = type,
-                Status = DocumentStatus.Draft,
+                Title = request.Title,
+                ExtractedText = request.Description,
+                DocumentType = request.Type.ToString(),
+                Status = DocumentStatus.Draft.ToString(),
                 CreatedDate = DateTime.UtcNow,
-                Author = "System" //Позже заменить на реального пользователя
+                IsArchived = false,
+                DueDate = NormalizeToUtc(request.DueDate),
+                Priority = request.Priority,
+                Tags = request.Tags,
+                FilePath = request.FilePath,
+                FileSize = request.FileSize,
+                FileHash = request.FileHash
             };
 
             await _documentRepository.AddAsync(document);
@@ -69,14 +100,58 @@ namespace DocumentFlowApp.Services
             if (document == null)
                 throw new ArgumentException("Документ не найден");
 
-            //Бизнес-логика: проверка допустимых переходов статусов
-            if (document.Status == DocumentStatus.Archived && newStatus != DocumentStatus.Archived)
-                throw new InvalidOperationException("Нельзя изменить статус архивного документа");
+            var currentStatus = ParseDocumentStatus(document.Status);
 
-            document.Status = newStatus;
+            // Бизнес-логика: проверка допустимых переходов статусов (без пропусков этапов)
+            // Правила:
+            // - Draft -> InProgress
+            // - InProgress -> Approved
+            // - Approved -> Archived
+            // - Любой (кроме Archived) -> Rejected
+            // - Rejected -> InProgress
+            // - Из Archived нельзя выходить
+            if (!IsValidTransition(currentStatus, newStatus))
+                throw new InvalidOperationException($"Недопустимый переход статуса: {currentStatus} → {newStatus}");
+
+            document.Status = newStatus.ToString();
             document.UpdatedDate = DateTime.UtcNow;
 
             await _documentRepository.UpdateAsync(document);
+        }
+
+        private static DocumentStatus ParseDocumentStatus(string? stored)
+        {
+            if (string.IsNullOrWhiteSpace(stored))
+                return DocumentStatus.Draft;
+
+            if (Enum.TryParse<DocumentStatus>(stored, true, out var parsed))
+                return parsed;
+
+            if (int.TryParse(stored, out var intVal) && Enum.IsDefined(typeof(DocumentStatus), intVal))
+                return (DocumentStatus)intVal;
+
+            return DocumentStatus.Draft;
+        }
+
+        private static bool IsValidTransition(DocumentStatus from, DocumentStatus to)
+        {
+            if (from == to)
+                return true;
+
+            if (from == DocumentStatus.Archived)
+                return false;
+
+            if (to == DocumentStatus.Rejected)
+                return true;
+
+            return from switch
+            {
+                DocumentStatus.Draft => to == DocumentStatus.InProgress,
+                DocumentStatus.InProgress => to == DocumentStatus.Approved,
+                DocumentStatus.Approved => to == DocumentStatus.Archived,
+                DocumentStatus.Rejected => to == DocumentStatus.InProgress,
+                _ => false
+            };
         }
     }
 }

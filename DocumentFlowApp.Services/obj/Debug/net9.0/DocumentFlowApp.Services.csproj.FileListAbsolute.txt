@@ -10,6 +10,7 @@ D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\Documen
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\DocumentFlowApp.Services.AssemblyInfoInputs.cache
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\DocumentFlowApp.Services.AssemblyInfo.cs
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\DocumentFlowApp.Services.csproj.CoreCompileInputs.cache
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\DocumentFlowApp.Services.sourcelink.json
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\Document.8CA3EB74.Up2Date
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\DocumentFlowApp.Services.dll
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\refint\DocumentFlowApp.Services.dll
