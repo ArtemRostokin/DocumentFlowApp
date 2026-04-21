@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using DocumentFlowApp.Core.Enums;
 
 namespace DocumentFlowApp.Web.Models;
@@ -32,4 +32,3 @@ public sealed class EditDocumentPageViewModel
 
     public IReadOnlyList<AiSuggestionViewModel> AiSuggestions { get; set; } = [];
 }
-

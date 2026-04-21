@@ -1,4 +1,4 @@
-@model DocumentFlowApp.Web.Models.EditDocumentPageViewModel
+﻿@model DocumentFlowApp.Web.Models.EditDocumentPageViewModel
 @using DocumentFlowApp.Core.Enums
 @{
     Layout = null;
@@ -22,7 +22,7 @@
                 <span class="font-bold">DocManager</span>
             </div>
             <div class="flex items-center gap-3">
-                <a href="@Url.Action("Index","Home")"
+                <a href="@Url.Action("Index", "Home")"
                    class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900">
                     Назад к доске
                 </a>
@@ -66,9 +66,9 @@
                         <div class="flex items-center justify-between gap-4 mb-4">
                             <div class="flex items-center gap-2">
                                 <span class="material-symbols-outlined text-blue-600">smart_toy</span>
-                                <h2 class="text-sm font-bold uppercase tracking-widest text-slate-600">ИИ рекомендации</h2>
+                                <h2 class="text-sm font-bold uppercase tracking-widest text-slate-600">ИИ-рекомендации</h2>
                             </div>
-                            <div class="text-xs text-slate-500">Имитация извлечения полей</div>
+                            <div class="text-xs text-slate-500">Демонстрация автозаполнения полей</div>
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -121,7 +121,7 @@
                                 </div>
 
                                 <div>
-                                    <label asp-for="DueDate" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Дата</label>
+                                    <label asp-for="DueDate" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Срок исполнения</label>
                                     <input asp-for="DueDate" id="field-duedate" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600" />
                                     <span asp-validation-for="DueDate" class="text-xs text-red-600"></span>
                                 </div>
@@ -147,7 +147,7 @@
 
                                 <div>
                                     <label asp-for="Tags" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Теги</label>
-                                    <input asp-for="Tags" id="field-tags" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600" placeholder="Например: финансы,2024" />
+                                    <input asp-for="Tags" id="field-tags" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600" placeholder="Например: финансы, договор, согласование" />
                                     <span asp-validation-for="Tags" class="text-xs text-red-600"></span>
                                 </div>
                             </div>
@@ -187,7 +187,7 @@
                             else
                             {
                                 <div class="h-[520px] flex items-center justify-center text-sm text-slate-500 text-center px-4">
-                                    Превью недоступно для этого типа файла. Нажмите «Открыть», чтобы скачать/просмотреть файл.
+                                    Превью недоступно для этого типа файла. Нажмите «Открыть», чтобы скачать или просмотреть файл.
                                 </div>
                             }
                         </div>
@@ -241,4 +241,3 @@
     <partial name="_ValidationScriptsPartial" />
 </body>
 </html>
-

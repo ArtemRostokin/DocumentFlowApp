@@ -1,0 +1,120 @@
+﻿@model DocumentFlowApp.Web.Models.ApprovalQueuePageViewModel
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Очередь согласования - DocManager</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <style>
+        body { font-family: "Inter", sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+    <header class="border-b border-slate-200 bg-white">
+        <div class="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+            <div>
+                <div class="text-sm font-medium text-slate-500">Роль менеджера</div>
+                <h1 class="mt-1 text-2xl font-bold tracking-tight">Очередь согласования</h1>
+                <p class="mt-1 text-sm text-slate-500">Документы в статусе «На согласовании». Отсюда менеджер утверждает документ или возвращает его на доработку.</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <a asp-controller="Home" asp-action="Index" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">На доску</a>
+                <span class="rounded-lg bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">На согласовании: @Model.PendingCount</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="mx-auto max-w-7xl px-6 py-8">
+        @if (!string.IsNullOrWhiteSpace(Model.SuccessMessage))
+        {
+            <div class="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                @Model.SuccessMessage
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+        {
+            <div class="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                @Model.ErrorMessage
+            </div>
+        }
+
+        @if (Model.Documents.Count == 0)
+        {
+            <section class="rounded-2xl border border-dashed border-slate-300 bg-white px-8 py-16 text-center">
+                <span class="material-symbols-outlined text-5xl text-slate-300">task_alt</span>
+                <h2 class="mt-4 text-xl font-semibold">Очередь пуста</h2>
+                <p class="mt-2 text-sm text-slate-500">Сейчас нет документов, ожидающих согласования. Можно вернуться на доску и создать новый сценарий.</p>
+            </section>
+        }
+        else
+        {
+            <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                @foreach (var document in Model.Documents)
+                {
+                    <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="rounded-md bg-slate-100 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-600">@document.TypeLabel</span>
+                                    <span class="rounded-md bg-blue-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-blue-700">@document.StatusLabel</span>
+                                </div>
+                                <h2 class="mt-3 text-xl font-semibold text-slate-900">@document.Title</h2>
+                                <p class="mt-2 text-sm leading-6 text-slate-600">@document.Description</p>
+                            </div>
+                            <a asp-action="Edit" asp-route-id="@document.Id" class="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                                Открыть
+                            </a>
+                        </div>
+
+                        <dl class="mt-5 grid grid-cols-1 gap-3 text-sm text-slate-600 sm:grid-cols-3">
+                            <div class="rounded-xl bg-slate-50 px-4 py-3">
+                                <dt class="text-xs font-bold uppercase tracking-wider text-slate-500">Создан</dt>
+                                <dd class="mt-1 font-medium text-slate-900">@document.CreatedAtLabel</dd>
+                            </div>
+                            <div class="rounded-xl bg-slate-50 px-4 py-3">
+                                <dt class="text-xs font-bold uppercase tracking-wider text-slate-500">Срок</dt>
+                                <dd class="mt-1 font-medium text-slate-900">@document.DueDateLabel</dd>
+                            </div>
+                            <div class="rounded-xl bg-slate-50 px-4 py-3">
+                                <dt class="text-xs font-bold uppercase tracking-wider text-slate-500">Инициатор</dt>
+                                <dd class="mt-1 font-medium text-slate-900">@document.AuthorLabel</dd>
+                            </div>
+                        </dl>
+
+                        <div class="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[auto,1fr]">
+                            <form method="post" action="/Documents/@document.Id/approval" class="flex items-start">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="Decision" value="approve" />
+                                <button type="submit" class="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700">
+                                    <span class="material-symbols-outlined text-[18px]">check_circle</span>
+                                    Утвердить
+                                </button>
+                            </form>
+
+                            <form method="post" action="/Documents/@document.Id/approval" class="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="Decision" value="rework" />
+                                <label class="block text-xs font-bold uppercase tracking-wider text-amber-800">Комментарий для доработки</label>
+                                <textarea name="Comment" rows="3" class="mt-2 w-full rounded-xl border-amber-200 bg-white text-sm" placeholder="Например: заполнить реквизиты, приложить подписанный файл, уточнить срок исполнения"></textarea>
+                                <div class="mt-3 flex justify-end">
+                                    <button type="submit" class="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-700">
+                                        <span class="material-symbols-outlined text-[18px]">undo</span>
+                                        Вернуть на доработку
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
+                }
+            </div>
+        }
+    </main>
+</body>
+</html>

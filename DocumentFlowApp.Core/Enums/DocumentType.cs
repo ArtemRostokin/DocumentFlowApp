@@ -1,14 +1,29 @@
-﻿namespace DocumentFlowApp.Core.Enums
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace DocumentFlowApp.Core.Enums
 {
     // Типы документов для классификации и фильтрации
     public enum DocumentType
     {
-        Contract = 1,    // Договора - соглашения с контрагентами
-        Invoice = 2,     // Счета - финансовые документы
-        Report = 3,      // Отчеты - аналитические документы  
-        Order = 4,       // Приказы - распорядительные документы
-        Application = 5, // Заявления - обращения сотрудников
-        Act = 6,         // Акты - документы закрытия работ/услуг
-        Other = 7        // Прочие - все остальные типы документов
+        [Display(Name = "Договор")]
+        Contract = 1,
+
+        [Display(Name = "Счет")]
+        Invoice = 2,
+
+        [Display(Name = "Отчет")]
+        Report = 3,
+
+        [Display(Name = "Приказ")]
+        Order = 4,
+
+        [Display(Name = "Заявление")]
+        Application = 5,
+
+        [Display(Name = "Акт")]
+        Act = 6,
+
+        [Display(Name = "Прочее")]
+        Other = 7
     }
 }

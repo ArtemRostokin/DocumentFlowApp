@@ -1,4 +1,5 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
+using DocumentFlowApp.Core.Entities;
 using DocumentFlowApp.Core.Enums;
 using DocumentFlowApp.Core.Interfaces;
 using DocumentFlowApp.Core.Models;
@@ -6,8 +7,6 @@ using DocumentFlowApp.Web.Models;
 using DocumentFlowApp.Web.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace DocumentFlowApp.Web.Controllers;
 
@@ -41,6 +40,71 @@ public class DocumentsController : Controller
     public IActionResult UploadIncoming()
     {
         return View(new UploadIncomingDocumentsPageViewModel());
+    }
+
+    [HttpGet]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
+    public async Task<IActionResult> ApprovalQueue(CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+
+        var model = await BuildApprovalQueueModelAsync();
+        return View(model);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
+    [Route("Documents/{id:int}/approval")]
+    public async Task<IActionResult> ApprovalAction(int id, ApprovalActionInputModel input, CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+
+        var decision = (input.Decision ?? string.Empty).Trim().ToLowerInvariant();
+        if (decision is not ("approve" or "rework"))
+        {
+            TempData["ErrorMessage"] = "Неизвестное действие согласования.";
+            return RedirectToAction(nameof(ApprovalQueue));
+        }
+
+        var document = await _documentService.GetDocumentByIdAsync(id);
+        if (document is null)
+        {
+            TempData["ErrorMessage"] = "Документ не найден.";
+            return RedirectToAction(nameof(ApprovalQueue));
+        }
+
+        var currentStatus = ParseDocumentStatus(document.Status);
+        if (currentStatus != DocumentStatus.OnApproval)
+        {
+            TempData["ErrorMessage"] = "Документ уже не находится на согласовании.";
+            return RedirectToAction(nameof(ApprovalQueue));
+        }
+
+        try
+        {
+            if (decision == "approve")
+            {
+                await _documentService.ChangeDocumentStatusAsync(id, DocumentStatus.Approved);
+                TempData["SuccessMessage"] = $"Документ #{id} утвержден.";
+            }
+            else
+            {
+                await _documentService.ChangeDocumentStatusAsync(id, DocumentStatus.Draft, input.Comment);
+                TempData["SuccessMessage"] = $"Документ #{id} возвращен на доработку.";
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["ErrorMessage"] = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось выполнить действие согласования для документа {DocumentId}", id);
+            TempData["ErrorMessage"] = "Не удалось выполнить действие согласования. Повторите попытку позже.";
+        }
+
+        return RedirectToAction(nameof(ApprovalQueue));
     }
 
     [HttpGet]
@@ -145,7 +209,7 @@ public class DocumentsController : Controller
         try
         {
             await _documentService.ChangeDocumentStatusAsync(id, next);
-            TempData["SuccessMessage"] = $"Статус изменён: {current} → {next}";
+            TempData["SuccessMessage"] = $"Статус изменен: {current} -> {next}";
             return RedirectToAction("Index", "Home");
         }
         catch (InvalidOperationException ex)
@@ -203,7 +267,7 @@ public class DocumentsController : Controller
                 await _documentService.CreateDocumentAsync(new CreateDocumentRequest
                 {
                     Title = string.IsNullOrWhiteSpace(title) ? $"Входящий документ {DateTime.UtcNow:yyyyMMdd-HHmmss}" : title,
-                    Description = $"Загружено из внешнего источника. Предварительная AI-классификация: {classifiedType}.",
+                    Description = $"Загружено из внешнего источника. Предварительная AI-классификация: {GetDocumentTypeLabel(classifiedType)}.",
                     Type = classifiedType,
                     Priority = 2,
                     Tags = "incoming,batch,ai-classified",
@@ -253,7 +317,7 @@ public class DocumentsController : Controller
 
                 if (!IsAllowedPdf(model.File))
                 {
-                    ModelState.AddModelError(nameof(model.File), "Поддерживается только PDF файл.");
+                    ModelState.AddModelError(nameof(model.File), "Поддерживается только PDF-файл.");
                     return View(model);
                 }
 
@@ -285,6 +349,108 @@ public class DocumentsController : Controller
             ModelState.AddModelError(string.Empty, "Не удалось создать документ. Повторите попытку позже.");
             return View(model);
         }
+    }
+
+    public sealed class ChangeDocumentStatusRequest
+    {
+        public string? NewStatus { get; init; }
+        public string? Comment { get; init; }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
+    [Route("Documents/{id:int}/status")]
+    public async Task<IActionResult> ChangeStatus(int id, [FromBody] ChangeDocumentStatusRequest request, CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+
+        if (request is null || string.IsNullOrWhiteSpace(request.NewStatus))
+            return BadRequest(new { message = "Не указан новый статус." });
+
+        if (!Enum.TryParse<DocumentStatus>(request.NewStatus, true, out var newStatus))
+            return BadRequest(new { message = "Неверное значение статуса." });
+
+        try
+        {
+            await _documentService.ChangeDocumentStatusAsync(id, newStatus, request.Comment);
+            return Ok(new { id, status = newStatus.ToString() });
+        }
+        catch (ArgumentException)
+        {
+            return NotFound(new { message = "Документ не найден." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось изменить статус документа {DocumentId} на {NewStatus}", id, newStatus);
+            return StatusCode(500, new { message = "Не удалось изменить статус. Повторите попытку позже." });
+        }
+    }
+
+    private async Task<ApprovalQueuePageViewModel> BuildApprovalQueueModelAsync()
+    {
+        try
+        {
+            var documents = await _documentService.GetAllDocumentsAsync();
+            var items = documents
+                .Where(d => ParseDocumentStatus(d.Status) == DocumentStatus.OnApproval)
+                .OrderBy(d => d.DueDate ?? DateTime.MaxValue)
+                .ThenByDescending(d => d.CreatedDate)
+                .Select(ToApprovalQueueItem)
+                .ToList();
+
+            return new ApprovalQueuePageViewModel
+            {
+                PendingCount = items.Count,
+                SuccessMessage = TempData["SuccessMessage"] as string,
+                ErrorMessage = TempData["ErrorMessage"] as string,
+                Documents = items
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось загрузить очередь согласования.");
+            return new ApprovalQueuePageViewModel
+            {
+                PendingCount = 0,
+                ErrorMessage = "Не удалось загрузить очередь согласования. Повторите попытку позже.",
+                Documents = []
+            };
+        }
+    }
+
+    private static ApprovalQueueItemViewModel ToApprovalQueueItem(Document document)
+    {
+        var type = TryParseEnum<DocumentType>(document.DocumentType) ?? DocumentType.Other;
+        var status = ParseDocumentStatus(document.Status);
+
+        return new ApprovalQueueItemViewModel
+        {
+            Id = document.DocumentId,
+            Title = string.IsNullOrWhiteSpace(document.Title) ? "Без названия" : document.Title,
+            TypeLabel = GetDocumentTypeLabel(type),
+            StatusLabel = GetDocumentStatusLabel(status),
+            Description = string.IsNullOrWhiteSpace(document.ExtractedText) ? "Описание не заполнено." : document.ExtractedText,
+            CreatedAtLabel = document.CreatedDate.ToLocalTime().ToString("dd.MM.yyyy HH:mm"),
+            DueDateLabel = document.DueDate.HasValue ? document.DueDate.Value.ToLocalTime().ToString("dd.MM.yyyy") : "Не указан",
+            AuthorLabel = GetAuthorLabel(document)
+        };
+    }
+
+    private static string GetAuthorLabel(Document document)
+    {
+        if (document.User is null)
+            return "Система";
+
+        var fullName = $"{document.User.FirstName} {document.User.LastName}".Trim();
+        if (!string.IsNullOrWhiteSpace(fullName))
+            return fullName;
+
+        return string.IsNullOrWhiteSpace(document.User.UserName) ? "Система" : document.User.UserName;
     }
 
     private static async Task<string> ComputeSha256Async(string filePath, CancellationToken cancellationToken)
@@ -321,7 +487,7 @@ public class DocumentsController : Controller
 
         if (!string.Equals(file.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase))
         {
-            // Некоторые браузеры/прокси могут отдавать octet-stream — разрешим по расширению.
+            // Некоторые браузеры и прокси отдают octet-stream, поэтому разрешаем такой вариант по расширению.
             if (!string.Equals(file.ContentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase))
                 return false;
         }
@@ -385,8 +551,8 @@ public class DocumentsController : Controller
 
     private void ApplyQuickCreateDefaults(CreateDocumentPageViewModel model)
     {
-        // Быстрый сценарий: если пользователь загружает файл, но не заполняет поля,
-        // подставляем безопасные значения по умолчанию, чтобы документ можно было сохранить.
+        // Быстрый сценарий: если загружен файл, но поля не заполнены,
+        // подставляем безопасные значения по умолчанию.
         if (model.File is null || model.File.Length <= 0)
             return;
 
@@ -401,7 +567,6 @@ public class DocumentsController : Controller
 
         if (model.Type is null)
         {
-            // Детерминированный «псевдослучайный» выбор типа по имени файла
             var types = Enum.GetValues<DocumentType>();
             var idx = Math.Abs((model.File.FileName ?? string.Empty).GetHashCode()) % types.Length;
             model.Type = types[idx];
@@ -418,46 +583,6 @@ public class DocumentsController : Controller
         model.Priority ??= 2;
     }
 
-    public sealed class ChangeDocumentStatusRequest
-    {
-        public string? NewStatus { get; init; }
-        public string? Comment { get; init; }
-    }
-
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
-    [Route("Documents/{id:int}/status")]
-    public async Task<IActionResult> ChangeStatus(int id, [FromBody] ChangeDocumentStatusRequest request, CancellationToken cancellationToken)
-    {
-        _ = cancellationToken;
-
-        if (request is null || string.IsNullOrWhiteSpace(request.NewStatus))
-            return BadRequest(new { message = "Не указан новый статус." });
-
-        if (!Enum.TryParse<DocumentStatus>(request.NewStatus, true, out var newStatus))
-            return BadRequest(new { message = "Неверное значение статуса." });
-
-        try
-        {
-            await _documentService.ChangeDocumentStatusAsync(id, newStatus, request.Comment);
-            return Ok(new { id, status = newStatus.ToString() });
-        }
-        catch (ArgumentException)
-        {
-            return NotFound(new { message = "Документ не найден." });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Не удалось изменить статус документа {DocumentId} на {NewStatus}", id, newStatus);
-            return StatusCode(500, new { message = "Не удалось изменить статус. Повторите попытку позже." });
-        }
-    }
-
     private static TEnum? TryParseEnum<TEnum>(string? stored) where TEnum : struct, Enum
     {
         if (string.IsNullOrWhiteSpace(stored))
@@ -472,6 +597,26 @@ public class DocumentsController : Controller
         return null;
     }
 
+    private static DocumentStatus ParseDocumentStatus(string? stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored))
+            return DocumentStatus.Draft;
+
+        if (string.Equals(stored, "InProgress", StringComparison.OrdinalIgnoreCase))
+            return DocumentStatus.OnApproval;
+
+        if (string.Equals(stored, "Rejected", StringComparison.OrdinalIgnoreCase))
+            return DocumentStatus.Draft;
+
+        if (Enum.TryParse<DocumentStatus>(stored, true, out var parsed))
+            return parsed;
+
+        if (int.TryParse(stored, out var intVal) && Enum.IsDefined(typeof(DocumentStatus), intVal))
+            return (DocumentStatus)Enum.ToObject(typeof(DocumentStatus), intVal);
+
+        return DocumentStatus.Draft;
+    }
+
     private static DocumentStatus GetNextStatus(DocumentStatus current) => current switch
     {
         DocumentStatus.Draft => DocumentStatus.OnApproval,
@@ -483,7 +628,29 @@ public class DocumentsController : Controller
         _ => DocumentStatus.Draft
     };
 
-    private static IReadOnlyList<AiSuggestionViewModel> BuildAiSuggestions(DocumentFlowApp.Core.Entities.Document doc)
+    private static string GetDocumentTypeLabel(DocumentType type) => type switch
+    {
+        DocumentType.Contract => "Договор",
+        DocumentType.Invoice => "Счет",
+        DocumentType.Report => "Отчет",
+        DocumentType.Order => "Приказ",
+        DocumentType.Application => "Заявление",
+        DocumentType.Act => "Акт",
+        _ => "Прочее"
+    };
+
+    private static string GetDocumentStatusLabel(DocumentStatus status) => status switch
+    {
+        DocumentStatus.Draft => "Черновик",
+        DocumentStatus.OnApproval => "На согласовании",
+        DocumentStatus.Approved => "Утвержден",
+        DocumentStatus.InWork => "В работе",
+        DocumentStatus.Completed => "Завершен",
+        DocumentStatus.Archived => "Архив",
+        _ => "Неизвестно"
+    };
+
+    private static IReadOnlyList<AiSuggestionViewModel> BuildAiSuggestions(Document doc)
     {
         var seed = doc.DocumentId;
         if (!string.IsNullOrWhiteSpace(doc.FileHash))
@@ -498,7 +665,7 @@ public class DocumentsController : Controller
         var rng = new Random(seed);
 
         int Conf(bool high) => high ? rng.Next(82, 97) : rng.Next(45, 72);
-        bool Flip() => rng.NextDouble() > 0.45; // немного «спорных» значений
+        bool Flip() => rng.NextDouble() > 0.45;
 
         var currentType = TryParseEnum<DocumentType>(doc.DocumentType) ?? DocumentType.Other;
         var availableTypes = Enum.GetValues<DocumentType>();
@@ -513,7 +680,9 @@ public class DocumentsController : Controller
         var suggestedTitle = string.IsNullOrWhiteSpace(title) ? $"Документ #{doc.DocumentId}" : title;
 
         var description = doc.ExtractedText ?? string.Empty;
-        var suggestedDescription = string.IsNullOrWhiteSpace(description) ? "Извлечено ИИ: краткое описание документа." : description;
+        var suggestedDescription = string.IsNullOrWhiteSpace(description)
+            ? "Извлечено ИИ: краткое описание документа."
+            : description;
 
         var tags = doc.Tags ?? string.Empty;
         var suggestedTags = string.IsNullOrWhiteSpace(tags) ? "pdf,входящие" : tags;
@@ -521,7 +690,6 @@ public class DocumentsController : Controller
         var priority = doc.Priority?.ToString() ?? string.Empty;
         var suggestedPriority = string.IsNullOrWhiteSpace(priority) ? rng.Next(1, 4).ToString() : priority;
 
-        // Для разнообразия делаем 2-3 поля «низкой уверенности»
         var lowKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var key in new[] { "title", "type", "duedate", "description", "priority", "tags" }.OrderBy(_ => rng.Next()).Take(3))
             lowKeys.Add(key);
@@ -529,7 +697,7 @@ public class DocumentsController : Controller
         return
         [
             new AiSuggestionViewModel { FieldKey = "type", Label = "Тип", SuggestedValue = suggestedType.ToString(), Confidence = Conf(!lowKeys.Contains("type")) },
-            new AiSuggestionViewModel { FieldKey = "duedate", Label = "Дата", SuggestedValue = suggestedDue, Confidence = Conf(!lowKeys.Contains("duedate")) },
+            new AiSuggestionViewModel { FieldKey = "duedate", Label = "Срок исполнения", SuggestedValue = suggestedDue, Confidence = Conf(!lowKeys.Contains("duedate")) },
             new AiSuggestionViewModel { FieldKey = "title", Label = "Название", SuggestedValue = suggestedTitle, Confidence = Conf(!lowKeys.Contains("title")) },
             new AiSuggestionViewModel { FieldKey = "description", Label = "Описание", SuggestedValue = suggestedDescription, Confidence = Conf(!lowKeys.Contains("description")) },
             new AiSuggestionViewModel { FieldKey = "priority", Label = "Приоритет", SuggestedValue = suggestedPriority, Confidence = Conf(!lowKeys.Contains("priority")) },
