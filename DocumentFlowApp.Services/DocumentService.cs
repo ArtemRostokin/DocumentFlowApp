@@ -69,6 +69,7 @@ namespace DocumentFlowApp.Services
                 ExtractedText = request.Description,
                 DocumentType = request.Type.ToString(),
                 Status = DocumentStatus.Draft.ToString(),
+                TemplateId = request.TemplateId,
                 CreatedDate = DateTime.UtcNow,
                 IsArchived = false,
                 DueDate = NormalizeToUtc(request.DueDate),

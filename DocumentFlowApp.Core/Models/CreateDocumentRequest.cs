@@ -1,4 +1,4 @@
-using DocumentFlowApp.Core.Enums;
+﻿using DocumentFlowApp.Core.Enums;
 
 namespace DocumentFlowApp.Core.Models;
 
@@ -7,6 +7,7 @@ public class CreateDocumentRequest
     public string Title { get; init; } = string.Empty;
     public string Description { get; init; } = string.Empty;
     public DocumentType Type { get; init; }
+    public int? TemplateId { get; init; }
     public DateTime? DueDate { get; init; }
     public int? Priority { get; init; }
     public string? Tags { get; init; }

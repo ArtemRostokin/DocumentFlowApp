@@ -1,3 +1,4 @@
+﻿using System.Text.Json;
 using DocumentFlowApp.Core.Entities;
 using DocumentFlowApp.Core.Security;
 using Microsoft.AspNetCore.Identity;
@@ -8,6 +9,15 @@ namespace DocumentFlowApp.Infrastructure.Data;
 
 public static class ApplicationDbSeeder
 {
+    private sealed class TemplateSeedField
+    {
+        public string Key { get; init; } = string.Empty;
+        public string Label { get; init; } = string.Empty;
+        public string Placeholder { get; init; } = string.Empty;
+        public bool Required { get; init; }
+        public string InputType { get; init; } = "text";
+    }
+
     public static async Task SeedAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         using var scope = services.CreateScope();
@@ -21,44 +31,58 @@ public static class ApplicationDbSeeder
 
         await context.SaveChangesAsync(cancellationToken);
 
-        await EnsureUserAsync(
+        await EnsureUserAsync(context, adminRole.RoleId, "admin", "admin@docflow.local", "Admin123!", "Системный", "Администратор", cancellationToken);
+        await EnsureUserAsync(context, managerRole.RoleId, "manager", "manager@docflow.local", "Manager123!", "Ирина", "Менеджер", cancellationToken);
+        await EnsureUserAsync(context, employeeRole.RoleId, "employee", "employee@docflow.local", "Employee123!", "Алексей", "Исполнитель", cancellationToken);
+
+        await EnsureTemplateAsync(
             context,
-            adminRole.RoleId,
-            "admin",
-            "admin@docflow.local",
-            "Admin123!",
-            "Системный",
-            "Администратор",
+            name: "Шаблон договора",
+            category: "Contract",
+            description: "Используется для подготовки договоров с контрагентами и фиксации ключевых условий сделки.",
+            fields:
+            [
+                new TemplateSeedField { Key = "contract_number", Label = "Номер договора", Placeholder = "Например: 42/2026", Required = true, InputType = "text" },
+                new TemplateSeedField { Key = "contract_date", Label = "Дата договора", Placeholder = string.Empty, Required = true, InputType = "date" },
+                new TemplateSeedField { Key = "counterparty", Label = "Контрагент", Placeholder = "ООО Ромашка", Required = true, InputType = "text" },
+                new TemplateSeedField { Key = "amount", Label = "Сумма договора", Placeholder = "150000", Required = true, InputType = "number" },
+                new TemplateSeedField { Key = "subject", Label = "Предмет договора", Placeholder = "Кратко опишите предмет договора", Required = true, InputType = "textarea" }
+            ],
             cancellationToken);
 
-        await EnsureUserAsync(
+        await EnsureTemplateAsync(
             context,
-            managerRole.RoleId,
-            "manager",
-            "manager@docflow.local",
-            "Manager123!",
-            "Ирина",
-            "Менеджер",
+            name: "Шаблон счета",
+            category: "Invoice",
+            description: "Используется для выставления и регистрации счетов на оплату.",
+            fields:
+            [
+                new TemplateSeedField { Key = "invoice_number", Label = "Номер счета", Placeholder = "СЧ-2026-015", Required = true, InputType = "text" },
+                new TemplateSeedField { Key = "invoice_date", Label = "Дата счета", Placeholder = string.Empty, Required = true, InputType = "date" },
+                new TemplateSeedField { Key = "supplier", Label = "Поставщик", Placeholder = "ООО Поставщик", Required = true, InputType = "text" },
+                new TemplateSeedField { Key = "amount", Label = "Сумма", Placeholder = "98000", Required = true, InputType = "number" },
+                new TemplateSeedField { Key = "payment_due", Label = "Срок оплаты", Placeholder = string.Empty, Required = false, InputType = "date" }
+            ],
             cancellationToken);
 
-        await EnsureUserAsync(
+        await EnsureTemplateAsync(
             context,
-            employeeRole.RoleId,
-            "employee",
-            "employee@docflow.local",
-            "Employee123!",
-            "Алексей",
-            "Исполнитель",
+            name: "Шаблон заявления",
+            category: "Application",
+            description: "Используется для внутренних заявлений сотрудников и служебных обращений.",
+            fields:
+            [
+                new TemplateSeedField { Key = "employee_name", Label = "ФИО сотрудника", Placeholder = "Иванов Иван Иванович", Required = true, InputType = "text" },
+                new TemplateSeedField { Key = "department", Label = "Подразделение", Placeholder = "Отдел документооборота", Required = true, InputType = "text" },
+                new TemplateSeedField { Key = "application_topic", Label = "Тема обращения", Placeholder = "На отпуск / на закупку / служебная записка", Required = true, InputType = "text" },
+                new TemplateSeedField { Key = "application_text", Label = "Текст заявления", Placeholder = "Опишите суть обращения", Required = true, InputType = "textarea" }
+            ],
             cancellationToken);
 
         await context.SaveChangesAsync(cancellationToken);
     }
 
-    private static async Task<Role> EnsureRoleAsync(
-        ApplicationDbContext context,
-        string roleName,
-        string description,
-        CancellationToken cancellationToken)
+    private static async Task<Role> EnsureRoleAsync(ApplicationDbContext context, string roleName, string description, CancellationToken cancellationToken)
     {
         var role = await context.Roles.FirstOrDefaultAsync(r => r.RoleName == roleName, cancellationToken);
         if (role is not null)
@@ -104,5 +128,36 @@ public static class ApplicationDbSeeder
         user.PasswordHash = passwordHasher.HashPassword(user, password);
 
         context.Users.Add(user);
+    }
+
+    private static async Task EnsureTemplateAsync(
+        ApplicationDbContext context,
+        string name,
+        string category,
+        string description,
+        IReadOnlyList<TemplateSeedField> fields,
+        CancellationToken cancellationToken)
+    {
+        var serializedFields = JsonSerializer.Serialize(fields);
+        var template = await context.Templates.FirstOrDefaultAsync(t => t.Name == name, cancellationToken);
+
+        if (template is null)
+        {
+            context.Templates.Add(new Template
+            {
+                Name = name,
+                Category = category,
+                Content = description,
+                AiSuggestedFields = serializedFields,
+                CreatedDate = DateTime.UtcNow,
+                UsageCount = 0,
+                SuccessRate = 0
+            });
+            return;
+        }
+
+        template.Category = category;
+        template.Content = description;
+        template.AiSuggestedFields = serializedFields;
     }
 }

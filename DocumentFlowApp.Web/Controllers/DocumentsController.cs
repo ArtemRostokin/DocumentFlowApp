@@ -1,12 +1,16 @@
 ﻿using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using DocumentFlowApp.Core.Entities;
 using DocumentFlowApp.Core.Enums;
 using DocumentFlowApp.Core.Interfaces;
 using DocumentFlowApp.Core.Models;
+using DocumentFlowApp.Infrastructure.Data;
 using DocumentFlowApp.Web.Models;
 using DocumentFlowApp.Web.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace DocumentFlowApp.Web.Controllers;
 
@@ -15,24 +19,32 @@ public class DocumentsController : Controller
 {
     private const string UploadFolderName = "DocumentFlowAppUploads";
     private readonly IDocumentService _documentService;
+    private readonly ApplicationDbContext _dbContext;
     private readonly IWebHostEnvironment _environment;
     private readonly ILogger<DocumentsController> _logger;
 
     public DocumentsController(
         IDocumentService documentService,
+        ApplicationDbContext dbContext,
         IWebHostEnvironment environment,
         ILogger<DocumentsController> logger)
     {
         _documentService = documentService;
+        _dbContext = dbContext;
         _environment = environment;
         _logger = logger;
     }
 
     [HttpGet]
     [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
-    public IActionResult Create()
+    public async Task<IActionResult> Create(int? templateId, CancellationToken cancellationToken)
     {
-        return View(new CreateDocumentPageViewModel());
+        var model = await BuildCreatePageModelAsync(new CreateDocumentPageViewModel
+        {
+            TemplateId = templateId
+        }, cancellationToken);
+
+        return View(model);
     }
 
     [HttpGet]
@@ -296,10 +308,28 @@ public class DocumentsController : Controller
     [RequestFormLimits(MultipartBodyLengthLimit = 25 * 1024 * 1024)]
     public async Task<IActionResult> Create(CreateDocumentPageViewModel model, CancellationToken cancellationToken)
     {
+        var selectedTemplate = await GetTemplateViewModelAsync(model.TemplateId, cancellationToken);
+        if (selectedTemplate is null)
+            ModelState.AddModelError(nameof(model.TemplateId), "Выберите шаблон документа.");
+
+        if (selectedTemplate is not null)
+        {
+            model.Type = ParseTemplateType(selectedTemplate.Category);
+
+            foreach (var field in selectedTemplate.Fields.Where(f => f.Required))
+            {
+                if (!model.TemplateFieldValues.TryGetValue(field.Key, out var value) || string.IsNullOrWhiteSpace(value))
+                    ModelState.AddModelError($"TemplateFieldValues[{field.Key}]", $"Заполните поле \"{field.Label}\".");
+            }
+        }
+
         ApplyQuickCreateDefaults(model);
 
         if (!ModelState.IsValid)
+        {
+            await PopulateTemplateStateAsync(model, cancellationToken);
             return View(model);
+        }
 
         string? filePath = null;
         long? fileSize = null;
@@ -312,12 +342,14 @@ public class DocumentsController : Controller
                 if (model.File.Length > 25 * 1024 * 1024)
                 {
                     ModelState.AddModelError(nameof(model.File), "Размер файла не должен превышать 25MB.");
+                    await PopulateTemplateStateAsync(model, cancellationToken);
                     return View(model);
                 }
 
                 if (!IsAllowedPdf(model.File))
                 {
                     ModelState.AddModelError(nameof(model.File), "Поддерживается только PDF-файл.");
+                    await PopulateTemplateStateAsync(model, cancellationToken);
                     return View(model);
                 }
 
@@ -330,11 +362,12 @@ public class DocumentsController : Controller
             await _documentService.CreateDocumentAsync(new CreateDocumentRequest
             {
                 Title = model.Title,
-                Description = model.Description,
+                Description = BuildTemplateAwareDescription(model.Description, selectedTemplate, model.TemplateFieldValues),
                 Type = model.Type ?? DocumentType.Other,
                 DueDate = model.DueDate,
                 Priority = model.Priority,
-                Tags = model.Tags,
+                Tags = BuildTemplateAwareTags(model.Tags, model.TemplateId),
+                TemplateId = model.TemplateId,
                 FilePath = filePath,
                 FileSize = fileSize,
                 FileHash = fileHash
@@ -347,6 +380,7 @@ public class DocumentsController : Controller
         {
             _logger.LogWarning(ex, "Не удалось создать документ.");
             ModelState.AddModelError(string.Empty, "Не удалось создать документ. Повторите попытку позже.");
+            await PopulateTemplateStateAsync(model, cancellationToken);
             return View(model);
         }
     }
@@ -423,6 +457,157 @@ public class DocumentsController : Controller
         }
     }
 
+    private async Task<CreateDocumentPageViewModel> BuildCreatePageModelAsync(CreateDocumentPageViewModel model, CancellationToken cancellationToken)
+    {
+        await PopulateTemplateStateAsync(model, cancellationToken);
+        return model;
+    }
+
+    private async Task PopulateTemplateStateAsync(CreateDocumentPageViewModel model, CancellationToken cancellationToken)
+    {
+        var templates = await LoadTemplateCatalogAsync(cancellationToken);
+        model.Templates = templates;
+
+        if (model.TemplateId is null)
+        {
+            model.SelectedTemplateFields = [];
+            model.SelectedTemplateName = null;
+            model.SelectedTemplateDescription = null;
+            model.SelectedTemplateTypeLabel = null;
+            return;
+        }
+
+        var selectedTemplate = templates.FirstOrDefault(t => t.Id == model.TemplateId.Value);
+        if (selectedTemplate is null)
+        {
+            model.SelectedTemplateFields = [];
+            model.SelectedTemplateName = null;
+            model.SelectedTemplateDescription = null;
+            model.SelectedTemplateTypeLabel = null;
+            return;
+        }
+
+        model.SelectedTemplateName = selectedTemplate.Name;
+        model.SelectedTemplateDescription = selectedTemplate.Description;
+        model.SelectedTemplateTypeLabel = selectedTemplate.TypeLabel;
+        model.SelectedTemplateFields = selectedTemplate.Fields;
+
+        foreach (var field in selectedTemplate.Fields)
+            model.TemplateFieldValues.TryAdd(field.Key, string.Empty);
+    }
+
+    private async Task<IReadOnlyList<DocumentTemplateViewModel>> LoadTemplateCatalogAsync(CancellationToken cancellationToken)
+    {
+        var templates = await _dbContext.Templates
+            .AsNoTracking()
+            .OrderBy(t => t.Name)
+            .ToListAsync(cancellationToken);
+
+        return templates.Select(MapTemplate).ToList();
+    }
+
+    private async Task<DocumentTemplateViewModel?> GetTemplateViewModelAsync(int? templateId, CancellationToken cancellationToken)
+    {
+        if (templateId is null)
+            return null;
+
+        var template = await _dbContext.Templates
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.TemplateId == templateId.Value, cancellationToken);
+
+        return template is null ? null : MapTemplate(template);
+    }
+
+    private static DocumentTemplateViewModel MapTemplate(Template template)
+    {
+        var type = ParseTemplateType(template.Category);
+
+        return new DocumentTemplateViewModel
+        {
+            Id = template.TemplateId,
+            Name = template.Name,
+            Description = string.IsNullOrWhiteSpace(template.Content) ? "Шаблон документа" : template.Content,
+            Category = template.Category ?? string.Empty,
+            TypeLabel = GetDocumentTypeLabel(type),
+            Fields = ParseTemplateFields(template.AiSuggestedFields)
+        };
+    }
+
+    private static IReadOnlyList<DocumentTemplateFieldViewModel> ParseTemplateFields(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return [];
+
+        try
+        {
+            var fields = JsonSerializer.Deserialize<List<DocumentTemplateFieldViewModel>>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            return fields?
+                .Where(f => !string.IsNullOrWhiteSpace(f.Key) && !string.IsNullOrWhiteSpace(f.Label))
+                .ToList() ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static DocumentType ParseTemplateType(string? category)
+    {
+        return TryParseEnum<DocumentType>(category) ?? DocumentType.Other;
+    }
+
+    private static string BuildTemplateAwareDescription(
+        string? description,
+        DocumentTemplateViewModel? template,
+        IReadOnlyDictionary<string, string> fieldValues)
+    {
+        var builder = new StringBuilder();
+
+        if (!string.IsNullOrWhiteSpace(description))
+            builder.AppendLine(description.Trim());
+
+        if (template is not null)
+        {
+            var filledFields = template.Fields
+                .Select(field => new
+                {
+                    field.Label,
+                    Value = fieldValues.TryGetValue(field.Key, out var value) ? value?.Trim() : null
+                })
+                .Where(x => !string.IsNullOrWhiteSpace(x.Value))
+                .ToList();
+
+            if (filledFields.Count > 0)
+            {
+                if (builder.Length > 0)
+                    builder.AppendLine().AppendLine();
+
+                builder.AppendLine($"Шаблон: {template.Name}");
+                builder.AppendLine("Поля шаблона:");
+                foreach (var field in filledFields)
+                    builder.AppendLine($"- {field.Label}: {field.Value}");
+            }
+        }
+
+        return builder.ToString().Trim();
+    }
+
+    private static string? BuildTemplateAwareTags(string? tags, int? templateId)
+    {
+        var result = string.IsNullOrWhiteSpace(tags) ? string.Empty : tags.Trim();
+        if (templateId is null)
+            return string.IsNullOrWhiteSpace(result) ? null : result;
+
+        var templateTag = $"template-{templateId.Value}";
+        if (result.Contains(templateTag, StringComparison.OrdinalIgnoreCase))
+            return result;
+
+        return string.IsNullOrWhiteSpace(result) ? templateTag : $"{result},{templateTag}";
+    }
     private static ApprovalQueueItemViewModel ToApprovalQueueItem(Document document)
     {
         var type = TryParseEnum<DocumentType>(document.DocumentType) ?? DocumentType.Other;
@@ -472,9 +657,12 @@ public class DocumentsController : Controller
         var fileName = $"{Guid.NewGuid():N}{extension}";
         var physicalPath = Path.Combine(uploadsRoot, fileName);
 
-        await using var fileStream = System.IO.File.Create(physicalPath);
-        await file.CopyToAsync(fileStream, cancellationToken);
-        await fileStream.FlushAsync(cancellationToken);
+        // Сначала полностью закрываем поток записи, и только потом читаем файл для хеша.
+        await using (var fileStream = System.IO.File.Create(physicalPath))
+        {
+            await file.CopyToAsync(fileStream, cancellationToken);
+            await fileStream.FlushAsync(cancellationToken);
+        }
 
         return ($"/Documents/File/{fileName}", file.Length, await ComputeSha256Async(physicalPath, cancellationToken));
     }

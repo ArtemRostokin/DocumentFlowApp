@@ -1,13 +1,20 @@
 ﻿@model DocumentFlowApp.Web.Models.CreateDocumentPageViewModel
 @{
     Layout = null;
+    string? GetFieldError(string key)
+    {
+        var modelStateKey = $"TemplateFieldValues[{key}]";
+        return ViewData.ModelState.TryGetValue(modelStateKey, out var entry)
+            ? entry.Errors.FirstOrDefault()?.ErrorMessage
+            : null;
+    }
 }
 <!DOCTYPE html>
 <html class="light" lang="ru">
 <head>
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
-    <title>Создание документа - DocManager</title>
+    <title>Создание документа по шаблону - DocManager</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet" />
@@ -31,89 +38,174 @@
     </nav>
 
     <main class="flex-grow pt-24 pb-12 px-6 flex justify-center">
-        <div class="w-full max-w-4xl">
-            <div class="mb-8">
-                <h1 class="text-3xl font-bold tracking-tight">Создание документа</h1>
-                <p class="text-slate-500 mt-1 text-sm">Заполните карточку и при необходимости прикрепите файл. После сохранения документ попадет в статус "Черновик".</p>
+        <div class="w-full max-w-6xl space-y-8">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight">Создание документа по шаблону</h1>
+                <p class="text-slate-500 mt-1 text-sm">Сначала выберите шаблон. Тип документа определяется автоматически, а форма подстраивается под выбранный сценарий.</p>
             </div>
 
-            <form method="post" asp-action="Create" enctype="multipart/form-data" class="space-y-8" novalidate>
-                @Html.AntiForgeryToken()
-                <div asp-validation-summary="ModelOnly" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"></div>
-
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div class="md:col-span-2 bg-white p-8 rounded-xl border border-slate-300 shadow-sm flex flex-col items-center justify-center border-dashed border-2 min-h-[240px]">
-                        <div class="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-4">
-                            <span class="material-symbols-outlined text-slate-600">cloud_upload</span>
-                        </div>
-                        <label asp-for="File" class="text-slate-800 font-medium text-center cursor-pointer">Выберите PDF-файл документа</label>
-                        <input asp-for="File" accept="application/pdf" class="mt-3 w-full max-w-sm text-sm text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-slate-600 file:text-white hover:file:bg-slate-700" />
-                        <span asp-validation-for="File" class="text-xs text-red-600 mt-2"></span>
-                        <p class="text-slate-500 text-xs mt-2 uppercase tracking-widest font-bold">PDF до 25MB</p>
-                    </div>
-                    <div class="md:col-span-1 bg-slate-100 p-6 rounded-xl border border-slate-300 flex flex-col justify-between">
-                        <div>
-                            <span class="material-symbols-outlined text-sky-500 mb-2">smart_toy</span>
-                            <h3 class="text-sm font-bold uppercase tracking-widest text-slate-600">AI-подсказка</h3>
-                            <p class="text-xs text-slate-500 mt-2">На этом этапе AI используется как вспомогательный слой: помогает выделять реквизиты и подсказывать тип документа при загрузке.</p>
-                        </div>
-                    </div>
+            <section class="space-y-4">
+                <div class="flex items-center justify-between gap-4">
+                    <h2 class="text-lg font-semibold text-slate-900">Шаг 1. Выбор шаблона</h2>
+                    @if (Model.TemplateId.HasValue)
+                    {
+                        <a asp-action="Create" class="text-sm font-medium text-slate-500 hover:text-slate-800">Сбросить выбор</a>
+                    }
                 </div>
 
-                <div class="bg-white p-8 rounded-xl border border-slate-300 shadow-sm space-y-6">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div class="space-y-1.5 md:col-span-2">
-                            <label asp-for="Title" class="text-[10px] uppercase font-bold tracking-widest text-slate-500 block">Название документа</label>
-                            <input asp-for="Title" class="w-full bg-slate-50 border-slate-300 rounded-lg text-sm px-4 py-2.5 focus:ring-1 focus:ring-slate-600 focus:border-slate-600 transition-all outline-none" placeholder="Например: Договор поставки №42" />
-                            <span asp-validation-for="Title" class="text-xs text-red-600"></span>
-                        </div>
-
-                        <div class="space-y-1.5">
-                            <label asp-for="Type" class="text-[10px] uppercase font-bold tracking-widest text-slate-500 block">Тип документа</label>
-                            <select asp-for="Type" asp-items="Html.GetEnumSelectList<DocumentFlowApp.Core.Enums.DocumentType>()" class="w-full bg-slate-50 border-slate-300 rounded-lg text-sm px-4 py-2.5 focus:ring-1 focus:ring-slate-600 appearance-none outline-none">
-                                <option value="">Выберите тип документа</option>
-                            </select>
-                            <span asp-validation-for="Type" class="text-xs text-red-600"></span>
-                        </div>
-
-                        <div class="space-y-1.5">
-                            <label asp-for="DueDate" class="text-[10px] uppercase font-bold tracking-widest text-slate-500 block">Срок исполнения</label>
-                            <input asp-for="DueDate" class="w-full bg-slate-50 border-slate-300 rounded-lg text-sm px-4 py-2.5 focus:ring-1 focus:ring-slate-600 outline-none" />
-                            <span asp-validation-for="DueDate" class="text-xs text-red-600"></span>
-                        </div>
-                    </div>
-
-                    <div class="space-y-1.5">
-                        <label asp-for="Description" class="text-[10px] uppercase font-bold tracking-widest text-slate-500 block">Описание</label>
-                        <textarea asp-for="Description" rows="4" class="w-full bg-slate-50 border-slate-300 rounded-lg text-sm px-4 py-2.5 focus:ring-1 focus:ring-slate-600 outline-none" placeholder="Кратко опишите назначение документа и его содержание"></textarea>
-                        <span asp-validation-for="Description" class="text-xs text-red-600"></span>
-                    </div>
-
-                    <div class="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-6">
-                        <div class="space-y-1.5">
-                            <label asp-for="Priority" class="text-[10px] uppercase font-bold tracking-widest text-slate-500 block">Приоритет</label>
-                            <select asp-for="Priority" class="bg-slate-50 border-slate-300 rounded-lg text-sm px-4 py-2.5 outline-none">
-                                <option value="">Не выбран</option>
-                                <option value="1">Низкий</option>
-                                <option value="2">Средний</option>
-                                <option value="3">Высокий</option>
-                            </select>
-                            <span asp-validation-for="Priority" class="text-xs text-red-600"></span>
-                        </div>
-
-                        <div class="space-y-1.5 flex-grow max-w-md">
-                            <label asp-for="Tags" class="text-[10px] uppercase font-bold tracking-widest text-slate-500 block">Теги</label>
-                            <input asp-for="Tags" class="w-full bg-slate-50 border-slate-300 rounded-lg text-sm px-4 py-2.5 outline-none" placeholder="Например: финансы, договор, поставщик" />
-                            <span asp-validation-for="Tags" class="text-xs text-red-600"></span>
-                        </div>
-                    </div>
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    @foreach (var template in Model.Templates)
+                    {
+                        var isSelected = Model.TemplateId == template.Id;
+                        <a asp-action="Create"
+                           asp-route-templateId="@template.Id"
+                           class="rounded-2xl border p-5 shadow-sm transition-all @(isSelected ? "border-blue-500 bg-blue-50 shadow-blue-100" : "border-slate-200 bg-white hover:border-slate-300")">
+                            <div class="flex items-center justify-between gap-3">
+                                <span class="rounded-md bg-slate-100 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-600">@template.TypeLabel</span>
+                                @if (isSelected)
+                                {
+                                    <span class="material-symbols-outlined text-blue-600">check_circle</span>
+                                }
+                            </div>
+                            <h3 class="mt-4 text-lg font-semibold text-slate-900">@template.Name</h3>
+                            <p class="mt-2 text-sm leading-6 text-slate-500">@template.Description</p>
+                            <div class="mt-4 text-xs font-semibold uppercase tracking-wider text-slate-400">Полей: @template.Fields.Count</div>
+                        </a>
+                    }
                 </div>
+            </section>
 
-                <div class="flex items-center justify-end gap-4 pt-4">
-                    <a asp-controller="Home" asp-action="Index" class="px-8 py-3 rounded-xl text-sm font-bold uppercase tracking-widest text-slate-500 hover:text-slate-800 transition-colors">Отмена</a>
-                    <button class="px-10 py-3 rounded-xl bg-slate-600 text-white text-sm font-bold uppercase tracking-widest shadow-sm hover:bg-slate-700 transition-all" type="submit">Создать документ</button>
-                </div>
-            </form>
+            @if (!Model.TemplateId.HasValue)
+            {
+                <section class="rounded-2xl border border-dashed border-slate-300 bg-white px-8 py-12 text-center">
+                    <span class="material-symbols-outlined text-4xl text-slate-300">article</span>
+                    <h2 class="mt-4 text-xl font-semibold">Шаблон еще не выбран</h2>
+                    <p class="mt-2 text-sm text-slate-500">Выберите один из шаблонов выше, чтобы открыть профильные поля и создать документ.</p>
+                </section>
+            }
+            else
+            {
+                <form method="post" asp-action="Create" enctype="multipart/form-data" class="space-y-8" novalidate>
+                    @Html.AntiForgeryToken()
+                    <input asp-for="TemplateId" type="hidden" />
+
+                    <div asp-validation-summary="ModelOnly" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"></div>
+
+                    <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <div class="flex flex-wrap items-center gap-3">
+                            <span class="rounded-md bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wider text-blue-700">Шаг 2</span>
+                            <h2 class="text-lg font-semibold text-slate-900">Карточка шаблона</h2>
+                        </div>
+                        <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                            <div class="rounded-xl bg-slate-50 px-4 py-3">
+                                <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Шаблон</div>
+                                <div class="mt-1 font-semibold text-slate-900">@Model.SelectedTemplateName</div>
+                            </div>
+                            <div class="rounded-xl bg-slate-50 px-4 py-3">
+                                <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Тип документа</div>
+                                <div class="mt-1 font-semibold text-slate-900">@Model.SelectedTemplateTypeLabel</div>
+                            </div>
+                            <div class="rounded-xl bg-slate-50 px-4 py-3">
+                                <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Назначение</div>
+                                <div class="mt-1 text-sm text-slate-700">@Model.SelectedTemplateDescription</div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
+                        <div class="flex items-center gap-3">
+                            <span class="rounded-md bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wider text-blue-700">Шаг 3</span>
+                            <h2 class="text-lg font-semibold text-slate-900">Заполнение полей</h2>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                            <div class="space-y-1.5 md:col-span-2">
+                                <label asp-for="Title" class="text-[10px] uppercase font-bold tracking-widest text-slate-500 block">Название документа</label>
+                                <input asp-for="Title" class="w-full bg-slate-50 border-slate-300 rounded-lg text-sm px-4 py-2.5 focus:ring-1 focus:ring-slate-600 focus:border-slate-600 outline-none" placeholder="Например: Договор поставки №42" />
+                                <span asp-validation-for="Title" class="text-xs text-red-600"></span>
+                            </div>
+
+                            @foreach (var field in Model.SelectedTemplateFields)
+                            {
+                                var fieldError = GetFieldError(field.Key);
+                                <div class="space-y-1.5">
+                                    <label class="text-[10px] uppercase font-bold tracking-widest text-slate-500 block">@field.Label @if (field.Required) { <span class="text-red-500">*</span> }</label>
+                                    @if (string.Equals(field.InputType, "textarea", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <textarea name="TemplateFieldValues[@field.Key]"
+                                                  rows="4"
+                                                  class="w-full bg-slate-50 border-slate-300 rounded-lg text-sm px-4 py-2.5 focus:ring-1 focus:ring-slate-600 focus:border-slate-600 outline-none"
+                                                  placeholder="@field.Placeholder">@(Model.TemplateFieldValues.TryGetValue(field.Key, out var value) ? value : string.Empty)</textarea>
+                                    }
+                                    else
+                                    {
+                                        <input name="TemplateFieldValues[@field.Key]"
+                                               value="@(Model.TemplateFieldValues.TryGetValue(field.Key, out var value) ? value : string.Empty)"
+                                               type="@field.InputType"
+                                               class="w-full bg-slate-50 border-slate-300 rounded-lg text-sm px-4 py-2.5 focus:ring-1 focus:ring-slate-600 focus:border-slate-600 outline-none"
+                                               placeholder="@field.Placeholder" />
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(fieldError))
+                                    {
+                                        <div class="text-xs text-red-600">@fieldError</div>
+                                    }
+                                </div>
+                            }
+
+                            <div class="space-y-1.5 md:col-span-2">
+                                <label asp-for="Description" class="text-[10px] uppercase font-bold tracking-widest text-slate-500 block">Дополнительное описание</label>
+                                <textarea asp-for="Description" rows="4" class="w-full bg-slate-50 border-slate-300 rounded-lg text-sm px-4 py-2.5 focus:ring-1 focus:ring-slate-600 outline-none" placeholder="Необязательно: дополнительные комментарии по документу"></textarea>
+                                <span asp-validation-for="Description" class="text-xs text-red-600"></span>
+                            </div>
+
+                            <div class="space-y-1.5">
+                                <label asp-for="DueDate" class="text-[10px] uppercase font-bold tracking-widest text-slate-500 block">Срок исполнения</label>
+                                <input asp-for="DueDate" class="w-full bg-slate-50 border-slate-300 rounded-lg text-sm px-4 py-2.5 focus:ring-1 focus:ring-slate-600 outline-none" />
+                                <span asp-validation-for="DueDate" class="text-xs text-red-600"></span>
+                            </div>
+
+                            <div class="space-y-1.5">
+                                <label asp-for="Priority" class="text-[10px] uppercase font-bold tracking-widest text-slate-500 block">Приоритет</label>
+                                <select asp-for="Priority" class="w-full bg-slate-50 border-slate-300 rounded-lg text-sm px-4 py-2.5 outline-none">
+                                    <option value="">Не выбран</option>
+                                    <option value="1">Низкий</option>
+                                    <option value="2">Средний</option>
+                                    <option value="3">Высокий</option>
+                                </select>
+                                <span asp-validation-for="Priority" class="text-xs text-red-600"></span>
+                            </div>
+
+                            <div class="space-y-1.5 md:col-span-2">
+                                <label asp-for="Tags" class="text-[10px] uppercase font-bold tracking-widest text-slate-500 block">Теги</label>
+                                <input asp-for="Tags" class="w-full bg-slate-50 border-slate-300 rounded-lg text-sm px-4 py-2.5 outline-none" placeholder="Например: срочно, клиент, финансы" />
+                                <span asp-validation-for="Tags" class="text-xs text-red-600"></span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="grid grid-cols-1 gap-6 md:grid-cols-3">
+                        <div class="md:col-span-2 rounded-2xl border border-slate-300 bg-white p-8 shadow-sm flex flex-col items-center justify-center border-dashed border-2 min-h-[220px]">
+                            <div class="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+                                <span class="material-symbols-outlined text-slate-600">attach_file</span>
+                            </div>
+                            <label asp-for="File" class="text-slate-800 font-medium text-center cursor-pointer">Прикрепить PDF-файл документа</label>
+                            <input asp-for="File" accept="application/pdf" class="mt-3 w-full max-w-sm text-sm text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-slate-600 file:text-white hover:file:bg-slate-700" />
+                            <span asp-validation-for="File" class="text-xs text-red-600 mt-2"></span>
+                            <p class="text-slate-500 text-xs mt-2 uppercase tracking-widest font-bold">Опционально, PDF до 25MB</p>
+                        </div>
+                        <div class="rounded-2xl border border-slate-200 bg-slate-100 p-6">
+                            <span class="material-symbols-outlined text-sky-500 mb-2">tips_and_updates</span>
+                            <h3 class="text-sm font-bold uppercase tracking-widest text-slate-600">Как это работает</h3>
+                            <p class="mt-2 text-sm text-slate-500">При создании по шаблону тип документа уже известен. Поэтому AI-классификация не нужна, а система сразу показывает профильные поля именно этого документа.</p>
+                        </div>
+                    </section>
+
+                    <div class="flex items-center justify-end gap-4 pt-2">
+                        <a asp-controller="Home" asp-action="Index" class="px-8 py-3 rounded-xl text-sm font-bold uppercase tracking-widest text-slate-500 hover:text-slate-800 transition-colors">Отмена</a>
+                        <button class="px-10 py-3 rounded-xl bg-slate-600 text-white text-sm font-bold uppercase tracking-widest shadow-sm hover:bg-slate-700 transition-all" type="submit">Создать документ</button>
+                    </div>
+                </form>
+            }
         </div>
     </main>
 
