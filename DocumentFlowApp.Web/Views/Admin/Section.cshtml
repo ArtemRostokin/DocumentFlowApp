@@ -1,0 +1,19 @@
+@{
+    var title = ViewData["SectionTitle"] as string ?? "Раздел";
+    var description = ViewData["SectionDescription"] as string ?? "Раздел находится в разработке.";
+    ViewData["Title"] = title;
+}
+
+<div class="container py-4">
+    <div class="mb-4">
+        <h1 class="h3 mb-2">@title</h1>
+        <p class="text-muted mb-0">@description</p>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <p class="mb-3">Экран уже включен в ролевую модель администратора и готов под дальнейшую реализацию.</p>
+            <a class="btn btn-outline-secondary" asp-action="Index">Назад в администрирование</a>
+        </div>
+    </div>
+</div>

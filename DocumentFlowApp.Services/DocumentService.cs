@@ -94,7 +94,7 @@ namespace DocumentFlowApp.Services
             await _documentRepository.DeleteAsync(id);
         }
 
-        public async Task ChangeDocumentStatusAsync(int documentId, DocumentStatus newStatus)
+        public async Task ChangeDocumentStatusAsync(int documentId, DocumentStatus newStatus, string? transitionComment = null)
         {
             var document = await _documentRepository.GetByIdAsync(documentId);
             if (document == null)
@@ -102,16 +102,11 @@ namespace DocumentFlowApp.Services
 
             var currentStatus = ParseDocumentStatus(document.Status);
 
-            // Бизнес-логика: проверка допустимых переходов статусов (без пропусков этапов)
-            // Правила:
-            // - Draft -> InProgress
-            // - InProgress -> Approved
-            // - Approved -> Archived
-            // - Любой (кроме Archived) -> Rejected
-            // - Rejected -> InProgress
-            // - Из Archived нельзя выходить
             if (!IsValidTransition(currentStatus, newStatus))
                 throw new InvalidOperationException($"Недопустимый переход статуса: {currentStatus} → {newStatus}");
+
+            if (RequiresComment(currentStatus, newStatus) && string.IsNullOrWhiteSpace(transitionComment))
+                throw new InvalidOperationException("Комментарий обязателен при возврате документа на предыдущий этап.");
 
             document.Status = newStatus.ToString();
             document.UpdatedDate = DateTime.UtcNow;
@@ -122,6 +117,13 @@ namespace DocumentFlowApp.Services
         private static DocumentStatus ParseDocumentStatus(string? stored)
         {
             if (string.IsNullOrWhiteSpace(stored))
+                return DocumentStatus.Draft;
+
+            // Legacy string mappings from previous workflow model.
+            if (string.Equals(stored, "InProgress", StringComparison.OrdinalIgnoreCase))
+                return DocumentStatus.OnApproval;
+
+            if (string.Equals(stored, "Rejected", StringComparison.OrdinalIgnoreCase))
                 return DocumentStatus.Draft;
 
             if (Enum.TryParse<DocumentStatus>(stored, true, out var parsed))
@@ -141,17 +143,20 @@ namespace DocumentFlowApp.Services
             if (from == DocumentStatus.Archived)
                 return false;
 
-            if (to == DocumentStatus.Rejected)
-                return true;
-
             return from switch
             {
-                DocumentStatus.Draft => to == DocumentStatus.InProgress,
-                DocumentStatus.InProgress => to == DocumentStatus.Approved,
-                DocumentStatus.Approved => to == DocumentStatus.Archived,
-                DocumentStatus.Rejected => to == DocumentStatus.InProgress,
+                DocumentStatus.Draft => to == DocumentStatus.OnApproval,
+                DocumentStatus.OnApproval => to == DocumentStatus.Approved || to == DocumentStatus.Draft,
+                DocumentStatus.Approved => to == DocumentStatus.InWork,
+                DocumentStatus.InWork => to == DocumentStatus.Completed,
+                DocumentStatus.Completed => to == DocumentStatus.Archived,
                 _ => false
             };
+        }
+
+        private static bool RequiresComment(DocumentStatus from, DocumentStatus to)
+        {
+            return from == DocumentStatus.OnApproval && to == DocumentStatus.Draft;
         }
     }
 }

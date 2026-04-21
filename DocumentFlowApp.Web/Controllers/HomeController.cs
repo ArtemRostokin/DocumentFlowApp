@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using DocumentFlowApp.Core.Entities;
 using DocumentFlowApp.Core.Enums;
 using DocumentFlowApp.Core.Interfaces;
@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace DocumentFlowApp.Web.Controllers;
 
- [Authorize]
+[Authorize]
 public class HomeController : Controller
 {
     private readonly IDocumentService _documentService;
@@ -43,12 +43,18 @@ public class HomeController : Controller
 
         return
         [
-            CreateColumn(DocumentStatus.Draft, "Новые", "accent-neutral", all.Where(d => string.Equals(d.Status, DocumentStatus.Draft.ToString(), StringComparison.OrdinalIgnoreCase))),
-            CreateColumn(DocumentStatus.InProgress, "В работе", "accent-primary", all.Where(d => string.Equals(d.Status, DocumentStatus.InProgress.ToString(), StringComparison.OrdinalIgnoreCase))),
-            CreateColumn(DocumentStatus.Approved, "Утверждены", "accent-success", all.Where(d => string.Equals(d.Status, DocumentStatus.Approved.ToString(), StringComparison.OrdinalIgnoreCase))),
-            CreateColumn(DocumentStatus.Rejected, "Отклонены", "accent-danger", all.Where(d => string.Equals(d.Status, DocumentStatus.Rejected.ToString(), StringComparison.OrdinalIgnoreCase))),
-            CreateColumn(DocumentStatus.Archived, "Архив", "accent-muted", all.Where(d => string.Equals(d.Status, DocumentStatus.Archived.ToString(), StringComparison.OrdinalIgnoreCase)), isEmptyPlaceholder: true)
+            CreateColumn(DocumentStatus.Draft, "Черновик", "accent-neutral", FilterByStatus(all, DocumentStatus.Draft)),
+            CreateColumn(DocumentStatus.OnApproval, "На согласовании", "accent-primary", FilterByStatus(all, DocumentStatus.OnApproval)),
+            CreateColumn(DocumentStatus.Approved, "Утвержден", "accent-success", FilterByStatus(all, DocumentStatus.Approved)),
+            CreateColumn(DocumentStatus.InWork, "В работе", "accent-primary", FilterByStatus(all, DocumentStatus.InWork)),
+            CreateColumn(DocumentStatus.Completed, "Завершен", "accent-success", FilterByStatus(all, DocumentStatus.Completed)),
+            CreateColumn(DocumentStatus.Archived, "Архив", "accent-muted", FilterByStatus(all, DocumentStatus.Archived), isEmptyPlaceholder: true)
         ];
+    }
+
+    private static IEnumerable<Document> FilterByStatus(IEnumerable<Document> documents, DocumentStatus status)
+    {
+        return documents.Where(d => ParseDocumentStatus(d.Status) == status);
     }
 
     private static KanbanColumnViewModel CreateColumn(
@@ -110,7 +116,6 @@ public class HomeController : Controller
         if (Enum.TryParse<DocumentType>(stored, true, out var parsed))
             return parsed;
 
-        // Попробуем по числовому представлению
         if (int.TryParse(stored, out var intVal) && Enum.IsDefined(typeof(DocumentType), intVal))
             return (DocumentType)intVal;
 
@@ -120,6 +125,13 @@ public class HomeController : Controller
     private static DocumentStatus ParseDocumentStatus(string? stored)
     {
         if (string.IsNullOrWhiteSpace(stored))
+            return DocumentStatus.Draft;
+
+        // Legacy mappings.
+        if (string.Equals(stored, "InProgress", StringComparison.OrdinalIgnoreCase))
+            return DocumentStatus.OnApproval;
+
+        if (string.Equals(stored, "Rejected", StringComparison.OrdinalIgnoreCase))
             return DocumentStatus.Draft;
 
         if (Enum.TryParse<DocumentStatus>(stored, true, out var parsed))
@@ -138,6 +150,7 @@ public class HomeController : Controller
         DocumentType.Report => "Отчет",
         DocumentType.Order => "Приказ",
         DocumentType.Application => "Заявление",
+        DocumentType.Act => "Акт",
         _ => "Документ"
     };
 
@@ -148,25 +161,28 @@ public class HomeController : Controller
         DocumentType.Report => "type-report",
         DocumentType.Order => "type-order",
         DocumentType.Application => "type-application",
+        DocumentType.Act => "type-report",
         _ => "type-other"
     };
 
     private static string GetStatusLabel(DocumentStatus status) => status switch
     {
-        DocumentStatus.Draft => "Ожидает старта",
-        DocumentStatus.InProgress => "Исполняется",
-        DocumentStatus.Approved => "Готово",
-        DocumentStatus.Rejected => "Требует внимания",
-        DocumentStatus.Archived => "Завершено",
+        DocumentStatus.Draft => "Черновик",
+        DocumentStatus.OnApproval => "На согласовании",
+        DocumentStatus.Approved => "Утвержден",
+        DocumentStatus.InWork => "В работе",
+        DocumentStatus.Completed => "Завершен",
+        DocumentStatus.Archived => "Архив",
         _ => "Неизвестно"
     };
 
     private static string GetStatusClass(DocumentStatus status) => status switch
     {
         DocumentStatus.Draft => "status-neutral",
-        DocumentStatus.InProgress => "status-primary",
+        DocumentStatus.OnApproval => "status-primary",
         DocumentStatus.Approved => "status-success",
-        DocumentStatus.Rejected => "status-danger",
+        DocumentStatus.InWork => "status-primary",
+        DocumentStatus.Completed => "status-success",
         DocumentStatus.Archived => "status-muted",
         _ => "status-neutral"
     };
@@ -174,9 +190,10 @@ public class HomeController : Controller
     private static string GetStatusIcon(DocumentStatus status) => status switch
     {
         DocumentStatus.Draft => "schedule",
-        DocumentStatus.InProgress => "autorenew",
+        DocumentStatus.OnApproval => "autorenew",
         DocumentStatus.Approved => "verified",
-        DocumentStatus.Rejected => "warning",
+        DocumentStatus.InWork => "construction",
+        DocumentStatus.Completed => "check_circle",
         DocumentStatus.Archived => "inventory_2",
         _ => "description"
     };
@@ -184,36 +201,36 @@ public class HomeController : Controller
     private static int GetProgress(DocumentStatus status) => status switch
     {
         DocumentStatus.Draft => 0,
-        DocumentStatus.InProgress => 65,
-        DocumentStatus.Approved => 100,
-        DocumentStatus.Rejected => 100,
+        DocumentStatus.OnApproval => 35,
+        DocumentStatus.Approved => 60,
+        DocumentStatus.InWork => 80,
+        DocumentStatus.Completed => 100,
         DocumentStatus.Archived => 100,
         _ => 0
     };
 
     private static string GetProgressLabel(DocumentStatus status) => status switch
     {
-        DocumentStatus.Draft => "Ожидает AI",
-        DocumentStatus.InProgress => "Обработка",
-        DocumentStatus.Approved => "Согласовано",
-        DocumentStatus.Rejected => "Проверить",
+        DocumentStatus.Draft => "Подготовка",
+        DocumentStatus.OnApproval => "Согласование",
+        DocumentStatus.Approved => "Готов к исполнению",
+        DocumentStatus.InWork => "Исполнение",
+        DocumentStatus.Completed => "Завершено",
         DocumentStatus.Archived => "Архивировано",
         _ => "Статус"
     };
 
     private static string GetDueClass(DocumentStatus status) => status switch
     {
-        DocumentStatus.Rejected => "due-danger",
-        DocumentStatus.Approved => "due-success",
+        DocumentStatus.OnApproval => "due-danger",
+        DocumentStatus.Completed => "due-success",
         _ => "due-neutral"
     };
 
     private static string FormatDueLabel(Document document)
     {
         if (document.UpdatedDate.HasValue)
-        {
             return document.UpdatedDate.Value.ToString("dd.MM");
-        }
 
         return document.CreatedDate.ToString("dd.MM");
     }
@@ -228,7 +245,7 @@ public class HomeController : Controller
             {
                 DocumentId = 1,
                 Title = "Договор оказания услуг №45-А",
-                ExtractedText = "ООО \"ТехПром\"",
+                ExtractedText = "ООО ТехПром",
                 User = new User { FirstName = "Петров", LastName = "В.", UserName = "petrov" },
                 DocumentType = DocumentType.Contract.ToString(),
                 Status = DocumentStatus.Draft.ToString(),
@@ -238,10 +255,10 @@ public class HomeController : Controller
             {
                 DocumentId = 2,
                 Title = "Счет на оплату лицензий ПО",
-                ExtractedText = "ЗАО \"СофтЛайн\"",
+                ExtractedText = "ЗАО СофтЛайн",
                 User = new User { FirstName = "Сидоров", LastName = "И.", UserName = "sidorov" },
                 DocumentType = DocumentType.Invoice.ToString(),
-                Status = DocumentStatus.Draft.ToString(),
+                Status = DocumentStatus.OnApproval.ToString(),
                 CreatedDate = now.AddDays(-1)
             },
             new Document
@@ -250,28 +267,48 @@ public class HomeController : Controller
                 Title = "Акт выполненных работ за сентябрь",
                 ExtractedText = "ИП Смирнов",
                 User = new User { FirstName = "Иванов", LastName = "А.", UserName = "ivanov" },
-                DocumentType = DocumentType.Report.ToString(),
-                Status = DocumentStatus.InProgress.ToString(),
+                DocumentType = DocumentType.Act.ToString(),
+                Status = DocumentStatus.Approved.ToString(),
                 CreatedDate = now.AddDays(-5),
                 UpdatedDate = now.AddDays(-1)
             },
             new Document
             {
                 DocumentId = 4,
-                Title = "Доп. соглашение к договору №12",
-                ExtractedText = "ПАО \"Альфа\"",
-                User = new User { FirstName = "Кузнецов", LastName = "С.", UserName = "kuznetsov" },
-                DocumentType = DocumentType.Contract.ToString(),
-                Status = DocumentStatus.Approved.ToString(),
+                Title = "План внедрения",
+                ExtractedText = "Исполнение задач",
+                User = new User { FirstName = "Смирнов", LastName = "К.", UserName = "smirnov" },
+                DocumentType = DocumentType.Order.ToString(),
+                Status = DocumentStatus.InWork.ToString(),
                 CreatedDate = now.AddDays(-7),
                 UpdatedDate = now.AddDays(-2)
+            },
+            new Document
+            {
+                DocumentId = 5,
+                Title = "Итоговый отчет по проекту",
+                ExtractedText = "Выполнено в срок",
+                User = new User { FirstName = "Андреев", LastName = "М.", UserName = "andreev" },
+                DocumentType = DocumentType.Report.ToString(),
+                Status = DocumentStatus.Completed.ToString(),
+                CreatedDate = now.AddDays(-10),
+                UpdatedDate = now.AddDays(-2)
+            },
+            new Document
+            {
+                DocumentId = 6,
+                Title = "Архивный договор",
+                ExtractedText = "Архивная запись",
+                User = new User { FirstName = "Кузнецов", LastName = "С.", UserName = "kuznetsov" },
+                DocumentType = DocumentType.Contract.ToString(),
+                Status = DocumentStatus.Archived.ToString(),
+                CreatedDate = now.AddDays(-20),
+                UpdatedDate = now.AddDays(-15)
             }
         ];
     }
 
-    private async Task<KanbanBoardPageViewModel> BuildPageModelAsync(
-        string? q,
-        DocumentType? type)
+    private async Task<KanbanBoardPageViewModel> BuildPageModelAsync(string? q, DocumentType? type)
     {
         var documents = new List<Document>();
         string? notice = null;
@@ -282,14 +319,16 @@ public class HomeController : Controller
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Не удалось загрузить документы из backend. Показываем временные данные.");
+            _logger.LogWarning(ex, "Failed to load documents from backend. Using fallback preview data.");
             documents = GetFallbackDocuments();
-            notice = "Backend недоступен, поэтому сейчас показаны временные данные макета.";
+            notice = "Backend is unavailable, showing fallback preview data.";
         }
 
         if (type.HasValue)
         {
-            documents = documents.Where(d => string.Equals(d.DocumentType, type.Value.ToString(), StringComparison.OrdinalIgnoreCase)).ToList();
+            documents = documents
+                .Where(d => string.Equals(d.DocumentType, type.Value.ToString(), StringComparison.OrdinalIgnoreCase))
+                .ToList();
         }
 
         if (!string.IsNullOrWhiteSpace(q))
@@ -299,11 +338,10 @@ public class HomeController : Controller
                 .Where(d =>
                     (!string.IsNullOrWhiteSpace(d.Title) && d.Title.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
                     (!string.IsNullOrWhiteSpace(d.ExtractedText) && d.ExtractedText.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
-                    (d.User != null && (
-                        (!string.IsNullOrWhiteSpace(d.User.FirstName) && d.User.FirstName.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
-                        (!string.IsNullOrWhiteSpace(d.User.LastName) && d.User.LastName.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
-                        (!string.IsNullOrWhiteSpace(d.User.UserName) && d.User.UserName.Contains(query, StringComparison.OrdinalIgnoreCase))
-                    ))
+                    (d.User != null &&
+                     ((!string.IsNullOrWhiteSpace(d.User.FirstName) && d.User.FirstName.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
+                      (!string.IsNullOrWhiteSpace(d.User.LastName) && d.User.LastName.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
+                      (!string.IsNullOrWhiteSpace(d.User.UserName) && d.User.UserName.Contains(query, StringComparison.OrdinalIgnoreCase))))
                 )
                 .ToList();
         }

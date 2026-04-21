@@ -5,6 +5,7 @@ using DocumentFlowApp.Infrastructure.Data;
 using DocumentFlowApp.Infrastructure.Repositories;
 using DocumentFlowApp.Infrastructure.Services;
 using DocumentFlowApp.Services;
+using DocumentFlowApp.Web.Security;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -101,7 +102,23 @@ builder.Services
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(AuthorizationPolicies.AdminOnly, policy =>
+        policy.RequireAssertion(context =>
+            AuthorizationPolicies.IsInAppRole(context.User, DocumentFlowApp.Core.Security.AppRoles.Admin)));
+
+    options.AddPolicy(AuthorizationPolicies.ManagerOrAdmin, policy =>
+        policy.RequireAssertion(context =>
+            AuthorizationPolicies.IsInAppRole(context.User, DocumentFlowApp.Core.Security.AppRoles.Admin) ||
+            AuthorizationPolicies.IsInAppRole(context.User, DocumentFlowApp.Core.Security.AppRoles.Manager)));
+
+    options.AddPolicy(AuthorizationPolicies.EmployeeOrHigher, policy =>
+        policy.RequireAssertion(context =>
+            AuthorizationPolicies.IsInAppRole(context.User, DocumentFlowApp.Core.Security.AppRoles.Admin) ||
+            AuthorizationPolicies.IsInAppRole(context.User, DocumentFlowApp.Core.Security.AppRoles.Manager) ||
+            AuthorizationPolicies.IsInAppRole(context.User, DocumentFlowApp.Core.Security.AppRoles.Employee)));
+});
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
@@ -114,6 +131,16 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 
 var app = builder.Build();
 AppendTrace("App built");
+
+try
+{
+    await ApplicationDbSeeder.SeedAsync(app.Services);
+    AppendTrace("Database seeded");
+}
+catch (Exception ex)
+{
+    AppendCrashLog("Database seeding failed", ex.ToString());
+}
 
 if (!app.Environment.IsDevelopment())
 {

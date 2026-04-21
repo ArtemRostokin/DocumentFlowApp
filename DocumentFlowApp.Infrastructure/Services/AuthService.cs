@@ -4,6 +4,7 @@ using System.Text;
 using DocumentFlowApp.Core.Entities;
 using DocumentFlowApp.Core.Interfaces;
 using DocumentFlowApp.Core.Models;
+using DocumentFlowApp.Core.Security;
 using DocumentFlowApp.Infrastructure.Data;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -87,6 +88,10 @@ public class AuthService : IAuthService
 
         if (!string.IsNullOrWhiteSpace(user.Role?.RoleName))
             claims.Add(new Claim(ClaimTypes.Role, user.Role.RoleName));
+
+        var normalizedRole = AppRoles.Normalize(user.Role?.RoleName);
+        if (!string.IsNullOrWhiteSpace(normalizedRole))
+            claims.Add(new Claim("df_role", normalizedRole));
 
         var token = new JwtSecurityToken(
             issuer: _jwtOptions.Issuer,

@@ -34,7 +34,14 @@
                     <span class="material-symbols-outlined text-white text-3xl">description</span>
                 </div>
                 <h1 class="text-2xl font-bold tracking-tight mb-2">Вход в систему</h1>
-                <p class="text-sm text-slate-500 text-center">Управляйте вашими документами в защищенном архиве Slate Archive</p>
+                <p class="text-sm text-slate-500 text-center">Войдите под нужной ролью и запустите демонстрационный сценарий.</p>
+            </div>
+
+            <div class="mb-6 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                <div class="font-semibold mb-2">Demo-учётки</div>
+                <div>`admin@docflow.local` / `Admin123!`</div>
+                <div>`manager@docflow.local` / `Manager123!`</div>
+                <div>`employee@docflow.local` / `Employee123!`</div>
             </div>
 
             <form method="post" asp-action="Login" class="space-y-6">
@@ -59,7 +66,7 @@
                     <label class="block text-xs font-bold uppercase tracking-wider text-slate-600" asp-for="Password">Пароль</label>
                     <div class="relative">
                         <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">lock</span>
-                        <input asp-for="Password" class="w-full pl-10 pr-4 py-3 bg-slate-100 border border-slate-300/30 rounded-lg focus:ring-2 focus:ring-slate-500/20 focus:border-slate-500 outline-none transition-all text-sm placeholder:text-slate-400" placeholder="••••••••" type="password" />
+                        <input asp-for="Password" class="w-full pl-10 pr-4 py-3 bg-slate-100 border border-slate-300/30 rounded-lg focus:ring-2 focus:ring-slate-500/20 focus:border-slate-500 outline-none transition-all text-sm placeholder:text-slate-400" placeholder="Введите пароль" type="password" />
                     </div>
                     <span asp-validation-for="Password" class="text-xs text-red-600"></span>
                 </div>

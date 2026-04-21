@@ -29,6 +29,6 @@ namespace DocumentFlowApp.Core.Interfaces
         Task DeleteDocumentAsync(int id);
 
         // Изменить статус документа
-        Task ChangeDocumentStatusAsync(int documentId, DocumentStatus newStatus);
+        Task ChangeDocumentStatusAsync(int documentId, DocumentStatus newStatus, string? transitionComment = null);
     }
 }

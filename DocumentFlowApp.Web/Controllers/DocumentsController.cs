@@ -3,6 +3,7 @@ using DocumentFlowApp.Core.Enums;
 using DocumentFlowApp.Core.Interfaces;
 using DocumentFlowApp.Core.Models;
 using DocumentFlowApp.Web.Models;
+using DocumentFlowApp.Web.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
@@ -29,12 +30,21 @@ public class DocumentsController : Controller
     }
 
     [HttpGet]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
     public IActionResult Create()
     {
         return View(new CreateDocumentPageViewModel());
     }
 
     [HttpGet]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
+    public IActionResult UploadIncoming()
+    {
+        return View(new UploadIncomingDocumentsPageViewModel());
+    }
+
+    [HttpGet]
+    [Authorize(Policy = AuthorizationPolicies.EmployeeOrHigher)]
     [Route("Documents/File/{fileName}")]
     public IActionResult File(string fileName)
     {
@@ -50,6 +60,7 @@ public class DocumentsController : Controller
     }
 
     [HttpGet]
+    [Authorize(Policy = AuthorizationPolicies.EmployeeOrHigher)]
     public async Task<IActionResult> Edit(int id, CancellationToken cancellationToken)
     {
         _ = cancellationToken;
@@ -78,6 +89,7 @@ public class DocumentsController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
     public async Task<IActionResult> Edit(EditDocumentPageViewModel model, CancellationToken cancellationToken)
     {
         _ = cancellationToken;
@@ -117,6 +129,7 @@ public class DocumentsController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
     [Route("Documents/{id:int}/next-stage")]
     public async Task<IActionResult> NextStage(int id, CancellationToken cancellationToken)
     {
@@ -145,6 +158,77 @@ public class DocumentsController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 200 * 1024 * 1024)]
+    public async Task<IActionResult> UploadIncoming(UploadIncomingDocumentsPageViewModel model, CancellationToken cancellationToken)
+    {
+        var files = model.Files
+            .Where(f => f is { Length: > 0 })
+            .ToList();
+
+        if (files.Count == 0)
+        {
+            ModelState.AddModelError(nameof(model.Files), "Выберите хотя бы один файл.");
+            return View(model);
+        }
+
+        if (files.Count > 20)
+        {
+            ModelState.AddModelError(nameof(model.Files), "За одну загрузку можно обработать не больше 20 файлов.");
+            return View(model);
+        }
+
+        var createdCount = 0;
+
+        try
+        {
+            foreach (var file in files)
+            {
+                if (file.Length > 25 * 1024 * 1024)
+                {
+                    ModelState.AddModelError(nameof(model.Files), $"Файл {file.FileName} превышает 25MB.");
+                    return View(model);
+                }
+
+                if (!IsAllowedIncomingFile(file))
+                {
+                    ModelState.AddModelError(nameof(model.Files), $"Файл {file.FileName} имеет неподдерживаемый формат.");
+                    return View(model);
+                }
+
+                var stored = await SaveUploadedDocumentFileAsync(file, cancellationToken);
+                var classifiedType = ClassifyIncomingDocument(file.FileName);
+                var title = Path.GetFileNameWithoutExtension(file.FileName);
+
+                await _documentService.CreateDocumentAsync(new CreateDocumentRequest
+                {
+                    Title = string.IsNullOrWhiteSpace(title) ? $"Входящий документ {DateTime.UtcNow:yyyyMMdd-HHmmss}" : title,
+                    Description = $"Загружено из внешнего источника. Предварительная AI-классификация: {classifiedType}.",
+                    Type = classifiedType,
+                    Priority = 2,
+                    Tags = "incoming,batch,ai-classified",
+                    FilePath = stored.FilePath,
+                    FileSize = stored.FileSize,
+                    FileHash = stored.FileHash
+                });
+
+                createdCount++;
+            }
+
+            TempData["SuccessMessage"] = $"Загружено входящих документов: {createdCount}.";
+            return RedirectToAction("Index", "Home");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось загрузить входящие документы.");
+            ModelState.AddModelError(string.Empty, "Не удалось загрузить документы. Повторите попытку позже.");
+            return View(model);
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
     [RequestFormLimits(MultipartBodyLengthLimit = 25 * 1024 * 1024)]
     public async Task<IActionResult> Create(CreateDocumentPageViewModel model, CancellationToken cancellationToken)
     {
@@ -173,20 +257,10 @@ public class DocumentsController : Controller
                     return View(model);
                 }
 
-                var uploadsRoot = GetUploadsRootPath();
-                Directory.CreateDirectory(uploadsRoot);
-
-                var extension = Path.GetExtension(model.File.FileName);
-                var fileName = $"{Guid.NewGuid():N}{extension}";
-                var physicalPath = Path.Combine(uploadsRoot, fileName);
-
-                await using var fileStream = System.IO.File.Create(physicalPath);
-                await model.File.CopyToAsync(fileStream, cancellationToken);
-                await fileStream.FlushAsync(cancellationToken);
-
-                filePath = $"/Documents/File/{fileName}";
-                fileSize = model.File.Length;
-                fileHash = await ComputeSha256Async(physicalPath, cancellationToken);
+                var stored = await SaveUploadedDocumentFileAsync(model.File, cancellationToken);
+                filePath = stored.FilePath;
+                fileSize = stored.FileSize;
+                fileHash = stored.FileHash;
             }
 
             await _documentService.CreateDocumentAsync(new CreateDocumentRequest
@@ -221,6 +295,24 @@ public class DocumentsController : Controller
         return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
 
+    private async Task<(string FilePath, long FileSize, string FileHash)> SaveUploadedDocumentFileAsync(
+        IFormFile file,
+        CancellationToken cancellationToken)
+    {
+        var uploadsRoot = GetUploadsRootPath();
+        Directory.CreateDirectory(uploadsRoot);
+
+        var extension = Path.GetExtension(file.FileName);
+        var fileName = $"{Guid.NewGuid():N}{extension}";
+        var physicalPath = Path.Combine(uploadsRoot, fileName);
+
+        await using var fileStream = System.IO.File.Create(physicalPath);
+        await file.CopyToAsync(fileStream, cancellationToken);
+        await fileStream.FlushAsync(cancellationToken);
+
+        return ($"/Documents/File/{fileName}", file.Length, await ComputeSha256Async(physicalPath, cancellationToken));
+    }
+
     private static bool IsAllowedPdf(IFormFile file)
     {
         var ext = Path.GetExtension(file.FileName);
@@ -235,6 +327,54 @@ public class DocumentsController : Controller
         }
 
         return true;
+    }
+
+    private static bool IsAllowedIncomingFile(IFormFile file)
+    {
+        var ext = Path.GetExtension(file.FileName);
+
+        if (string.Equals(ext, ".pdf", StringComparison.OrdinalIgnoreCase))
+            return IsAllowedPdf(file);
+
+        if (string.Equals(ext, ".jpg", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(ext, ".jpeg", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(ext, ".png", StringComparison.OrdinalIgnoreCase))
+        {
+            return file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(file.ContentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
+
+    private static DocumentType ClassifyIncomingDocument(string fileName)
+    {
+        var name = Path.GetFileNameWithoutExtension(fileName).ToLowerInvariant();
+
+        if (ContainsAny(name, "договор", "contract", "agreement"))
+            return DocumentType.Contract;
+
+        if (ContainsAny(name, "счет", "счёт", "invoice", "bill"))
+            return DocumentType.Invoice;
+
+        if (ContainsAny(name, "акт", "act"))
+            return DocumentType.Act;
+
+        if (ContainsAny(name, "приказ", "order"))
+            return DocumentType.Order;
+
+        if (ContainsAny(name, "заявление", "application", "request"))
+            return DocumentType.Application;
+
+        if (ContainsAny(name, "отчет", "отчёт", "report"))
+            return DocumentType.Report;
+
+        return DocumentType.Other;
+    }
+
+    private static bool ContainsAny(string source, params string[] values)
+    {
+        return values.Any(value => source.Contains(value, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string GetUploadsRootPath()
@@ -281,10 +421,12 @@ public class DocumentsController : Controller
     public sealed class ChangeDocumentStatusRequest
     {
         public string? NewStatus { get; init; }
+        public string? Comment { get; init; }
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
     [Route("Documents/{id:int}/status")]
     public async Task<IActionResult> ChangeStatus(int id, [FromBody] ChangeDocumentStatusRequest request, CancellationToken cancellationToken)
     {
@@ -298,7 +440,7 @@ public class DocumentsController : Controller
 
         try
         {
-            await _documentService.ChangeDocumentStatusAsync(id, newStatus);
+            await _documentService.ChangeDocumentStatusAsync(id, newStatus, request.Comment);
             return Ok(new { id, status = newStatus.ToString() });
         }
         catch (ArgumentException)
@@ -332,10 +474,11 @@ public class DocumentsController : Controller
 
     private static DocumentStatus GetNextStatus(DocumentStatus current) => current switch
     {
-        DocumentStatus.Draft => DocumentStatus.InProgress,
-        DocumentStatus.InProgress => DocumentStatus.Approved,
-        DocumentStatus.Approved => DocumentStatus.Archived,
-        DocumentStatus.Rejected => DocumentStatus.InProgress,
+        DocumentStatus.Draft => DocumentStatus.OnApproval,
+        DocumentStatus.OnApproval => DocumentStatus.Approved,
+        DocumentStatus.Approved => DocumentStatus.InWork,
+        DocumentStatus.InWork => DocumentStatus.Completed,
+        DocumentStatus.Completed => DocumentStatus.Archived,
         DocumentStatus.Archived => DocumentStatus.Archived,
         _ => DocumentStatus.Draft
     };
@@ -358,7 +501,8 @@ public class DocumentsController : Controller
         bool Flip() => rng.NextDouble() > 0.45; // немного «спорных» значений
 
         var currentType = TryParseEnum<DocumentType>(doc.DocumentType) ?? DocumentType.Other;
-        var suggestedType = Flip() ? currentType : (DocumentType)rng.Next(1, 7);
+        var availableTypes = Enum.GetValues<DocumentType>();
+        var suggestedType = Flip() ? currentType : availableTypes[rng.Next(availableTypes.Length)];
 
         var currentDue = doc.DueDate?.ToString("yyyy-MM-dd") ?? string.Empty;
         var suggestedDue = string.IsNullOrWhiteSpace(currentDue)
