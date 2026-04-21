@@ -1,4 +1,5 @@
-﻿using System.Security.Cryptography;
+﻿using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using DocumentFlowApp.Core.Entities;
@@ -121,6 +122,36 @@ public class DocumentsController : Controller
 
     [HttpGet]
     [Authorize(Policy = AuthorizationPolicies.EmployeeOrHigher)]
+    public async Task<IActionResult> MyTasks(CancellationToken cancellationToken)
+    {
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId is null)
+            return RedirectToAction("Login", "Account");
+
+        var model = await BuildMyTasksPageModelAsync(currentUserId.Value, cancellationToken);
+        return View(model);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Policy = AuthorizationPolicies.EmployeeOrHigher)]
+    [Route("Documents/{id:int}/start-work")]
+    public async Task<IActionResult> StartWork(int id, CancellationToken cancellationToken)
+    {
+        return await ExecuteEmployeeActionAsync(id, DocumentStatus.Approved, DocumentStatus.InWork, $"Документ #{id} переведен в работу.", cancellationToken);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Policy = AuthorizationPolicies.EmployeeOrHigher)]
+    [Route("Documents/{id:int}/complete-work")]
+    public async Task<IActionResult> CompleteWork(int id, CancellationToken cancellationToken)
+    {
+        return await ExecuteEmployeeActionAsync(id, DocumentStatus.InWork, DocumentStatus.Completed, $"Документ #{id} отмечен как завершенный.", cancellationToken);
+    }
+
+    [HttpGet]
+    [Authorize(Policy = AuthorizationPolicies.EmployeeOrHigher)]
     [Route("Documents/File/{fileName}")]
     public IActionResult File(string fileName)
     {
@@ -157,7 +188,8 @@ public class DocumentsController : Controller
             Status = doc.Status ?? string.Empty,
             FileUrl = doc.FilePath,
             FileKind = GetFileKind(doc.FilePath),
-            AiSuggestions = BuildAiSuggestions(doc)
+            AiSuggestions = BuildAiSuggestions(doc),
+            Assignment = await BuildAssignmentPanelAsync(doc, cancellationToken)
         };
 
         return View(model);
@@ -201,6 +233,46 @@ public class DocumentsController : Controller
             await EnrichEditModelAsync(model);
             return View(model);
         }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
+    [Route("Documents/{id:int}/assign")]
+    public async Task<IActionResult> AssignExecutor(int id, int assignedUserId, CancellationToken cancellationToken)
+    {
+        var doc = await _documentService.GetDocumentByIdAsync(id);
+        if (doc is null)
+            return NotFound();
+
+        var currentStatus = ParseDocumentStatus(doc.Status);
+        if (currentStatus is not (DocumentStatus.Approved or DocumentStatus.InWork))
+        {
+            TempData["ErrorMessage"] = "Назначение исполнителя доступно только для утвержденных документов или документов в работе.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        var executors = await LoadExecutorOptionsAsync(cancellationToken);
+        var executor = executors.FirstOrDefault(x => x.UserId == assignedUserId);
+        if (executor is null)
+        {
+            TempData["ErrorMessage"] = "Исполнитель не найден.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        try
+        {
+            doc.UserId = assignedUserId;
+            await _documentService.UpdateDocumentAsync(doc);
+            TempData["SuccessMessage"] = $"Исполнитель назначен: {executor.DisplayName}.";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось назначить исполнителя {ExecutorId} для документа {DocumentId}", assignedUserId, id);
+            TempData["ErrorMessage"] = "Не удалось назначить исполнителя. Повторите попытку позже.";
+        }
+
+        return RedirectToAction(nameof(Edit), new { id });
     }
 
     [HttpPost]
@@ -518,6 +590,155 @@ public class DocumentsController : Controller
         return template is null ? null : MapTemplate(template);
     }
 
+    private async Task<MyTasksPageViewModel> BuildMyTasksPageModelAsync(int currentUserId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var tasks = await _dbContext.Documents
+                .AsNoTracking()
+                .Where(d => d.UserId == currentUserId)
+                .OrderBy(d => d.DueDate ?? DateTime.MaxValue)
+                .ThenByDescending(d => d.CreatedDate)
+                .ToListAsync(cancellationToken);
+
+            var activeTasks = tasks
+                .Where(d => ParseDocumentStatus(d.Status) is DocumentStatus.Approved or DocumentStatus.InWork)
+                .ToList();
+
+            var employee = await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == currentUserId, cancellationToken);
+            var employeeName = employee is null
+                ? "Исполнитель"
+                : string.IsNullOrWhiteSpace($"{employee.FirstName} {employee.LastName}".Trim())
+                    ? employee.UserName
+                    : $"{employee.FirstName} {employee.LastName}".Trim();
+
+            return new MyTasksPageViewModel
+            {
+                EmployeeName = employeeName,
+                TotalTasks = activeTasks.Count,
+                ApprovedTasks = activeTasks.Count(d => ParseDocumentStatus(d.Status) == DocumentStatus.Approved),
+                InWorkTasks = activeTasks.Count(d => ParseDocumentStatus(d.Status) == DocumentStatus.InWork),
+                SuccessMessage = TempData["SuccessMessage"] as string,
+                ErrorMessage = TempData["ErrorMessage"] as string,
+                Tasks = activeTasks.Select(ToMyTaskCard).ToList()
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось загрузить задачи исполнителя {UserId}", currentUserId);
+            return new MyTasksPageViewModel
+            {
+                EmployeeName = "Исполнитель",
+                ErrorMessage = "Не удалось загрузить список задач. Повторите попытку позже.",
+                Tasks = []
+            };
+        }
+    }
+
+    private static MyTaskCardViewModel ToMyTaskCard(Document document)
+    {
+        var status = ParseDocumentStatus(document.Status);
+        var type = TryParseEnum<DocumentType>(document.DocumentType) ?? DocumentType.Other;
+
+        return new MyTaskCardViewModel
+        {
+            Id = document.DocumentId,
+            Title = string.IsNullOrWhiteSpace(document.Title) ? "Без названия" : document.Title,
+            Description = string.IsNullOrWhiteSpace(document.ExtractedText) ? "Описание не заполнено." : document.ExtractedText,
+            TypeLabel = GetDocumentTypeLabel(type),
+            StatusLabel = GetDocumentStatusLabel(status),
+            DueDateLabel = document.DueDate.HasValue ? document.DueDate.Value.ToLocalTime().ToString("dd.MM.yyyy") : "Срок не указан",
+            CanStartWork = status == DocumentStatus.Approved,
+            CanComplete = status == DocumentStatus.InWork
+        };
+    }
+
+    private async Task<AssignmentPanelViewModel> BuildAssignmentPanelAsync(Document document, CancellationToken cancellationToken)
+    {
+        var status = ParseDocumentStatus(document.Status);
+        var executors = await LoadExecutorOptionsAsync(cancellationToken);
+        var assignedExecutor = executors.FirstOrDefault(x => x.UserId == document.UserId);
+
+        return new AssignmentPanelViewModel
+        {
+            CanAssign = status is DocumentStatus.Approved or DocumentStatus.InWork,
+            AssignedUserId = document.UserId,
+            AssignedUserName = assignedExecutor?.DisplayName,
+            Executors = executors
+        };
+    }
+
+    private async Task<IReadOnlyList<ExecutorOptionViewModel>> LoadExecutorOptionsAsync(CancellationToken cancellationToken)
+    {
+        var users = await _dbContext.Users
+            .AsNoTracking()
+            .Include(u => u.Role)
+            .Where(u => u.IsActive)
+            .OrderBy(u => u.FirstName)
+            .ThenBy(u => u.LastName)
+            .ToListAsync(cancellationToken);
+
+        return users
+            .Where(u => string.Equals(DocumentFlowApp.Core.Security.AppRoles.Normalize(u.Role?.RoleName), DocumentFlowApp.Core.Security.AppRoles.Employee, StringComparison.OrdinalIgnoreCase))
+            .Select(u => new ExecutorOptionViewModel
+            {
+                UserId = u.UserId,
+                DisplayName = string.IsNullOrWhiteSpace($"{u.FirstName} {u.LastName}".Trim()) ? u.UserName : $"{u.FirstName} {u.LastName}".Trim(),
+                Email = u.Email
+            })
+            .ToList();
+    }
+
+    private int? GetCurrentUserId()
+    {
+        var raw = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue(ClaimTypes.Name);
+        return int.TryParse(raw, out var userId) ? userId : null;
+    }
+
+    private bool IsManagerOrAdmin()
+    {
+        return AuthorizationPolicies.IsInAppRole(User, DocumentFlowApp.Core.Security.AppRoles.Admin) ||
+               AuthorizationPolicies.IsInAppRole(User, DocumentFlowApp.Core.Security.AppRoles.Manager);
+    }
+
+    private async Task<IActionResult> ExecuteEmployeeActionAsync(
+        int documentId,
+        DocumentStatus expectedStatus,
+        DocumentStatus newStatus,
+        string successMessage,
+        CancellationToken cancellationToken)
+    {
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId is null)
+            return RedirectToAction("Login", "Account");
+
+        var document = await _documentService.GetDocumentByIdAsync(documentId);
+        if (document is null)
+            return NotFound();
+
+        if (document.UserId != currentUserId && !IsManagerOrAdmin())
+            return Forbid();
+
+        var currentStatus = ParseDocumentStatus(document.Status);
+        if (currentStatus != expectedStatus)
+        {
+            TempData["ErrorMessage"] = $"Операция недоступна для статуса {GetDocumentStatusLabel(currentStatus)}.";
+            return RedirectToAction(nameof(MyTasks));
+        }
+
+        try
+        {
+            await _documentService.ChangeDocumentStatusAsync(documentId, newStatus);
+            TempData["SuccessMessage"] = successMessage;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось выполнить действие {NewStatus} для документа {DocumentId}", newStatus, documentId);
+            TempData["ErrorMessage"] = "Не удалось изменить статус документа. Повторите попытку позже.";
+        }
+
+        return RedirectToAction(nameof(MyTasks));
+    }
     private static DocumentTemplateViewModel MapTemplate(Template template)
     {
         var type = ParseTemplateType(template.Category);
@@ -903,6 +1124,7 @@ public class DocumentsController : Controller
         model.FileUrl = doc.FilePath;
         model.FileKind = GetFileKind(doc.FilePath);
         model.AiSuggestions = BuildAiSuggestions(doc);
+        model.Assignment = await BuildAssignmentPanelAsync(doc, CancellationToken.None);
     }
 
     private static string GetFileKind(string? fileUrl)

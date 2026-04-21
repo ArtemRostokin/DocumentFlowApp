@@ -1,7 +1,13 @@
 ﻿@model DocumentFlowApp.Web.Models.EditDocumentPageViewModel
 @using DocumentFlowApp.Core.Enums
+@using DocumentFlowApp.Core.Security
 @{
     Layout = null;
+    var currentUserRole = User.Claims.FirstOrDefault(c => c.Type == "df_role")?.Value
+        ?? User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Role)?.Value
+        ?? AppRoles.Employee;
+    var normalizedRole = AppRoles.Normalize(currentUserRole) ?? AppRoles.Employee;
+    var canAssignExecutor = normalizedRole is AppRoles.Admin or AppRoles.Manager;
 }
 <!DOCTYPE html>
 <html class="light" lang="ru">
@@ -22,19 +28,11 @@
                 <span class="font-bold">DocManager</span>
             </div>
             <div class="flex items-center gap-3">
-                <a href="@Url.Action("Index", "Home")"
-                   class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900">
-                    Назад к доске
-                </a>
-                <button type="submit"
-                        form="editDocumentForm"
-                        class="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-900">
-                    Сохранить
-                </button>
+                <a href="@Url.Action("Index", "Home")" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900">Назад к доске</a>
+                <button type="submit" form="editDocumentForm" class="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-900">Сохранить</button>
                 <form method="post" action="/Documents/@Model.Id/next-stage" class="inline">
                     @Html.AntiForgeryToken()
-                    <button type="submit"
-                            class="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 flex items-center gap-2">
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 flex items-center gap-2">
                         <span class="material-symbols-outlined text-[18px]">send</span>
                         Отправить на следующий этап
                     </button>
@@ -45,24 +43,25 @@
 
     <main class="flex-1 px-6 py-8 flex justify-center">
         <div class="w-full max-w-6xl space-y-6">
-            <div class="flex items-end justify-between gap-4">
-                <div>
-                    <div class="text-sm text-slate-500">Документ #@Model.Id</div>
-                    <h1 class="text-2xl font-bold">Редактирование документа</h1>
-                    <div class="mt-1 text-sm text-slate-600">Текущий статус: <span class="font-semibold">@Model.Status</span></div>
-                </div>
+            <div>
+                <div class="text-sm text-slate-500">Документ #@Model.Id</div>
+                <h1 class="text-2xl font-bold">Редактирование документа</h1>
+                <div class="mt-1 text-sm text-slate-600">Текущий статус: <span class="font-semibold">@Model.Status</span></div>
             </div>
+
+            @if (TempData["SuccessMessage"] is string ok && !string.IsNullOrWhiteSpace(ok))
+            {
+                <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">@ok</div>
+            }
 
             @if (TempData["ErrorMessage"] is string err && !string.IsNullOrWhiteSpace(err))
             {
-                <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                    @err
-                </div>
+                <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">@err</div>
             }
 
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                <div class="lg:col-span-7 xl:col-span-8">
-                    <section class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mb-6">
+                <div class="lg:col-span-7 xl:col-span-8 space-y-6">
+                    <section class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
                         <div class="flex items-center justify-between gap-4 mb-4">
                             <div class="flex items-center gap-2">
                                 <span class="material-symbols-outlined text-blue-600">smart_toy</span>
@@ -82,13 +81,7 @@
                                             <div class="mt-1 text-sm font-medium text-slate-900 break-words">@s.SuggestedValue</div>
                                             <div class="mt-2 text-xs text-slate-600">Уверенность: <span class="font-semibold">@s.Confidence%</span></div>
                                         </div>
-                                        <button type="button"
-                                                class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold @(isHigh ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-amber-600 text-white hover:bg-amber-700")"
-                                                data-ai-apply
-                                                data-field="@s.FieldKey"
-                                                data-value="@s.SuggestedValue">
-                                            Применить
-                                        </button>
+                                        <button type="button" class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold @(isHigh ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-amber-600 text-white hover:bg-amber-700")" data-ai-apply data-field="@s.FieldKey" data-value="@s.SuggestedValue">Применить</button>
                                     </div>
                                 </div>
                             }
@@ -111,10 +104,7 @@
 
                                 <div>
                                     <label asp-for="Type" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Тип</label>
-                                    <select asp-for="Type"
-                                            id="field-type"
-                                            asp-items="Html.GetEnumSelectList<DocumentType>()"
-                                            class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600">
+                                    <select asp-for="Type" id="field-type" asp-items="Html.GetEnumSelectList<DocumentType>()" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600">
                                         <option value="">Выберите тип</option>
                                     </select>
                                     <span asp-validation-for="Type" class="text-xs text-red-600"></span>
@@ -155,7 +145,39 @@
                     </form>
                 </div>
 
-                <div class="lg:col-span-5 xl:col-span-4">
+                <div class="lg:col-span-5 xl:col-span-4 space-y-6">
+                    <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+                            <div class="text-sm font-semibold text-slate-700">Назначение исполнителя</div>
+                        </div>
+                        <div class="p-4 space-y-4">
+                            <div class="rounded-xl bg-slate-50 px-4 py-3">
+                                <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Текущий исполнитель</div>
+                                <div class="mt-1 font-medium text-slate-900">@(string.IsNullOrWhiteSpace(Model.Assignment.AssignedUserName) ? "Не назначен" : Model.Assignment.AssignedUserName)</div>
+                            </div>
+
+                            @if (canAssignExecutor && Model.Assignment.CanAssign)
+                            {
+                                <form method="post" action="/Documents/@Model.Id/assign" class="space-y-3">
+                                    @Html.AntiForgeryToken()
+                                    <label class="block text-xs uppercase tracking-wider font-bold text-slate-500">Назначить исполнителя</label>
+                                    <select name="assignedUserId" class="w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5">
+                                        <option value="">Выберите исполнителя</option>
+                                        @foreach (var executor in Model.Assignment.Executors)
+                                        {
+                                            <option value="@executor.UserId" selected="@(Model.Assignment.AssignedUserId == executor.UserId)">@executor.DisplayName (@executor.Email)</option>
+                                        }
+                                    </select>
+                                    <button type="submit" class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Сохранить назначение</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <div class="text-sm text-slate-500">Назначение доступно после утверждения документа.</div>
+                            }
+                        </div>
+                    </section>
+
                     <section class="sticky top-[88px] bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                         <div class="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
                             <div class="text-sm font-semibold text-slate-700">Превью документа</div>
@@ -167,28 +189,21 @@
                         <div class="bg-slate-100 p-3">
                             @if (string.IsNullOrWhiteSpace(Model.FileUrl))
                             {
-                                <div class="h-[520px] flex items-center justify-center text-sm text-slate-500">
-                                    Файл не загружен
-                                </div>
+                                <div class="h-[520px] flex items-center justify-center text-sm text-slate-500">Файл не загружен</div>
                             }
                             else if (string.Equals(Model.FileKind, "image", StringComparison.OrdinalIgnoreCase))
                             {
                                 <div class="h-[520px] rounded-lg border border-slate-200 bg-white flex items-center justify-center p-3 overflow-auto">
-                                    <img class="max-h-full max-w-full object-contain rounded"
-                                         src="@Model.FileUrl"
-                                         alt="Превью документа" />
+                                    <img class="max-h-full max-w-full object-contain rounded" src="@Model.FileUrl" alt="Превью документа" />
                                 </div>
                             }
                             else if (string.Equals(Model.FileKind, "pdf", StringComparison.OrdinalIgnoreCase))
                             {
-                                <iframe class="w-full h-[520px] rounded-lg border border-slate-200 bg-white"
-                                        src="@Model.FileUrl"></iframe>
+                                <iframe class="w-full h-[520px] rounded-lg border border-slate-200 bg-white" src="@Model.FileUrl"></iframe>
                             }
                             else
                             {
-                                <div class="h-[520px] flex items-center justify-center text-sm text-slate-500 text-center px-4">
-                                    Превью недоступно для этого типа файла. Нажмите «Открыть», чтобы скачать или просмотреть файл.
-                                </div>
+                                <div class="h-[520px] flex items-center justify-center text-sm text-slate-500 text-center px-4">Превью недоступно для этого типа файла. Нажмите «Открыть», чтобы скачать или просмотреть файл.</div>
                             }
                         </div>
                     </section>
@@ -214,24 +229,12 @@
                     const value = btn.getAttribute("data-value") || "";
 
                     switch ((field || "").toLowerCase()) {
-                        case "title":
-                            setValue("#field-title", value);
-                            break;
-                        case "type":
-                            setValue("#field-type", value);
-                            break;
-                        case "duedate":
-                            setValue("#field-duedate", value);
-                            break;
-                        case "description":
-                            setValue("#field-description", value);
-                            break;
-                        case "priority":
-                            setValue("#field-priority", value);
-                            break;
-                        case "tags":
-                            setValue("#field-tags", value);
-                            break;
+                        case "title": setValue("#field-title", value); break;
+                        case "type": setValue("#field-type", value); break;
+                        case "duedate": setValue("#field-duedate", value); break;
+                        case "description": setValue("#field-description", value); break;
+                        case "priority": setValue("#field-priority", value); break;
+                        case "tags": setValue("#field-tags", value); break;
                     }
                 });
             });

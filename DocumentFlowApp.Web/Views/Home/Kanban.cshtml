@@ -11,6 +11,7 @@
     var normalizedRole = AppRoles.Normalize(currentUserRole) ?? AppRoles.Employee;
     var canManageDocuments = normalizedRole is AppRoles.Admin or AppRoles.Manager;
     var isAdmin = normalizedRole == AppRoles.Admin;
+    var isEmployee = normalizedRole == AppRoles.Employee;
 }
 <!DOCTYPE html>
 <html lang="ru">
@@ -122,6 +123,14 @@
                     <a asp-action="Index" asp-route-type="@DocumentType.Contract" asp-route-q="@Model.SearchQuery" class="px-3 py-1.5 text-sm font-medium rounded-md @(IsActive(DocumentType.Contract))">Договоры</a>
                     <a asp-action="Index" asp-route-type="@DocumentType.Invoice" asp-route-q="@Model.SearchQuery" class="px-3 py-1.5 text-sm font-medium rounded-md @(IsActive(DocumentType.Invoice))">Счета</a>
                 </div>
+                @if (isEmployee)
+                {
+                    <a asp-controller="Documents"
+                       asp-action="MyTasks"
+                       class="border border-emerald-200 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-lg font-medium hover:bg-emerald-100 transition-colors">
+                        Мои задачи
+                    </a>
+                }
                 @if (isAdmin)
                 {
                     <a asp-controller="Admin"

@@ -52,6 +52,10 @@ build_metadata.AdditionalFiles.CssScope =
 build_metadata.AdditionalFiles.TargetPath = Vmlld3NcRG9jdW1lbnRzXEVkaXQuY3NodG1s
 build_metadata.AdditionalFiles.CssScope = 
 
+[D:/DocumentApp/DocumentFlowApp/DocumentFlowApp.Web/Views/Documents/MyTasks.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcRG9jdW1lbnRzXE15VGFza3MuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
 [D:/DocumentApp/DocumentFlowApp/DocumentFlowApp.Web/Views/Documents/UploadIncoming.cshtml]
 build_metadata.AdditionalFiles.TargetPath = Vmlld3NcRG9jdW1lbnRzXFVwbG9hZEluY29taW5nLmNzaHRtbA==
 build_metadata.AdditionalFiles.CssScope = 

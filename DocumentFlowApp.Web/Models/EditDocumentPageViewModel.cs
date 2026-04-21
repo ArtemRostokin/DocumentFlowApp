@@ -31,4 +31,5 @@ public sealed class EditDocumentPageViewModel
     public string FileKind { get; set; } = "none";
 
     public IReadOnlyList<AiSuggestionViewModel> AiSuggestions { get; set; } = [];
+    public AssignmentPanelViewModel Assignment { get; set; } = new();
 }
