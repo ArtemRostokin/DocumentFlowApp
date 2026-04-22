@@ -128,7 +128,7 @@
                     <a asp-controller="Documents"
                        asp-action="MyTasks"
                        class="border border-emerald-200 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-lg font-medium hover:bg-emerald-100 transition-colors">
-                        Мои задачи
+                        Список задач
                     </a>
                 }
                 @if (isAdmin)
@@ -175,7 +175,7 @@
         }
 
         <div class="px-6 pt-4 text-sm text-slate-500">
-            Всего документов: <span class="font-semibold text-slate-700">@Model.TotalDocuments</span>
+            @Model.TotalLabel: <span class="font-semibold text-slate-700">@Model.TotalDocuments</span>
         </div>
 
         <div class="flex-1 overflow-x-auto overflow-y-hidden kanban-scroll p-6">

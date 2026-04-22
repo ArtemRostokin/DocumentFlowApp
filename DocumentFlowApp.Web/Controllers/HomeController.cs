@@ -1,7 +1,9 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
+using System.Security.Claims;
 using DocumentFlowApp.Core.Entities;
 using DocumentFlowApp.Core.Enums;
 using DocumentFlowApp.Core.Interfaces;
+using DocumentFlowApp.Core.Security;
 using DocumentFlowApp.Web.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -22,7 +24,13 @@ public class HomeController : Controller
 
     public async Task<IActionResult> Index(string? q, DocumentType? type)
     {
-        var model = await BuildPageModelAsync(q, type);
+        var normalizedRole = GetCurrentUserRole();
+        var currentUserId = GetCurrentUserId();
+
+        if (normalizedRole == AppRoles.Employee && currentUserId is null)
+            return RedirectToAction("Login", "Account");
+
+        var model = await BuildPageModelAsync(q, type, normalizedRole, currentUserId);
         return View("Kanban", model);
     }
 
@@ -37,9 +45,33 @@ public class HomeController : Controller
         return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
     }
 
-    private static IReadOnlyList<KanbanColumnViewModel> BuildColumns(IEnumerable<Document> documents)
+    private string GetCurrentUserRole()
+    {
+        var currentUserRole = User.Claims.FirstOrDefault(c => c.Type == "df_role")?.Value
+            ?? User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
+
+        return AppRoles.Normalize(currentUserRole) ?? AppRoles.Employee;
+    }
+
+    private int? GetCurrentUserId()
+    {
+        var raw = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue(ClaimTypes.Name);
+        return int.TryParse(raw, out var userId) ? userId : null;
+    }
+
+    private static IReadOnlyList<KanbanColumnViewModel> BuildColumns(IEnumerable<Document> documents, bool isEmployeeBoard)
     {
         var all = documents.ToList();
+
+        if (isEmployeeBoard)
+        {
+            return
+            [
+                CreateColumn(DocumentStatus.Approved, "К исполнению", "accent-primary", FilterByStatus(all, DocumentStatus.Approved)),
+                CreateColumn(DocumentStatus.InWork, "В работе", "accent-success", FilterByStatus(all, DocumentStatus.InWork)),
+                CreateColumn(DocumentStatus.Completed, "Завершено", "accent-muted", FilterByStatus(all, DocumentStatus.Completed), isEmptyPlaceholder: true)
+            ];
+        }
 
         return
         [
@@ -78,13 +110,13 @@ public class HomeController : Controller
 
     private static KanbanCardViewModel ToCard(Document document)
     {
-        var author = "System";
+        var author = "Система";
         if (document.User != null)
         {
             if (!string.IsNullOrWhiteSpace(document.User.FirstName) || !string.IsNullOrWhiteSpace(document.User.LastName))
                 author = $"{document.User.FirstName} {document.User.LastName}".Trim();
             else
-                author = document.User.UserName ?? "System";
+                author = document.User.UserName ?? "Система";
         }
 
         var docType = ParseDocumentType(document.DocumentType);
@@ -95,7 +127,7 @@ public class HomeController : Controller
             Id = document.DocumentId,
             Title = string.IsNullOrWhiteSpace(document.Title) ? "Без названия" : document.Title,
             Subtitle = string.IsNullOrWhiteSpace(document.ExtractedText) ? "Без описания" : document.ExtractedText,
-            Author = string.IsNullOrWhiteSpace(author) ? "System" : author,
+            Author = string.IsNullOrWhiteSpace(author) ? "Система" : author,
             TypeLabel = GetTypeLabel(docType),
             TypeClass = GetTypeClass(docType),
             StatusLabel = GetStatusLabel(docStatus),
@@ -127,7 +159,6 @@ public class HomeController : Controller
         if (string.IsNullOrWhiteSpace(stored))
             return DocumentStatus.Draft;
 
-        // Legacy mappings.
         if (string.Equals(stored, "InProgress", StringComparison.OrdinalIgnoreCase))
             return DocumentStatus.OnApproval;
 
@@ -229,10 +260,13 @@ public class HomeController : Controller
 
     private static string FormatDueLabel(Document document)
     {
-        if (document.UpdatedDate.HasValue)
-            return document.UpdatedDate.Value.ToString("dd.MM");
+        if (document.DueDate.HasValue)
+            return document.DueDate.Value.ToLocalTime().ToString("dd.MM");
 
-        return document.CreatedDate.ToString("dd.MM");
+        if (document.UpdatedDate.HasValue)
+            return document.UpdatedDate.Value.ToLocalTime().ToString("dd.MM");
+
+        return document.CreatedDate.ToLocalTime().ToString("dd.MM");
     }
 
     private static List<Document> GetFallbackDocuments()
@@ -247,6 +281,7 @@ public class HomeController : Controller
                 Title = "Договор оказания услуг №45-А",
                 ExtractedText = "ООО ТехПром",
                 User = new User { FirstName = "Петров", LastName = "В.", UserName = "petrov" },
+                UserId = 1,
                 DocumentType = DocumentType.Contract.ToString(),
                 Status = DocumentStatus.Draft.ToString(),
                 CreatedDate = now.AddDays(-2)
@@ -257,6 +292,7 @@ public class HomeController : Controller
                 Title = "Счет на оплату лицензий ПО",
                 ExtractedText = "ЗАО СофтЛайн",
                 User = new User { FirstName = "Сидоров", LastName = "И.", UserName = "sidorov" },
+                UserId = 1,
                 DocumentType = DocumentType.Invoice.ToString(),
                 Status = DocumentStatus.OnApproval.ToString(),
                 CreatedDate = now.AddDays(-1)
@@ -267,6 +303,7 @@ public class HomeController : Controller
                 Title = "Акт выполненных работ за сентябрь",
                 ExtractedText = "ИП Смирнов",
                 User = new User { FirstName = "Иванов", LastName = "А.", UserName = "ivanov" },
+                UserId = 1,
                 DocumentType = DocumentType.Act.ToString(),
                 Status = DocumentStatus.Approved.ToString(),
                 CreatedDate = now.AddDays(-5),
@@ -278,6 +315,7 @@ public class HomeController : Controller
                 Title = "План внедрения",
                 ExtractedText = "Исполнение задач",
                 User = new User { FirstName = "Смирнов", LastName = "К.", UserName = "smirnov" },
+                UserId = 1,
                 DocumentType = DocumentType.Order.ToString(),
                 Status = DocumentStatus.InWork.ToString(),
                 CreatedDate = now.AddDays(-7),
@@ -289,6 +327,7 @@ public class HomeController : Controller
                 Title = "Итоговый отчет по проекту",
                 ExtractedText = "Выполнено в срок",
                 User = new User { FirstName = "Андреев", LastName = "М.", UserName = "andreev" },
+                UserId = 1,
                 DocumentType = DocumentType.Report.ToString(),
                 Status = DocumentStatus.Completed.ToString(),
                 CreatedDate = now.AddDays(-10),
@@ -300,6 +339,7 @@ public class HomeController : Controller
                 Title = "Архивный договор",
                 ExtractedText = "Архивная запись",
                 User = new User { FirstName = "Кузнецов", LastName = "С.", UserName = "kuznetsov" },
+                UserId = 2,
                 DocumentType = DocumentType.Contract.ToString(),
                 Status = DocumentStatus.Archived.ToString(),
                 CreatedDate = now.AddDays(-20),
@@ -308,8 +348,9 @@ public class HomeController : Controller
         ];
     }
 
-    private async Task<KanbanBoardPageViewModel> BuildPageModelAsync(string? q, DocumentType? type)
+    private async Task<KanbanBoardPageViewModel> BuildPageModelAsync(string? q, DocumentType? type, string normalizedRole, int? currentUserId)
     {
+        var isEmployeeBoard = normalizedRole == AppRoles.Employee;
         var documents = new List<Document>();
         string? notice = null;
 
@@ -322,6 +363,14 @@ public class HomeController : Controller
             _logger.LogWarning(ex, "Failed to load documents from backend. Using fallback preview data.");
             documents = GetFallbackDocuments();
             notice = "Backend is unavailable, showing fallback preview data.";
+        }
+
+        if (isEmployeeBoard && currentUserId.HasValue)
+        {
+            documents = documents
+                .Where(d => d.UserId == currentUserId.Value)
+                .Where(d => ParseDocumentStatus(d.Status) is DocumentStatus.Approved or DocumentStatus.InWork or DocumentStatus.Completed)
+                .ToList();
         }
 
         if (type.HasValue)
@@ -348,13 +397,15 @@ public class HomeController : Controller
 
         return new KanbanBoardPageViewModel
         {
+            Title = isEmployeeBoard ? "Моя работа" : "Документооборот",
             PeriodLabel = DateTime.Now.ToString("MMMM yyyy"),
             SearchQuery = q,
             SelectedType = type,
             TotalDocuments = documents.Count,
+            TotalLabel = isEmployeeBoard ? "Всего задач" : "Всего документов",
             Notice = notice,
             SuccessMessage = TempData["SuccessMessage"] as string,
-            Columns = BuildColumns(documents)
+            Columns = BuildColumns(documents, isEmployeeBoard)
         };
     }
 }

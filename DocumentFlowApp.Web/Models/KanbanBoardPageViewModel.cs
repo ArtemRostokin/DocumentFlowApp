@@ -9,6 +9,7 @@ public sealed class KanbanBoardPageViewModel
     public string? SearchQuery { get; init; }
     public DocumentType? SelectedType { get; init; }
     public int TotalDocuments { get; init; }
+    public string TotalLabel { get; init; } = "Всего документов";
     public string? Notice { get; init; }
     public string? SuccessMessage { get; init; }
     public IReadOnlyList<KanbanColumnViewModel> Columns { get; init; } = [];

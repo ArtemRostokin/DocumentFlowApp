@@ -1,4 +1,5 @@
-using DocumentFlowApp.Core.Interfaces;
+﻿using DocumentFlowApp.Core.Interfaces;
+using DocumentFlowApp.Core.Security;
 using DocumentFlowApp.Web.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -20,7 +21,7 @@ public class AccountController : Controller
     public IActionResult Login(string? returnUrl = null)
     {
         if (User.Identity?.IsAuthenticated == true)
-            return RedirectToAction("Index", "Home");
+            return RedirectToRoleHome();
 
         return View(new LoginViewModel { ReturnUrl = returnUrl });
     }
@@ -51,7 +52,7 @@ public class AccountController : Controller
         if (!string.IsNullOrWhiteSpace(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
             return Redirect(model.ReturnUrl);
 
-        return RedirectToAction("Index", "Home");
+        return RedirectToRoleHome(authResult.Role);
     }
 
     [Authorize]
@@ -61,5 +62,21 @@ public class AccountController : Controller
     {
         Response.Cookies.Delete(AuthCookieName);
         return RedirectToAction(nameof(Login));
+    }
+
+    private IActionResult RedirectToRoleHome(string? role = null)
+    {
+        var normalizedRole = AppRoles.Normalize(role)
+            ?? AppRoles.Normalize(User.Claims.FirstOrDefault(c => c.Type == "df_role")?.Value)
+            ?? AppRoles.Normalize(User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Role)?.Value)
+            ?? AppRoles.Employee;
+
+        if (normalizedRole == AppRoles.Admin)
+            return RedirectToAction("Index", "Admin");
+
+        if (normalizedRole == AppRoles.Employee)
+            return RedirectToAction("Index", "Home");
+
+        return RedirectToAction("Index", "Home");
     }
 }

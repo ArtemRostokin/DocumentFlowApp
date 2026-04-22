@@ -465,7 +465,7 @@ public class DocumentsController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
+    [Authorize(Policy = AuthorizationPolicies.EmployeeOrHigher)]
     [Route("Documents/{id:int}/status")]
     public async Task<IActionResult> ChangeStatus(int id, [FromBody] ChangeDocumentStatusRequest request, CancellationToken cancellationToken)
     {
@@ -479,12 +479,28 @@ public class DocumentsController : Controller
 
         try
         {
+            var currentUserId = GetCurrentUserId();
+            var isManagerOrAdmin = IsManagerOrAdmin();
+            var document = await _documentService.GetDocumentByIdAsync(id);
+            if (document is null)
+                return NotFound(new { message = "Документ не найден." });
+
+            if (!isManagerOrAdmin)
+            {
+                if (currentUserId is null || document.UserId != currentUserId.Value)
+                    return Forbid();
+
+                var currentStatus = ParseDocumentStatus(document.Status);
+                var isAllowedEmployeeTransition =
+                    (currentStatus == DocumentStatus.Approved && newStatus == DocumentStatus.InWork) ||
+                    (currentStatus == DocumentStatus.InWork && newStatus == DocumentStatus.Completed);
+
+                if (!isAllowedEmployeeTransition)
+                    return BadRequest(new { message = "Пользователь может менять статус только своих задач: К исполнению -> В работе -> Завершено." });
+            }
+
             await _documentService.ChangeDocumentStatusAsync(id, newStatus, request.Comment);
             return Ok(new { id, status = newStatus.ToString() });
-        }
-        catch (ArgumentException)
-        {
-            return NotFound(new { message = "Документ не найден." });
         }
         catch (InvalidOperationException ex)
         {
