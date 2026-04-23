@@ -1,7 +1,29 @@
-@model DocumentFlowApp.Web.Models.EditDocumentPageViewModel
+﻿@model DocumentFlowApp.Web.Models.EditDocumentPageViewModel
 @using DocumentFlowApp.Core.Enums
 @{
     Layout = null;
+
+    string Field(string label, string fallback = "Не указано")
+    {
+        var text = Model.Description ?? string.Empty;
+        foreach (var rawLine in text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None))
+        {
+            var line = rawLine.Trim();
+            var prefix = $"- {label}:";
+            if (line.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                var value = line[prefix.Length..].Trim();
+                return string.IsNullOrWhiteSpace(value) ? fallback : value;
+            }
+        }
+
+        return fallback;
+    }
+
+    string ValueOrDefault(string? value, string fallback = "Не указано") => string.IsNullOrWhiteSpace(value) ? fallback : value;
+    string DateOnly(DateTime? value) => value.HasValue ? value.Value.ToLocalTime().ToString("dd.MM.yyyy") : "Не указано";
+    string DateTimeLabel(DateTime? value) => value.HasValue ? value.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm") : "Не указано";
+
     var typeLabel = Model.Type switch
     {
         DocumentType.Contract => "Договор",
@@ -10,7 +32,7 @@
         DocumentType.Order => "Приказ",
         DocumentType.Application => "Заявление",
         DocumentType.Act => "Акт",
-        _ => "Прочее"
+        _ => "Документ"
     };
 
     var statusLabel = Model.Status switch
@@ -21,10 +43,22 @@
         "InWork" => "В работе",
         "Completed" => "Завершен",
         "Archived" => "Архив",
-        _ => Model.Status
+        _ => ValueOrDefault(Model.Status)
     };
 
-    string DateLabel(DateTime? value) => value.HasValue ? value.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm") : "Не указано";
+    var documentNumber = Model.Type switch
+    {
+        DocumentType.Contract => Field("Номер договора", Model.Id.ToString()),
+        DocumentType.Invoice => Field("Номер счета", Model.Id.ToString()),
+        _ => Model.Id.ToString()
+    };
+
+    var documentDate = Model.Type switch
+    {
+        DocumentType.Contract => Field("Дата договора", DateOnly(Model.DueDate)),
+        DocumentType.Invoice => Field("Дата счета", DateOnly(Model.DueDate)),
+        _ => DateOnly(Model.DueDate)
+    };
 }
 <!DOCTYPE html>
 <html lang="ru">
@@ -33,24 +67,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Печатная форма документа #@Model.Id</title>
     <style>
-        body { margin: 0; background: #f8fafc; color: #0f172a; font-family: Arial, sans-serif; }
-        .page { width: 210mm; min-height: 297mm; margin: 24px auto; background: white; padding: 22mm; box-sizing: border-box; box-shadow: 0 10px 30px rgba(15, 23, 42, .12); }
-        .toolbar { width: 210mm; margin: 24px auto 0; display: flex; gap: 8px; justify-content: flex-end; }
-        .btn { border: 1px solid #cbd5e1; border-radius: 8px; background: white; color: #0f172a; padding: 10px 14px; font-size: 14px; cursor: pointer; text-decoration: none; }
-        h1 { margin: 0 0 6px; font-size: 24px; }
-        h2 { margin: 28px 0 12px; font-size: 16px; text-transform: uppercase; letter-spacing: .08em; color: #475569; }
-        .muted { color: #64748b; font-size: 13px; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .field { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; }
-        .label { color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
-        .value { margin-top: 6px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+        body { margin: 0; background: #eef2f7; color: #111827; font-family: "Times New Roman", serif; }
+        .toolbar { width: 210mm; margin: 18px auto 0; display: flex; gap: 8px; justify-content: flex-end; font-family: Arial, sans-serif; }
+        .btn { border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #0f172a; padding: 10px 14px; font-size: 14px; cursor: pointer; text-decoration: none; }
+        .page { width: 210mm; min-height: 297mm; margin: 18px auto 32px; background: #fff; padding: 18mm 20mm; box-sizing: border-box; box-shadow: 0 12px 32px rgba(15, 23, 42, .16); }
+        .org { display: grid; grid-template-columns: 1fr auto; gap: 24px; border-bottom: 2px solid #111827; padding-bottom: 12px; margin-bottom: 22px; }
+        .org-name { font-size: 18px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
+        .org-meta { margin-top: 5px; font-size: 12px; line-height: 1.45; color: #374151; }
+        .stamp { width: 84px; height: 84px; border: 2px solid #9ca3af; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 11px; text-align: center; transform: rotate(-8deg); }
+        .doc-title { margin: 26px 0 10px; text-align: center; font-size: 20px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+        .doc-subtitle { text-align: center; font-size: 15px; font-weight: 700; margin-bottom: 18px; }
+        .row { display: flex; justify-content: space-between; gap: 24px; margin: 8px 0 18px; font-size: 14px; }
+        .section-title { margin: 24px 0 10px; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid #d1d5db; padding-bottom: 4px; }
+        .text { font-size: 14px; line-height: 1.55; text-align: justify; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+        .field { border: 1px solid #d1d5db; padding: 8px 10px; min-height: 42px; }
+        .label { color: #4b5563; font-family: Arial, sans-serif; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
+        .value { margin-top: 4px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
         .wide { grid-column: 1 / -1; }
-        .signature { margin-top: 42px; display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
-        .line { border-bottom: 1px solid #94a3b8; height: 32px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        th, td { border: 1px solid #111827; padding: 8px; vertical-align: top; }
+        th { background: #f3f4f6; font-weight: 700; }
+        .signatures { margin-top: 34px; display: grid; grid-template-columns: 1fr 1fr; gap: 42px; }
+        .signature-block { min-height: 76px; }
+        .line { border-bottom: 1px solid #111827; height: 34px; margin-top: 10px; }
+        .hint { margin-top: 4px; color: #6b7280; font-size: 11px; font-family: Arial, sans-serif; text-align: center; }
+        .footer { margin-top: 28px; padding-top: 8px; border-top: 1px solid #d1d5db; color: #6b7280; font-size: 11px; font-family: Arial, sans-serif; }
         @@media print {
-            body { background: white; }
+            body { background: #fff; }
             .toolbar { display: none; }
-            .page { margin: 0; box-shadow: none; width: auto; min-height: auto; }
+            .page { width: auto; min-height: auto; margin: 0; box-shadow: none; padding: 14mm 16mm; }
         }
     </style>
 </head>
@@ -61,84 +107,127 @@
     </div>
 
     <main class="page">
-        <div class="muted">Печатная форма электронной карточки документа</div>
-        <h1>@Model.Title</h1>
-        <div class="muted">Документ #@Model.Id • сформировано @DateTime.Now.ToString("dd.MM.yyyy HH:mm")</div>
-
-        <h2>Основные сведения</h2>
-        <section class="grid">
-            <div class="field">
-                <div class="label">Тип документа</div>
-                <div class="value">@typeLabel</div>
-            </div>
-            <div class="field">
-                <div class="label">Статус</div>
-                <div class="value">@statusLabel</div>
-            </div>
-            <div class="field">
-                <div class="label">Срок исполнения</div>
-                <div class="value">@(Model.DueDate.HasValue ? Model.DueDate.Value.ToLocalTime().ToString("dd.MM.yyyy") : "Не указан")</div>
-            </div>
-            <div class="field">
-                <div class="label">Приоритет</div>
-                <div class="value">@(Model.Priority?.ToString() ?? "Не выбран")</div>
-            </div>
-            <div class="field wide">
-                <div class="label">Описание / поля шаблона</div>
-                <div class="value">@(string.IsNullOrWhiteSpace(Model.Description) ? "Описание не заполнено." : Model.Description)</div>
-            </div>
-            <div class="field wide">
-                <div class="label">Теги</div>
-                <div class="value">@(string.IsNullOrWhiteSpace(Model.Tags) ? "Не указаны" : Model.Tags)</div>
-            </div>
-        </section>
-
-        <h2>Файлы</h2>
-        <section class="grid">
-            <div class="field wide">
-                <div class="label">Исходный файл</div>
-                <div class="value">@(string.IsNullOrWhiteSpace(Model.FileUrl) ? "Не прикреплен. Документ существует как электронная карточка." : Model.FileUrl)</div>
-            </div>
-            <div class="field wide">
-                <div class="label">Итоговый файл исполнения</div>
-                <div class="value">@(string.IsNullOrWhiteSpace(Model.ExecutionFileUrl) ? "Не прикреплен." : $"{Model.ExecutionFileName} ({Model.ExecutionFileUrl})")</div>
-            </div>
-        </section>
-
-        <h2>Исполнение</h2>
-        <section class="grid">
-            <div class="field">
-                <div class="label">Исполнитель</div>
-                <div class="value">@(string.IsNullOrWhiteSpace(Model.Assignment.AssignedUserName) ? "Не назначен" : Model.Assignment.AssignedUserName)</div>
-            </div>
-            <div class="field">
-                <div class="label">Результат</div>
-                <div class="value">@(string.IsNullOrWhiteSpace(Model.ExecutionResult) ? "Не указан" : Model.ExecutionResult)</div>
-            </div>
-            <div class="field">
-                <div class="label">Начало работы</div>
-                <div class="value">@DateLabel(Model.ExecutionStartedAt)</div>
-            </div>
-            <div class="field">
-                <div class="label">Завершение</div>
-                <div class="value">@DateLabel(Model.ExecutionCompletedAt)</div>
-            </div>
-            <div class="field wide">
-                <div class="label">Комментарий исполнителя</div>
-                <div class="value">@(string.IsNullOrWhiteSpace(Model.ExecutionComment) ? "Комментарий не заполнен." : Model.ExecutionComment)</div>
-            </div>
-        </section>
-
-        <section class="signature">
+        <header class="org">
             <div>
-                <div class="label">Ответственный</div>
-                <div class="line"></div>
+                <div class="org-name">ООО «Документооборот»</div>
+                <div class="org-meta">
+                    190000, г. Санкт-Петербург, Невский проспект, д. 1<br />
+                    ИНН 7800000000 / КПП 780001001 • тел. +7 (812) 000-00-00<br />
+                    Электронная система документационного обеспечения управления
+                </div>
             </div>
-            <div>
-                <div class="label">Дата / подпись</div>
-                <div class="line"></div>
+            <div class="stamp">Место<br />печати</div>
+        </header>
+
+        @if (Model.Type == DocumentType.Contract)
+        {
+            <div class="doc-title">Договор № @documentNumber</div>
+            <div class="doc-subtitle">@Field("Предмет договора", Model.Title)</div>
+            <div class="row"><span>г. Санкт-Петербург</span><span>@documentDate</span></div>
+
+            <div class="text">
+                ООО «Документооборот», именуемое в дальнейшем «Сторона 1», и @Field("Контрагент", "Контрагент не указан"), именуемое в дальнейшем «Сторона 2», заключили настоящий договор о нижеследующем.
             </div>
+
+            <div class="section-title">1. Предмет договора</div>
+            <div class="text">@Field("Предмет договора", ValueOrDefault(Model.Title))</div>
+
+            <div class="section-title">2. Основные условия</div>
+            <section class="grid">
+                <div class="field"><div class="label">Контрагент</div><div class="value">@Field("Контрагент")</div></div>
+                <div class="field"><div class="label">Сумма договора</div><div class="value">@Field("Сумма договора")</div></div>
+                <div class="field"><div class="label">Срок исполнения</div><div class="value">@DateOnly(Model.DueDate)</div></div>
+                <div class="field"><div class="label">Статус в системе</div><div class="value">@statusLabel</div></div>
+            </section>
+
+            <div class="section-title">3. Дополнительные сведения</div>
+            <div class="text">@ValueOrDefault(Model.Description, "Дополнительные сведения отсутствуют.")</div>
+
+            <section class="signatures">
+                <div class="signature-block"><strong>Сторона 1</strong><div class="line"></div><div class="hint">подпись / расшифровка</div></div>
+                <div class="signature-block"><strong>Сторона 2</strong><div class="line"></div><div class="hint">подпись / расшифровка</div></div>
+            </section>
+        }
+        else if (Model.Type == DocumentType.Invoice)
+        {
+            <div class="doc-title">Счет на оплату № @documentNumber</div>
+            <div class="row"><span>Поставщик: @Field("Поставщик", "ООО «Документооборот»")</span><span>@documentDate</span></div>
+
+            <section class="grid">
+                <div class="field"><div class="label">Поставщик</div><div class="value">@Field("Поставщик", "ООО «Документооборот»")</div></div>
+                <div class="field"><div class="label">Срок оплаты</div><div class="value">@Field("Срок оплаты", DateOnly(Model.DueDate))</div></div>
+                <div class="field wide"><div class="label">Основание</div><div class="value">@ValueOrDefault(Model.Title)</div></div>
+            </section>
+
+            <table>
+                <thead><tr><th>№</th><th>Наименование</th><th>Количество</th><th>Сумма</th></tr></thead>
+                <tbody><tr><td>1</td><td>@ValueOrDefault(Model.Title)</td><td>1</td><td>@Field("Сумма")</td></tr></tbody>
+                <tfoot><tr><th colspan="3">Итого к оплате</th><th>@Field("Сумма")</th></tr></tfoot>
+            </table>
+
+            <section class="signatures">
+                <div class="signature-block"><strong>Руководитель</strong><div class="line"></div><div class="hint">подпись</div></div>
+                <div class="signature-block"><strong>Бухгалтер</strong><div class="line"></div><div class="hint">подпись</div></div>
+            </section>
+        }
+        else if (Model.Type == DocumentType.Application)
+        {
+            <div class="row"><span></span><span>Руководителю организации<br />от @Field("ФИО сотрудника", "сотрудника")</span></div>
+            <div class="doc-title">Заявление</div>
+            <div class="doc-subtitle">@Field("Тема обращения", Model.Title)</div>
+            <div class="text">@Field("Текст заявления", ValueOrDefault(Model.Description, "Текст заявления не заполнен."))</div>
+            <section class="grid" style="margin-top: 24px;">
+                <div class="field"><div class="label">Сотрудник</div><div class="value">@Field("ФИО сотрудника")</div></div>
+                <div class="field"><div class="label">Подразделение</div><div class="value">@Field("Подразделение")</div></div>
+            </section>
+            <section class="signatures">
+                <div class="signature-block"><strong>Заявитель</strong><div class="line"></div><div class="hint">подпись</div></div>
+                <div class="signature-block"><strong>Дата</strong><div class="line"></div><div class="hint">дд.мм.гггг</div></div>
+            </section>
+        }
+        else if (Model.Type == DocumentType.Order)
+        {
+            <div class="doc-title">Приказ № @Model.Id</div>
+            <div class="doc-subtitle">@Model.Title</div>
+            <div class="row"><span>г. Санкт-Петербург</span><span>@DateOnly(Model.DueDate)</span></div>
+            <div class="section-title">Приказываю</div>
+            <div class="text">@ValueOrDefault(Model.Description, "Содержание приказа не заполнено.")</div>
+            <section class="signatures"><div class="signature-block"><strong>Руководитель</strong><div class="line"></div><div class="hint">подпись / расшифровка</div></div><div></div></section>
+        }
+        else if (Model.Type == DocumentType.Act)
+        {
+            <div class="doc-title">Акт № @Model.Id</div>
+            <div class="doc-subtitle">@Model.Title</div>
+            <div class="row"><span>г. Санкт-Петербург</span><span>@DateOnly(Model.DueDate)</span></div>
+            <div class="section-title">Содержание акта</div>
+            <div class="text">@ValueOrDefault(Model.Description, "Содержание акта не заполнено.")</div>
+            <section class="signatures"><div class="signature-block"><strong>Ответственный</strong><div class="line"></div><div class="hint">подпись</div></div><div class="signature-block"><strong>Исполнитель</strong><div class="line"></div><div class="hint">подпись</div></div></section>
+        }
+        else
+        {
+            <div class="doc-title">@typeLabel № @Model.Id</div>
+            <div class="doc-subtitle">@Model.Title</div>
+            <section class="grid">
+                <div class="field"><div class="label">Тип</div><div class="value">@typeLabel</div></div>
+                <div class="field"><div class="label">Статус</div><div class="value">@statusLabel</div></div>
+                <div class="field wide"><div class="label">Содержание</div><div class="value">@ValueOrDefault(Model.Description, "Описание не заполнено.")</div></div>
+            </section>
+        }
+
+        <div class="section-title">Служебная информация</div>
+        <section class="grid">
+            <div class="field"><div class="label">Номер карточки</div><div class="value">@Model.Id</div></div>
+            <div class="field"><div class="label">Статус</div><div class="value">@statusLabel</div></div>
+            <div class="field"><div class="label">Исполнитель</div><div class="value">@ValueOrDefault(Model.Assignment.AssignedUserName, "Не назначен")</div></div>
+            <div class="field"><div class="label">Результат исполнения</div><div class="value">@ValueOrDefault(Model.ExecutionResult)</div></div>
+            <div class="field wide"><div class="label">Комментарий исполнителя</div><div class="value">@ValueOrDefault(Model.ExecutionComment, "Комментарий не заполнен.")</div></div>
+            <div class="field"><div class="label">Начало исполнения</div><div class="value">@DateTimeLabel(Model.ExecutionStartedAt)</div></div>
+            <div class="field"><div class="label">Завершение исполнения</div><div class="value">@DateTimeLabel(Model.ExecutionCompletedAt)</div></div>
         </section>
+
+        <div class="footer">
+            Печатная форма сформирована автоматически из электронной карточки документа в DocManager. Исходный файл: @ValueOrDefault(Model.FileUrl, "не прикреплен"). Итоговый файл: @ValueOrDefault(Model.ExecutionFileUrl, "не прикреплен").
+        </div>
     </main>
 </body>
 </html>
