@@ -136,18 +136,18 @@ public class DocumentsController : Controller
     [ValidateAntiForgeryToken]
     [Authorize(Policy = AuthorizationPolicies.EmployeeOrHigher)]
     [Route("Documents/{id:int}/start-work")]
-    public async Task<IActionResult> StartWork(int id, CancellationToken cancellationToken)
+    public async Task<IActionResult> StartWork(int id, bool returnToEdit, CancellationToken cancellationToken)
     {
-        return await ExecuteEmployeeActionAsync(id, DocumentStatus.Approved, DocumentStatus.InWork, $"Документ #{id} переведен в работу.", cancellationToken);
+        return await ExecuteEmployeeActionAsync(id, DocumentStatus.Approved, DocumentStatus.InWork, $"Документ #{id} переведен в работу.", returnToEdit, cancellationToken);
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Authorize(Policy = AuthorizationPolicies.EmployeeOrHigher)]
     [Route("Documents/{id:int}/complete-work")]
-    public async Task<IActionResult> CompleteWork(int id, CancellationToken cancellationToken)
+    public async Task<IActionResult> CompleteWork(int id, bool returnToEdit, CancellationToken cancellationToken)
     {
-        return await ExecuteEmployeeActionAsync(id, DocumentStatus.InWork, DocumentStatus.Completed, $"Документ #{id} отмечен как завершенный.", cancellationToken);
+        return await ExecuteEmployeeActionAsync(id, DocumentStatus.InWork, DocumentStatus.Completed, $"Документ #{id} отмечен как завершенный.", returnToEdit, cancellationToken);
     }
 
     [HttpGet]
@@ -176,6 +176,10 @@ public class DocumentsController : Controller
         if (doc is null)
             return NotFound();
 
+        var currentUserId = GetCurrentUserId();
+        if (!IsManagerOrAdmin() && doc.UserId != currentUserId)
+            return Forbid();
+
         var model = new EditDocumentPageViewModel
         {
             Id = doc.DocumentId,
@@ -188,7 +192,56 @@ public class DocumentsController : Controller
             Status = doc.Status ?? string.Empty,
             FileUrl = doc.FilePath,
             FileKind = GetFileKind(doc.FilePath),
+            ExecutionComment = doc.ExecutionComment ?? string.Empty,
+            ExecutionResult = doc.ExecutionResult,
+            ExecutionStartedAt = doc.ExecutionStartedAt,
+            ExecutionCompletedAt = doc.ExecutionCompletedAt,
+            ExecutionFileUrl = doc.ExecutionFilePath,
+            ExecutionFileName = doc.ExecutionFileName,
+            ExecutionFileKind = GetFileKind(doc.ExecutionFilePath),
             AiSuggestions = BuildAiSuggestions(doc),
+            Assignment = await BuildAssignmentPanelAsync(doc, cancellationToken)
+        };
+
+        ApplyEditAccessState(model, doc);
+
+        return View(model);
+    }
+
+    [HttpGet]
+    [Authorize(Policy = AuthorizationPolicies.EmployeeOrHigher)]
+    [Route("Documents/{id:int}/print-form")]
+    public async Task<IActionResult> PrintForm(int id, CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+
+        var doc = await _documentService.GetDocumentByIdAsync(id);
+        if (doc is null)
+            return NotFound();
+
+        var currentUserId = GetCurrentUserId();
+        if (!IsManagerOrAdmin() && doc.UserId != currentUserId)
+            return Forbid();
+
+        var model = new EditDocumentPageViewModel
+        {
+            Id = doc.DocumentId,
+            Title = doc.Title ?? string.Empty,
+            Description = doc.ExtractedText ?? string.Empty,
+            Type = TryParseEnum<DocumentType>(doc.DocumentType) ?? DocumentType.Other,
+            DueDate = doc.DueDate,
+            Priority = doc.Priority,
+            Tags = doc.Tags,
+            Status = doc.Status ?? string.Empty,
+            FileUrl = doc.FilePath,
+            FileKind = GetFileKind(doc.FilePath),
+            ExecutionComment = doc.ExecutionComment ?? string.Empty,
+            ExecutionResult = doc.ExecutionResult,
+            ExecutionStartedAt = doc.ExecutionStartedAt,
+            ExecutionCompletedAt = doc.ExecutionCompletedAt,
+            ExecutionFileUrl = doc.ExecutionFilePath,
+            ExecutionFileName = doc.ExecutionFileName,
+            ExecutionFileKind = GetFileKind(doc.ExecutionFilePath),
             Assignment = await BuildAssignmentPanelAsync(doc, cancellationToken)
         };
 
@@ -233,6 +286,114 @@ public class DocumentsController : Controller
             await EnrichEditModelAsync(model);
             return View(model);
         }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Policy = AuthorizationPolicies.EmployeeOrHigher)]
+    [Route("Documents/{id:int}/execution")]
+    public async Task<IActionResult> SaveExecutionProgress(int id, EditDocumentPageViewModel model, CancellationToken cancellationToken)
+    {
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId is null)
+            return RedirectToAction("Login", "Account");
+
+        var document = await _documentService.GetDocumentByIdAsync(id);
+        if (document is null)
+            return NotFound();
+
+        if (document.UserId != currentUserId.Value)
+            return Forbid();
+
+        var currentStatus = ParseDocumentStatus(document.Status);
+        if (currentStatus != DocumentStatus.InWork)
+        {
+            TempData["ErrorMessage"] = "Сохранять ход исполнения можно только для документов в работе.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        try
+        {
+            document.ExecutionComment = (model.ExecutionComment ?? string.Empty).Trim();
+            document.ExecutionResult = string.IsNullOrWhiteSpace(model.ExecutionResult)
+                ? null
+                : model.ExecutionResult.Trim();
+            document.ExecutionStartedAt ??= DateTime.UtcNow;
+
+            await _documentService.UpdateDocumentAsync(document);
+            TempData["SuccessMessage"] = "Ход исполнения сохранен.";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось сохранить ход исполнения документа {DocumentId}", id);
+            TempData["ErrorMessage"] = "Не удалось сохранить ход исполнения. Повторите попытку позже.";
+        }
+
+        return RedirectToAction(nameof(Edit), new { id });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Policy = AuthorizationPolicies.EmployeeOrHigher)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 200 * 1024 * 1024)]
+    [Route("Documents/{id:int}/execution-file")]
+    public async Task<IActionResult> UploadExecutionFile(int id, IFormFile? executionFile, CancellationToken cancellationToken)
+    {
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId is null)
+            return RedirectToAction("Login", "Account");
+
+        var document = await _documentService.GetDocumentByIdAsync(id);
+        if (document is null)
+            return NotFound();
+
+        if (document.UserId != currentUserId.Value)
+            return Forbid();
+
+        var currentStatus = ParseDocumentStatus(document.Status);
+        if (currentStatus != DocumentStatus.InWork)
+        {
+            TempData["ErrorMessage"] = "Итоговый файл можно загружать только для документов в работе.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        if (executionFile is null || executionFile.Length <= 0)
+        {
+            TempData["ErrorMessage"] = "Выберите итоговый файл.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        if (executionFile.Length > 25 * 1024 * 1024)
+        {
+            TempData["ErrorMessage"] = "Итоговый файл не должен превышать 25MB.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        if (!IsAllowedExecutionAttachment(executionFile))
+        {
+            TempData["ErrorMessage"] = "Поддерживаются PDF, DOCX, XLSX, PNG и JPEG.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        try
+        {
+            _logger.LogInformation("Загрузка итогового файла для документа {DocumentId}: {FileName}, {Length} bytes", id, executionFile.FileName, executionFile.Length);
+            var stored = await SaveUploadedDocumentFileAsync(executionFile, cancellationToken);
+            document.ExecutionFilePath = stored.FilePath;
+            document.ExecutionFileName = Path.GetFileName(executionFile.FileName);
+            document.ExecutionStartedAt ??= DateTime.UtcNow;
+
+            await _documentService.UpdateDocumentAsync(document);
+            _logger.LogInformation("Итоговый файл сохранен для документа {DocumentId}: {FilePath}", id, document.ExecutionFilePath);
+            TempData["SuccessMessage"] = "Итоговый файл загружен.";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось загрузить итоговый файл для документа {DocumentId}", id);
+            TempData["ErrorMessage"] = "Не удалось загрузить итоговый файл. Повторите попытку позже.";
+        }
+
+        return RedirectToAction(nameof(Edit), new { id });
     }
 
     [HttpPost]
@@ -466,6 +627,69 @@ public class DocumentsController : Controller
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Authorize(Policy = AuthorizationPolicies.EmployeeOrHigher)]
+    [Route("Documents/{id:int}/review")]
+    public async Task<IActionResult> ReviewDocument(int id, ApprovalActionInputModel input, CancellationToken cancellationToken)
+    {
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId is null)
+            return RedirectToAction("Login", "Account");
+
+        var document = await _documentService.GetDocumentByIdAsync(id);
+        if (document is null)
+            return NotFound();
+
+        if (document.UserId != currentUserId && !IsManagerOrAdmin())
+            return Forbid();
+
+        var currentStatus = ParseDocumentStatus(document.Status);
+        if (currentStatus != DocumentStatus.OnApproval)
+        {
+            TempData["ErrorMessage"] = "Действие доступно только для документов на согласовании.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        var decision = (input.Decision ?? string.Empty).Trim().ToLowerInvariant();
+        if (decision is not ("approve" or "rework"))
+        {
+            TempData["ErrorMessage"] = "Неизвестное действие согласования.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        if (decision == "rework" && string.IsNullOrWhiteSpace(input.Comment))
+        {
+            TempData["ErrorMessage"] = "Комментарий обязателен при возврате на доработку.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        try
+        {
+            if (decision == "approve")
+            {
+                await _documentService.ChangeDocumentStatusAsync(id, DocumentStatus.Approved);
+                TempData["SuccessMessage"] = $"Документ #{id} утвержден.";
+            }
+            else
+            {
+                await _documentService.ChangeDocumentStatusAsync(id, DocumentStatus.Draft, input.Comment);
+                TempData["SuccessMessage"] = $"Документ #{id} возвращен на доработку.";
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["ErrorMessage"] = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось выполнить пользовательское согласование для документа {DocumentId}", id);
+            TempData["ErrorMessage"] = "Не удалось выполнить действие согласования. Повторите попытку позже.";
+        }
+
+        return RedirectToAction(nameof(Edit), new { id });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Policy = AuthorizationPolicies.EmployeeOrHigher)]
     [Route("Documents/{id:int}/status")]
     public async Task<IActionResult> ChangeStatus(int id, [FromBody] ChangeDocumentStatusRequest request, CancellationToken cancellationToken)
     {
@@ -492,11 +716,12 @@ public class DocumentsController : Controller
 
                 var currentStatus = ParseDocumentStatus(document.Status);
                 var isAllowedEmployeeTransition =
+                    (currentStatus == DocumentStatus.OnApproval && newStatus == DocumentStatus.Approved) ||
                     (currentStatus == DocumentStatus.Approved && newStatus == DocumentStatus.InWork) ||
                     (currentStatus == DocumentStatus.InWork && newStatus == DocumentStatus.Completed);
 
                 if (!isAllowedEmployeeTransition)
-                    return BadRequest(new { message = "Пользователь может менять статус только своих задач: К исполнению -> В работе -> Завершено." });
+                    return BadRequest(new { message = "Пользователь может менять статус только в своей цепочке: На согласовании -> К исполнению -> В работе -> Завершено." });
             }
 
             await _documentService.ChangeDocumentStatusAsync(id, newStatus, request.Comment);
@@ -717,11 +942,28 @@ public class DocumentsController : Controller
                AuthorizationPolicies.IsInAppRole(User, DocumentFlowApp.Core.Security.AppRoles.Manager);
     }
 
+    private void ApplyEditAccessState(EditDocumentPageViewModel model, Document document)
+    {
+        var currentUserId = GetCurrentUserId();
+        var status = ParseDocumentStatus(document.Status);
+        var isManagerOrAdmin = IsManagerOrAdmin();
+        var isAssignedToCurrentUser = currentUserId.HasValue && document.UserId == currentUserId.Value;
+
+        model.CanEditDocument = isManagerOrAdmin;
+        model.CanAdvanceWorkflow = isManagerOrAdmin;
+        model.CanApprove = isAssignedToCurrentUser && status == DocumentStatus.OnApproval;
+        model.CanRework = isAssignedToCurrentUser && status == DocumentStatus.OnApproval;
+        model.CanStartWork = isAssignedToCurrentUser && status == DocumentStatus.Approved;
+        model.CanComplete = isAssignedToCurrentUser && status == DocumentStatus.InWork;
+        model.CanSaveExecutionProgress = isAssignedToCurrentUser && status == DocumentStatus.InWork;
+    }
+
     private async Task<IActionResult> ExecuteEmployeeActionAsync(
         int documentId,
         DocumentStatus expectedStatus,
         DocumentStatus newStatus,
         string successMessage,
+        bool returnToEdit,
         CancellationToken cancellationToken)
     {
         var currentUserId = GetCurrentUserId();
@@ -739,12 +981,46 @@ public class DocumentsController : Controller
         if (currentStatus != expectedStatus)
         {
             TempData["ErrorMessage"] = $"Операция недоступна для статуса {GetDocumentStatusLabel(currentStatus)}.";
-            return RedirectToAction(nameof(MyTasks));
+            return returnToEdit
+                ? RedirectToAction(nameof(Edit), new { id = documentId })
+                : RedirectToAction(nameof(MyTasks));
+        }
+
+        if (newStatus == DocumentStatus.Completed)
+        {
+            if (string.IsNullOrWhiteSpace(document.ExecutionComment))
+            {
+                TempData["ErrorMessage"] = "Перед завершением заполните комментарий исполнителя.";
+                return returnToEdit
+                    ? RedirectToAction(nameof(Edit), new { id = documentId })
+                    : RedirectToAction(nameof(MyTasks));
+            }
+
+            if (string.IsNullOrWhiteSpace(document.ExecutionResult))
+            {
+                TempData["ErrorMessage"] = "Перед завершением выберите результат исполнения.";
+                return returnToEdit
+                    ? RedirectToAction(nameof(Edit), new { id = documentId })
+                    : RedirectToAction(nameof(MyTasks));
+            }
         }
 
         try
         {
             await _documentService.ChangeDocumentStatusAsync(documentId, newStatus);
+
+            var updatedDocument = await _documentService.GetDocumentByIdAsync(documentId);
+            if (updatedDocument is not null)
+            {
+                if (newStatus == DocumentStatus.InWork)
+                    updatedDocument.ExecutionStartedAt ??= DateTime.UtcNow;
+
+                if (newStatus == DocumentStatus.Completed)
+                    updatedDocument.ExecutionCompletedAt ??= DateTime.UtcNow;
+
+                await _documentService.UpdateDocumentAsync(updatedDocument);
+            }
+
             TempData["SuccessMessage"] = successMessage;
         }
         catch (Exception ex)
@@ -753,7 +1029,9 @@ public class DocumentsController : Controller
             TempData["ErrorMessage"] = "Не удалось изменить статус документа. Повторите попытку позже.";
         }
 
-        return RedirectToAction(nameof(MyTasks));
+        return returnToEdit
+            ? RedirectToAction(nameof(Edit), new { id = documentId })
+            : RedirectToAction(nameof(MyTasks));
     }
     private static DocumentTemplateViewModel MapTemplate(Template template)
     {
@@ -926,6 +1204,36 @@ public class DocumentsController : Controller
 
         if (string.Equals(ext, ".pdf", StringComparison.OrdinalIgnoreCase))
             return IsAllowedPdf(file);
+
+        if (string.Equals(ext, ".jpg", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(ext, ".jpeg", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(ext, ".png", StringComparison.OrdinalIgnoreCase))
+        {
+            return file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(file.ContentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
+
+    private static bool IsAllowedExecutionAttachment(IFormFile file)
+    {
+        var ext = Path.GetExtension(file.FileName);
+
+        if (string.Equals(ext, ".pdf", StringComparison.OrdinalIgnoreCase))
+            return IsAllowedPdf(file);
+
+        if (string.Equals(ext, ".docx", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Equals(file.ContentType, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(file.ContentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (string.Equals(ext, ".xlsx", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Equals(file.ContentType, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(file.ContentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase);
+        }
 
         if (string.Equals(ext, ".jpg", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(ext, ".jpeg", StringComparison.OrdinalIgnoreCase) ||
@@ -1139,8 +1447,16 @@ public class DocumentsController : Controller
         model.Status = doc.Status ?? model.Status;
         model.FileUrl = doc.FilePath;
         model.FileKind = GetFileKind(doc.FilePath);
+        model.ExecutionComment = doc.ExecutionComment ?? string.Empty;
+        model.ExecutionResult = doc.ExecutionResult;
+        model.ExecutionStartedAt = doc.ExecutionStartedAt;
+        model.ExecutionCompletedAt = doc.ExecutionCompletedAt;
+        model.ExecutionFileUrl = doc.ExecutionFilePath;
+        model.ExecutionFileName = doc.ExecutionFileName;
+        model.ExecutionFileKind = GetFileKind(doc.ExecutionFilePath);
         model.AiSuggestions = BuildAiSuggestions(doc);
         model.Assignment = await BuildAssignmentPanelAsync(doc, CancellationToken.None);
+        ApplyEditAccessState(model, doc);
     }
 
     private static string GetFileKind(string? fileUrl)
@@ -1168,6 +1484,8 @@ public class DocumentsController : Controller
         return ext.ToLowerInvariant() switch
         {
             ".pdf" => "application/pdf",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             ".jpg" or ".jpeg" => "image/jpeg",
             ".png" => "image/png",
             ".gif" => "image/gif",

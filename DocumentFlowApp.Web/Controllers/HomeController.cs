@@ -67,6 +67,7 @@ public class HomeController : Controller
         {
             return
             [
+                CreateColumn(DocumentStatus.OnApproval, "На согласовании", "accent-primary", FilterByStatus(all, DocumentStatus.OnApproval)),
                 CreateColumn(DocumentStatus.Approved, "К исполнению", "accent-primary", FilterByStatus(all, DocumentStatus.Approved)),
                 CreateColumn(DocumentStatus.InWork, "В работе", "accent-success", FilterByStatus(all, DocumentStatus.InWork)),
                 CreateColumn(DocumentStatus.Completed, "Завершено", "accent-muted", FilterByStatus(all, DocumentStatus.Completed), isEmptyPlaceholder: true)
@@ -369,7 +370,7 @@ public class HomeController : Controller
         {
             documents = documents
                 .Where(d => d.UserId == currentUserId.Value)
-                .Where(d => ParseDocumentStatus(d.Status) is DocumentStatus.Approved or DocumentStatus.InWork or DocumentStatus.Completed)
+                .Where(d => ParseDocumentStatus(d.Status) is DocumentStatus.OnApproval or DocumentStatus.Approved or DocumentStatus.InWork or DocumentStatus.Completed)
                 .ToList();
         }
 

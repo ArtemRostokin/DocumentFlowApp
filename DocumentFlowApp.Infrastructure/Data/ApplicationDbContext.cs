@@ -55,6 +55,27 @@ namespace DocumentFlowApp.Infrastructure.Data
                 entity.Property(d => d.ExtractedText)
                     .HasComment("Извлечённый текст документа");
 
+                entity.Property(d => d.ExecutionComment)
+                    .HasComment("Комментарий исполнителя по ходу работы");
+
+                entity.Property(d => d.ExecutionResult)
+                    .HasMaxLength(100)
+                    .HasComment("Результат исполнения документа");
+
+                entity.Property(d => d.ExecutionStartedAt)
+                    .HasComment("Дата начала исполнения документа");
+
+                entity.Property(d => d.ExecutionCompletedAt)
+                    .HasComment("Дата завершения исполнения документа");
+
+                entity.Property(d => d.ExecutionFilePath)
+                    .HasMaxLength(500)
+                    .HasComment("Путь к итоговому файлу исполнения");
+
+                entity.Property(d => d.ExecutionFileName)
+                    .HasMaxLength(255)
+                    .HasComment("Имя итогового файла исполнения");
+
                 entity.Property(d => d.CreatedDate)
                     .IsRequired()
                     .HasDefaultValueSql("NOW()")

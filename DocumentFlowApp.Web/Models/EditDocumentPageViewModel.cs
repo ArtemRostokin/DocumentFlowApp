@@ -30,6 +30,30 @@ public sealed class EditDocumentPageViewModel
     public string? FileUrl { get; set; }
     public string FileKind { get; set; } = "none";
 
+    public string ExecutionComment { get; set; } = string.Empty;
+    public string? ExecutionResult { get; set; }
+    public DateTime? ExecutionStartedAt { get; set; }
+    public DateTime? ExecutionCompletedAt { get; set; }
+    public string? ExecutionFileUrl { get; set; }
+    public string? ExecutionFileName { get; set; }
+    public string ExecutionFileKind { get; set; } = "none";
+    public IFormFile? ExecutionFile { get; set; }
+
+    public bool CanEditDocument { get; set; }
+    public bool CanAdvanceWorkflow { get; set; }
+    public bool CanApprove { get; set; }
+    public bool CanRework { get; set; }
+    public bool CanStartWork { get; set; }
+    public bool CanComplete { get; set; }
+    public bool CanSaveExecutionProgress { get; set; }
+
     public IReadOnlyList<AiSuggestionViewModel> AiSuggestions { get; set; } = [];
     public AssignmentPanelViewModel Assignment { get; set; } = new();
+
+    public IReadOnlyList<string> ExecutionResultOptions { get; set; } =
+    [
+        "Исполнено",
+        "Требует уточнения",
+        "Нужны дополнительные материалы"
+    ];
 }

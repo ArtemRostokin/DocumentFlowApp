@@ -84,6 +84,33 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                     b.Property<DateTime?>("DueDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ExecutionComment")
+                        .HasColumnType("text")
+                        .HasComment("Комментарий исполнителя по ходу работы");
+
+                    b.Property<DateTime?>("ExecutionCompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("Дата завершения исполнения документа");
+
+                    b.Property<string>("ExecutionFileName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasComment("Имя итогового файла исполнения");
+
+                    b.Property<string>("ExecutionFilePath")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasComment("Путь к итоговому файлу исполнения");
+
+                    b.Property<string>("ExecutionResult")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasComment("Результат исполнения документа");
+
+                    b.Property<DateTime?>("ExecutionStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("Дата начала исполнения документа");
+
                     b.Property<string>("ExtractedText")
                         .HasColumnType("text")
                         .HasComment("Извлечённый текст документа");

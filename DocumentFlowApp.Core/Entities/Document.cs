@@ -34,6 +34,13 @@ public class Document
     public string? Title { get; set; }
     public string? ExtractedText { get; set; }
 
+    public string? ExecutionComment { get; set; }
+    public string? ExecutionResult { get; set; }
+    public DateTime? ExecutionStartedAt { get; set; }
+    public DateTime? ExecutionCompletedAt { get; set; }
+    public string? ExecutionFilePath { get; set; }
+    public string? ExecutionFileName { get; set; }
+
     public ICollection<DocumentAiMetadata> AiMetadata { get; set; } = new List<DocumentAiMetadata>();
     public ICollection<DocumentRelation> SourceRelations { get; set; } = new List<DocumentRelation>();
     public ICollection<DocumentRelation> TargetRelations { get; set; } = new List<DocumentRelation>();

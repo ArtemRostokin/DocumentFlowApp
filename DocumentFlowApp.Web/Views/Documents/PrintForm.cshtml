@@ -1,0 +1,144 @@
+@model DocumentFlowApp.Web.Models.EditDocumentPageViewModel
+@using DocumentFlowApp.Core.Enums
+@{
+    Layout = null;
+    var typeLabel = Model.Type switch
+    {
+        DocumentType.Contract => "Договор",
+        DocumentType.Invoice => "Счет",
+        DocumentType.Report => "Отчет",
+        DocumentType.Order => "Приказ",
+        DocumentType.Application => "Заявление",
+        DocumentType.Act => "Акт",
+        _ => "Прочее"
+    };
+
+    var statusLabel = Model.Status switch
+    {
+        "Draft" => "Черновик",
+        "OnApproval" => "На согласовании",
+        "Approved" => "Утвержден",
+        "InWork" => "В работе",
+        "Completed" => "Завершен",
+        "Archived" => "Архив",
+        _ => Model.Status
+    };
+
+    string DateLabel(DateTime? value) => value.HasValue ? value.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm") : "Не указано";
+}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Печатная форма документа #@Model.Id</title>
+    <style>
+        body { margin: 0; background: #f8fafc; color: #0f172a; font-family: Arial, sans-serif; }
+        .page { width: 210mm; min-height: 297mm; margin: 24px auto; background: white; padding: 22mm; box-sizing: border-box; box-shadow: 0 10px 30px rgba(15, 23, 42, .12); }
+        .toolbar { width: 210mm; margin: 24px auto 0; display: flex; gap: 8px; justify-content: flex-end; }
+        .btn { border: 1px solid #cbd5e1; border-radius: 8px; background: white; color: #0f172a; padding: 10px 14px; font-size: 14px; cursor: pointer; text-decoration: none; }
+        h1 { margin: 0 0 6px; font-size: 24px; }
+        h2 { margin: 28px 0 12px; font-size: 16px; text-transform: uppercase; letter-spacing: .08em; color: #475569; }
+        .muted { color: #64748b; font-size: 13px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .field { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; }
+        .label { color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
+        .value { margin-top: 6px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .wide { grid-column: 1 / -1; }
+        .signature { margin-top: 42px; display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+        .line { border-bottom: 1px solid #94a3b8; height: 32px; }
+        @@media print {
+            body { background: white; }
+            .toolbar { display: none; }
+            .page { margin: 0; box-shadow: none; width: auto; min-height: auto; }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <button class="btn" onclick="window.print()">Сохранить как PDF / Печать</button>
+        <a class="btn" href="/Documents/Edit/@Model.Id">Вернуться к карточке</a>
+    </div>
+
+    <main class="page">
+        <div class="muted">Печатная форма электронной карточки документа</div>
+        <h1>@Model.Title</h1>
+        <div class="muted">Документ #@Model.Id • сформировано @DateTime.Now.ToString("dd.MM.yyyy HH:mm")</div>
+
+        <h2>Основные сведения</h2>
+        <section class="grid">
+            <div class="field">
+                <div class="label">Тип документа</div>
+                <div class="value">@typeLabel</div>
+            </div>
+            <div class="field">
+                <div class="label">Статус</div>
+                <div class="value">@statusLabel</div>
+            </div>
+            <div class="field">
+                <div class="label">Срок исполнения</div>
+                <div class="value">@(Model.DueDate.HasValue ? Model.DueDate.Value.ToLocalTime().ToString("dd.MM.yyyy") : "Не указан")</div>
+            </div>
+            <div class="field">
+                <div class="label">Приоритет</div>
+                <div class="value">@(Model.Priority?.ToString() ?? "Не выбран")</div>
+            </div>
+            <div class="field wide">
+                <div class="label">Описание / поля шаблона</div>
+                <div class="value">@(string.IsNullOrWhiteSpace(Model.Description) ? "Описание не заполнено." : Model.Description)</div>
+            </div>
+            <div class="field wide">
+                <div class="label">Теги</div>
+                <div class="value">@(string.IsNullOrWhiteSpace(Model.Tags) ? "Не указаны" : Model.Tags)</div>
+            </div>
+        </section>
+
+        <h2>Файлы</h2>
+        <section class="grid">
+            <div class="field wide">
+                <div class="label">Исходный файл</div>
+                <div class="value">@(string.IsNullOrWhiteSpace(Model.FileUrl) ? "Не прикреплен. Документ существует как электронная карточка." : Model.FileUrl)</div>
+            </div>
+            <div class="field wide">
+                <div class="label">Итоговый файл исполнения</div>
+                <div class="value">@(string.IsNullOrWhiteSpace(Model.ExecutionFileUrl) ? "Не прикреплен." : $"{Model.ExecutionFileName} ({Model.ExecutionFileUrl})")</div>
+            </div>
+        </section>
+
+        <h2>Исполнение</h2>
+        <section class="grid">
+            <div class="field">
+                <div class="label">Исполнитель</div>
+                <div class="value">@(string.IsNullOrWhiteSpace(Model.Assignment.AssignedUserName) ? "Не назначен" : Model.Assignment.AssignedUserName)</div>
+            </div>
+            <div class="field">
+                <div class="label">Результат</div>
+                <div class="value">@(string.IsNullOrWhiteSpace(Model.ExecutionResult) ? "Не указан" : Model.ExecutionResult)</div>
+            </div>
+            <div class="field">
+                <div class="label">Начало работы</div>
+                <div class="value">@DateLabel(Model.ExecutionStartedAt)</div>
+            </div>
+            <div class="field">
+                <div class="label">Завершение</div>
+                <div class="value">@DateLabel(Model.ExecutionCompletedAt)</div>
+            </div>
+            <div class="field wide">
+                <div class="label">Комментарий исполнителя</div>
+                <div class="value">@(string.IsNullOrWhiteSpace(Model.ExecutionComment) ? "Комментарий не заполнен." : Model.ExecutionComment)</div>
+            </div>
+        </section>
+
+        <section class="signature">
+            <div>
+                <div class="label">Ответственный</div>
+                <div class="line"></div>
+            </div>
+            <div>
+                <div class="label">Дата / подпись</div>
+                <div class="line"></div>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

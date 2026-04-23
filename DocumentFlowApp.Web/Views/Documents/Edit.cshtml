@@ -7,7 +7,34 @@
         ?? User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Role)?.Value
         ?? AppRoles.Employee;
     var normalizedRole = AppRoles.Normalize(currentUserRole) ?? AppRoles.Employee;
+    var isEmployeeRole = normalizedRole == AppRoles.Employee;
+    var isManagerOrAdminRole = normalizedRole is AppRoles.Admin or AppRoles.Manager;
     var canAssignExecutor = normalizedRole is AppRoles.Admin or AppRoles.Manager;
+    var hasUserActions = Model.CanApprove || Model.CanRework || Model.CanStartWork || Model.CanComplete;
+    var statusText = (Model.Status ?? string.Empty).Trim();
+    var isExecutionStage = statusText.Equals("Approved", StringComparison.OrdinalIgnoreCase)
+        || statusText.Equals("InWork", StringComparison.OrdinalIgnoreCase)
+        || statusText.Equals("Completed", StringComparison.OrdinalIgnoreCase)
+        || statusText.Equals("Approved".ToLowerInvariant(), StringComparison.OrdinalIgnoreCase)
+        || statusText.Equals("InWork".ToLowerInvariant(), StringComparison.OrdinalIgnoreCase)
+        || statusText.Equals("Completed".ToLowerInvariant(), StringComparison.OrdinalIgnoreCase);
+    var hasExecutionData = Model.ExecutionStartedAt.HasValue
+        || Model.ExecutionCompletedAt.HasValue
+        || !string.IsNullOrWhiteSpace(Model.ExecutionComment)
+        || !string.IsNullOrWhiteSpace(Model.ExecutionResult)
+        || !string.IsNullOrWhiteSpace(Model.ExecutionFileUrl);
+    var hasExecutionBlock = (isEmployeeRole && (Model.CanStartWork || Model.CanSaveExecutionProgress || Model.CanComplete || isExecutionStage))
+        || (isManagerOrAdminRole && (hasExecutionData || statusText.Equals("Completed", StringComparison.OrdinalIgnoreCase)))
+        || Model.ExecutionStartedAt.HasValue
+        || Model.ExecutionCompletedAt.HasValue
+        || !string.IsNullOrWhiteSpace(Model.ExecutionComment)
+        || !string.IsNullOrWhiteSpace(Model.ExecutionResult)
+        || !string.IsNullOrWhiteSpace(Model.ExecutionFileUrl);
+    var hasSourceFile = !string.IsNullOrWhiteSpace(Model.FileUrl);
+    var hasExecutionFile = !string.IsNullOrWhiteSpace(Model.ExecutionFileUrl);
+    var previewUrl = hasSourceFile ? Model.FileUrl : Model.ExecutionFileUrl;
+    var previewKind = hasSourceFile ? Model.FileKind : Model.ExecutionFileKind;
+    var previewTitle = hasSourceFile ? "Исходный файл документа" : hasExecutionFile ? "Итоговый файл исполнения" : "Превью документа";
 }
 <!DOCTYPE html>
 <html class="light" lang="ru">
@@ -29,14 +56,21 @@
             </div>
             <div class="flex items-center gap-3">
                 <a href="@Url.Action("Index", "Home")" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900">Назад к доске</a>
-                <button type="submit" form="editDocumentForm" class="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-900">Сохранить</button>
-                <form method="post" action="/Documents/@Model.Id/next-stage" class="inline">
-                    @Html.AntiForgeryToken()
-                    <button type="submit" class="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 flex items-center gap-2">
-                        <span class="material-symbols-outlined text-[18px]">send</span>
-                        Отправить на следующий этап
-                    </button>
-                </form>
+                <a href="/Documents/@Model.Id/print-form" target="_blank" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 ring-1 ring-slate-200 hover:text-slate-900 hover:bg-slate-50">Печатная форма</a>
+                @if (Model.CanEditDocument)
+                {
+                    <button type="submit" form="editDocumentForm" class="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-900">Сохранить</button>
+                }
+                @if (Model.CanAdvanceWorkflow)
+                {
+                    <form method="post" action="/Documents/@Model.Id/next-stage" class="inline">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[18px]">send</span>
+                            Отправить на следующий этап
+                        </button>
+                    </form>
+                }
             </div>
         </div>
     </header>
@@ -67,7 +101,7 @@
                                 <span class="material-symbols-outlined text-blue-600">smart_toy</span>
                                 <h2 class="text-sm font-bold uppercase tracking-widest text-slate-600">ИИ-рекомендации</h2>
                             </div>
-                            <div class="text-xs text-slate-500">Демонстрация автозаполнения полей</div>
+                            <div class="text-xs text-slate-500">@(Model.CanEditDocument ? "Демонстрация автозаполнения полей" : "Только просмотр для пользователя")</div>
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -81,7 +115,10 @@
                                             <div class="mt-1 text-sm font-medium text-slate-900 break-words">@s.SuggestedValue</div>
                                             <div class="mt-2 text-xs text-slate-600">Уверенность: <span class="font-semibold">@s.Confidence%</span></div>
                                         </div>
-                                        <button type="button" class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold @(isHigh ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-amber-600 text-white hover:bg-amber-700")" data-ai-apply data-field="@s.FieldKey" data-value="@s.SuggestedValue">Применить</button>
+                                        @if (Model.CanEditDocument)
+                                        {
+                                            <button type="button" class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold @(isHigh ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-amber-600 text-white hover:bg-amber-700")" data-ai-apply data-field="@s.FieldKey" data-value="@s.SuggestedValue">Применить</button>
+                                        }
                                     </div>
                                 </div>
                             }
@@ -94,58 +131,220 @@
 
                         <div asp-validation-summary="ModelOnly" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"></div>
 
+                        @if (!Model.CanEditDocument)
+                        {
+                            <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                                Карточка открыта в режиме просмотра. Пользователь может выполнять только действия согласования и исполнения.
+                            </div>
+                        }
+
                         <section class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-5">
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                <div class="md:col-span-2">
-                                    <label asp-for="Title" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Название</label>
-                                    <input asp-for="Title" id="field-title" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600" />
-                                    <span asp-validation-for="Title" class="text-xs text-red-600"></span>
+                            <fieldset disabled="@(!Model.CanEditDocument)" class="space-y-5">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                    <div class="md:col-span-2">
+                                        <label asp-for="Title" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Название</label>
+                                        <input asp-for="Title" id="field-title" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600 disabled:opacity-100 disabled:text-slate-700" />
+                                        <span asp-validation-for="Title" class="text-xs text-red-600"></span>
+                                    </div>
+
+                                    <div>
+                                        <label asp-for="Type" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Тип</label>
+                                        <select asp-for="Type" id="field-type" asp-items="Html.GetEnumSelectList<DocumentType>()" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600 disabled:opacity-100 disabled:text-slate-700">
+                                            <option value="">Выберите тип</option>
+                                        </select>
+                                        <span asp-validation-for="Type" class="text-xs text-red-600"></span>
+                                    </div>
+
+                                    <div>
+                                        <label asp-for="DueDate" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Срок исполнения</label>
+                                        <input asp-for="DueDate" id="field-duedate" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600 disabled:opacity-100 disabled:text-slate-700" />
+                                        <span asp-validation-for="DueDate" class="text-xs text-red-600"></span>
+                                    </div>
                                 </div>
 
                                 <div>
-                                    <label asp-for="Type" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Тип</label>
-                                    <select asp-for="Type" id="field-type" asp-items="Html.GetEnumSelectList<DocumentType>()" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600">
-                                        <option value="">Выберите тип</option>
-                                    </select>
-                                    <span asp-validation-for="Type" class="text-xs text-red-600"></span>
+                                    <label asp-for="Description" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Описание</label>
+                                    <textarea asp-for="Description" id="field-description" rows="4" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600 disabled:opacity-100 disabled:text-slate-700"></textarea>
+                                    <span asp-validation-for="Description" class="text-xs text-red-600"></span>
                                 </div>
 
-                                <div>
-                                    <label asp-for="DueDate" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Срок исполнения</label>
-                                    <input asp-for="DueDate" id="field-duedate" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600" />
-                                    <span asp-validation-for="DueDate" class="text-xs text-red-600"></span>
-                                </div>
-                            </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                    <div>
+                                        <label asp-for="Priority" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Приоритет</label>
+                                        <select asp-for="Priority" id="field-priority" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600 disabled:opacity-100 disabled:text-slate-700">
+                                            <option value="">Не выбран</option>
+                                            <option value="1">Низкий</option>
+                                            <option value="2">Средний</option>
+                                            <option value="3">Высокий</option>
+                                        </select>
+                                        <span asp-validation-for="Priority" class="text-xs text-red-600"></span>
+                                    </div>
 
-                            <div>
-                                <label asp-for="Description" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Описание</label>
-                                <textarea asp-for="Description" id="field-description" rows="4" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600"></textarea>
-                                <span asp-validation-for="Description" class="text-xs text-red-600"></span>
-                            </div>
-
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                <div>
-                                    <label asp-for="Priority" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Приоритет</label>
-                                    <select asp-for="Priority" id="field-priority" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600">
-                                        <option value="">Не выбран</option>
-                                        <option value="1">Низкий</option>
-                                        <option value="2">Средний</option>
-                                        <option value="3">Высокий</option>
-                                    </select>
-                                    <span asp-validation-for="Priority" class="text-xs text-red-600"></span>
+                                    <div>
+                                        <label asp-for="Tags" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Теги</label>
+                                        <input asp-for="Tags" id="field-tags" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600 disabled:opacity-100 disabled:text-slate-700" placeholder="Например: финансы, договор, согласование" />
+                                        <span asp-validation-for="Tags" class="text-xs text-red-600"></span>
+                                    </div>
                                 </div>
-
-                                <div>
-                                    <label asp-for="Tags" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Теги</label>
-                                    <input asp-for="Tags" id="field-tags" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600" placeholder="Например: финансы, договор, согласование" />
-                                    <span asp-validation-for="Tags" class="text-xs text-red-600"></span>
-                                </div>
-                            </div>
+                            </fieldset>
                         </section>
                     </form>
                 </div>
 
                 <div class="lg:col-span-5 xl:col-span-4 space-y-6">
+                    @if (hasUserActions)
+                    {
+                        <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                            <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+                                <div class="text-sm font-semibold text-slate-700">Действия по документу</div>
+                            </div>
+                            <div class="p-4 space-y-3">
+                                @if (Model.CanApprove)
+                                {
+                                    <form method="post" action="/Documents/@Model.Id/review">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="Decision" value="approve" />
+                                        <button type="submit" class="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700">
+                                            Утвердить документ
+                                        </button>
+                                    </form>
+                                }
+
+                                @if (Model.CanRework)
+                                {
+                                    <form method="post" action="/Documents/@Model.Id/review" class="space-y-3">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="Decision" value="rework" />
+                                        <label class="block text-xs uppercase tracking-wider font-bold text-slate-500">Комментарий для доработки</label>
+                                        <textarea name="Comment" rows="3" class="w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5" placeholder="Укажите, что нужно исправить"></textarea>
+                                        <button type="submit" class="w-full rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-700">
+                                            Вернуть на доработку
+                                        </button>
+                                    </form>
+                                }
+
+                                @if (Model.CanStartWork)
+                                {
+                                    <form method="post" action="/Documents/@Model.Id/start-work">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="returnToEdit" value="true" />
+                                        <button type="submit" class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
+                                            Начать работу
+                                        </button>
+                                    </form>
+                                }
+
+                                @if (Model.CanComplete)
+                                {
+                                    <form method="post" action="/Documents/@Model.Id/complete-work">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="returnToEdit" value="true" />
+                                        <button type="submit" class="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700">
+                                            Завершить исполнение
+                                        </button>
+                                    </form>
+                                }
+                            </div>
+                        </section>
+                    }
+
+                    @if (hasExecutionBlock)
+                    {
+                        <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                            <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+                                <div class="text-sm font-semibold text-slate-700">Исполнение документа</div>
+                            </div>
+                            <div class="p-4 space-y-4">
+                                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                    <div class="rounded-xl bg-slate-50 px-4 py-3">
+                                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Дата начала</div>
+                                        <div class="mt-1 font-medium text-slate-900">@(Model.ExecutionStartedAt.HasValue ? Model.ExecutionStartedAt.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm") : "Еще не начато")</div>
+                                    </div>
+                                    <div class="rounded-xl bg-slate-50 px-4 py-3">
+                                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Дата завершения</div>
+                                        <div class="mt-1 font-medium text-slate-900">@(Model.ExecutionCompletedAt.HasValue ? Model.ExecutionCompletedAt.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm") : "Еще не завершено")</div>
+                                    </div>
+                                </div>
+
+                                @if (Model.CanSaveExecutionProgress)
+                                {
+                                    <form method="post" action="/Documents/@Model.Id/execution" class="space-y-4">
+                                        @Html.AntiForgeryToken()
+                                        <div>
+                                            <label asp-for="ExecutionComment" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Комментарий исполнителя</label>
+                                            <textarea asp-for="ExecutionComment" rows="4" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5" placeholder="Кратко опишите, что уже сделано по документу"></textarea>
+                                        </div>
+                                        <div>
+                                            <label asp-for="ExecutionResult" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Результат исполнения</label>
+                                            <select asp-for="ExecutionResult" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5">
+                                                <option value="">Выберите результат</option>
+                                                @foreach (var option in Model.ExecutionResultOptions)
+                                                {
+                                                    <option value="@option">@option</option>
+                                                }
+                                            </select>
+                                        </div>
+                                        <button type="submit" class="w-full rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900">
+                                            Сохранить ход исполнения
+                                        </button>
+                                    </form>
+
+                                    <form method="post" action="/Documents/@Model.Id/execution-file" enctype="multipart/form-data" class="space-y-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+                                        @Html.AntiForgeryToken()
+                                        <div>
+                                            <label for="executionFile" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Итоговый файл</label>
+                                            <input id="executionFile" name="executionFile" type="file" accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5" />
+                                            <div class="mt-1 text-xs text-slate-500">Поддерживаются PDF, DOCX, XLSX, PNG и JPEG до 25MB.</div>
+                                        </div>
+                                        <button type="submit" class="w-full rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 ring-1 ring-slate-300 hover:bg-slate-100">
+                                            Загрузить итоговый файл
+                                        </button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                                        Блок исполнения доступен для просмотра. Изменять его может только назначенный исполнитель во время работы над документом.
+                                    </div>
+                                }
+
+                                <div class="rounded-xl bg-slate-50 px-4 py-3">
+                                    <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Текущий результат</div>
+                                    <div class="mt-1 font-medium text-slate-900">@(string.IsNullOrWhiteSpace(Model.ExecutionResult) ? "Пока не выбран" : Model.ExecutionResult)</div>
+                                </div>
+
+                                <div class="rounded-xl bg-slate-50 px-4 py-3">
+                                    <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Комментарий исполнителя</div>
+                                    <div class="mt-1 text-sm leading-6 text-slate-700">@(string.IsNullOrWhiteSpace(Model.ExecutionComment) ? "Комментарий пока не добавлен." : Model.ExecutionComment)</div>
+                                </div>
+
+                                @if (!string.IsNullOrWhiteSpace(Model.ExecutionFileUrl))
+                                {
+                                    <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                                        <div class="text-xs font-bold uppercase tracking-wider text-blue-700">Итоговый файл</div>
+                                        <div class="mt-2 flex items-center justify-between gap-3">
+                                            <div class="text-sm text-slate-700">@(string.IsNullOrWhiteSpace(Model.ExecutionFileName) ? "Файл исполнения" : Model.ExecutionFileName)</div>
+                                            <a href="@Model.ExecutionFileUrl" target="_blank" class="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100">Открыть</a>
+                                        </div>
+                                        <div class="mt-2 text-xs text-blue-700 break-all">Путь в БД: @Model.ExecutionFileUrl</div>
+                                        @if (string.Equals(Model.ExecutionFileKind, "image", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <div class="mt-3 rounded-lg border border-blue-100 bg-white p-3">
+                                                <img class="max-h-72 max-w-full object-contain rounded" src="@Model.ExecutionFileUrl" alt="Превью итогового файла" />
+                                            </div>
+                                        }
+                                        else if (string.Equals(Model.ExecutionFileKind, "pdf", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <div class="mt-3 rounded-lg border border-blue-100 bg-white p-2">
+                                                <iframe class="h-72 w-full rounded" src="@Model.ExecutionFileUrl"></iframe>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </section>
+                    }
+
                     <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                         <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
                             <div class="text-sm font-semibold text-slate-700">Назначение исполнителя</div>
@@ -171,7 +370,7 @@
                                     <button type="submit" class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Сохранить назначение</button>
                                 </form>
                             }
-                            else
+                            else if (canAssignExecutor)
                             {
                                 <div class="text-sm text-slate-500">Назначение доступно после утверждения документа.</div>
                             }
@@ -180,26 +379,34 @@
 
                     <section class="sticky top-[88px] bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                         <div class="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                            <div class="text-sm font-semibold text-slate-700">Превью документа</div>
-                            @if (!string.IsNullOrWhiteSpace(Model.FileUrl))
+                            <div>
+                                <div class="text-sm font-semibold text-slate-700">@previewTitle</div>
+                                @if (!hasSourceFile && hasExecutionFile)
+                                {
+                                    <div class="mt-1 text-xs text-slate-500">Исходный файл не прикреплен, поэтому показан файл результата исполнения.</div>
+                                }
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(previewUrl))
                             {
-                                <a class="text-xs text-slate-500 hover:text-blue-600" href="@Model.FileUrl" target="_blank">Открыть</a>
+                                <a class="text-xs text-slate-500 hover:text-blue-600" href="@previewUrl" target="_blank">Открыть</a>
                             }
                         </div>
                         <div class="bg-slate-100 p-3">
-                            @if (string.IsNullOrWhiteSpace(Model.FileUrl))
+                            @if (string.IsNullOrWhiteSpace(previewUrl))
                             {
-                                <div class="h-[520px] flex items-center justify-center text-sm text-slate-500">Файл не загружен</div>
-                            }
-                            else if (string.Equals(Model.FileKind, "image", StringComparison.OrdinalIgnoreCase))
-                            {
-                                <div class="h-[520px] rounded-lg border border-slate-200 bg-white flex items-center justify-center p-3 overflow-auto">
-                                    <img class="max-h-full max-w-full object-contain rounded" src="@Model.FileUrl" alt="Превью документа" />
+                                <div class="h-[520px] flex items-center justify-center text-sm text-slate-500 text-center px-6">
+                                    Документ создан без исходного файла. Для документов по шаблону основным содержанием является карточка слева; файл появится здесь после загрузки исходного документа или итогового файла исполнения.
                                 </div>
                             }
-                            else if (string.Equals(Model.FileKind, "pdf", StringComparison.OrdinalIgnoreCase))
+                            else if (string.Equals(previewKind, "image", StringComparison.OrdinalIgnoreCase))
                             {
-                                <iframe class="w-full h-[520px] rounded-lg border border-slate-200 bg-white" src="@Model.FileUrl"></iframe>
+                                <div class="h-[520px] rounded-lg border border-slate-200 bg-white flex items-center justify-center p-3 overflow-auto">
+                                    <img class="max-h-full max-w-full object-contain rounded" src="@previewUrl" alt="Превью документа" />
+                                </div>
+                            }
+                            else if (string.Equals(previewKind, "pdf", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <iframe class="w-full h-[520px] rounded-lg border border-slate-200 bg-white" src="@previewUrl"></iframe>
                             }
                             else
                             {
