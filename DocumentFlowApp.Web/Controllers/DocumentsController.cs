@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -327,6 +327,49 @@ public class DocumentsController : Controller
         {
             _logger.LogWarning(ex, "Не удалось сохранить ход исполнения документа {DocumentId}", id);
             TempData["ErrorMessage"] = "Не удалось сохранить ход исполнения. Повторите попытку позже.";
+        }
+
+        return RedirectToAction(nameof(Edit), new { id });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Policy = AuthorizationPolicies.EmployeeOrHigher)]
+    [Route("Documents/{id:int}/execution-print-file")]
+    public async Task<IActionResult> GenerateExecutionPrintFile(int id, CancellationToken cancellationToken)
+    {
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId is null)
+            return RedirectToAction("Login", "Account");
+
+        var document = await _documentService.GetDocumentByIdAsync(id);
+        if (document is null)
+            return NotFound();
+
+        if (document.UserId != currentUserId.Value)
+            return Forbid();
+
+        var currentStatus = ParseDocumentStatus(document.Status);
+        if (currentStatus != DocumentStatus.InWork)
+        {
+            TempData["ErrorMessage"] = "Печатную форму результата можно сформировать только для документа в работе.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        try
+        {
+            var generated = await SaveGeneratedExecutionPrintFileAsync(document, cancellationToken);
+            document.ExecutionFilePath = generated.FilePath;
+            document.ExecutionFileName = generated.FileName;
+            document.ExecutionStartedAt ??= DateTime.UtcNow;
+
+            await _documentService.UpdateDocumentAsync(document);
+            TempData["SuccessMessage"] = "Печатная форма сохранена как итоговый файл исполнения.";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось сформировать итоговый файл исполнения для документа {DocumentId}", id);
+            TempData["ErrorMessage"] = "Не удалось сформировать печатную форму. Повторите попытку позже.";
         }
 
         return RedirectToAction(nameof(Edit), new { id });
@@ -1182,6 +1225,172 @@ public class DocumentsController : Controller
         return ($"/Documents/File/{fileName}", file.Length, await ComputeSha256Async(physicalPath, cancellationToken));
     }
 
+    private async Task<(string FilePath, string FileName)> SaveGeneratedExecutionPrintFileAsync(
+        Document document,
+        CancellationToken cancellationToken)
+    {
+        var uploadsRoot = GetUploadsRootPath();
+        Directory.CreateDirectory(uploadsRoot);
+
+        var fileName = $"execution-print-{document.DocumentId}-{DateTime.UtcNow:yyyyMMddHHmmss}.html";
+        var physicalPath = Path.Combine(uploadsRoot, fileName);
+        var html = await BuildGeneratedExecutionPrintHtmlAsync(document, cancellationToken);
+
+        await System.IO.File.WriteAllTextAsync(physicalPath, html, Encoding.UTF8, cancellationToken);
+        return ($"/Documents/File/{fileName}", $"Печатная форма документа #{document.DocumentId}.html");
+    }
+
+    private async Task<string> BuildGeneratedExecutionPrintHtmlAsync(Document document, CancellationToken cancellationToken)
+    {
+        var type = TryParseEnum<DocumentType>(document.DocumentType) ?? DocumentType.Other;
+        var status = ParseDocumentStatus(document.Status);
+        var executor = document.UserId.HasValue
+            ? await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == document.UserId.Value, cancellationToken)
+            : null;
+        var executorName = executor is null
+            ? "Не назначен"
+            : string.IsNullOrWhiteSpace($"{executor.FirstName} {executor.LastName}".Trim())
+                ? executor.UserName
+                : $"{executor.FirstName} {executor.LastName}".Trim();
+
+        string Enc(string? value) => System.Net.WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(value) ? "Не указано" : value);
+        string Field(string label, string fallback = "Не указано") => Enc(GetTemplateFieldValue(document.ExtractedText, label, fallback));
+        string DateOnly(DateTime? value) => value.HasValue ? value.Value.ToLocalTime().ToString("dd.MM.yyyy") : "Не указано";
+        string DateTimeLabel(DateTime? value) => value.HasValue ? value.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm") : "Не указано";
+
+        var title = Enc(document.Title);
+        var description = Enc(document.ExtractedText);
+        var statusLabel = Enc(GetDocumentStatusLabel(status));
+        var typeLabel = Enc(GetDocumentTypeLabel(type));
+        var generatedAt = DateTime.Now.ToString("dd.MM.yyyy HH:mm");
+        var body = type switch
+        {
+            DocumentType.Contract => $"""
+                <div class="doc-title">Договор № {Field("Номер договора", document.DocumentId.ToString())}</div>
+                <div class="doc-subtitle">{Field("Предмет договора", document.Title ?? "Предмет договора")}</div>
+                <div class="row"><span>г. Санкт-Петербург</span><span>{Field("Дата договора", DateOnly(document.DueDate))}</span></div>
+                <p>ООО «Документооборот», именуемое в дальнейшем «Сторона 1», и {Field("Контрагент", "Контрагент не указан")}, именуемое в дальнейшем «Сторона 2», заключили настоящий договор.</p>
+                <h2>1. Предмет договора</h2>
+                <p>{Field("Предмет договора", document.Title ?? "Не указано")}</p>
+                <h2>2. Основные условия</h2>
+                <div class="grid"><div><b>Контрагент</b><br>{Field("Контрагент")}</div><div><b>Сумма</b><br>{Field("Сумма договора")}</div><div><b>Срок</b><br>{DateOnly(document.DueDate)}</div><div><b>Статус</b><br>{statusLabel}</div></div>
+                """,
+            DocumentType.Invoice => $"""
+                <div class="doc-title">Счет на оплату № {Field("Номер счета", document.DocumentId.ToString())}</div>
+                <div class="row"><span>Поставщик: {Field("Поставщик", "ООО «Документооборот»")}</span><span>{Field("Дата счета", DateOnly(document.DueDate))}</span></div>
+                <table><thead><tr><th>№</th><th>Наименование</th><th>Кол-во</th><th>Сумма</th></tr></thead><tbody><tr><td>1</td><td>{title}</td><td>1</td><td>{Field("Сумма")}</td></tr></tbody><tfoot><tr><th colspan="3">Итого</th><th>{Field("Сумма")}</th></tr></tfoot></table>
+                """,
+            DocumentType.Application => $"""
+                <div class="recipient">Руководителю организации<br>от {Field("ФИО сотрудника", "сотрудника")}</div>
+                <div class="doc-title">Заявление</div>
+                <div class="doc-subtitle">{Field("Тема обращения", document.Title ?? "Тема обращения")}</div>
+                <p>{Field("Текст заявления", document.ExtractedText ?? "Текст заявления не заполнен.")}</p>
+                """,
+            DocumentType.Order => $"""
+                <div class="doc-title">Приказ № {document.DocumentId}</div>
+                <div class="doc-subtitle">{title}</div>
+                <div class="row"><span>г. Санкт-Петербург</span><span>{DateOnly(document.DueDate)}</span></div>
+                <h2>Приказываю</h2>
+                <p>{description}</p>
+                """,
+            DocumentType.Act => $"""
+                <div class="doc-title">Акт № {document.DocumentId}</div>
+                <div class="doc-subtitle">{title}</div>
+                <div class="row"><span>г. Санкт-Петербург</span><span>{DateOnly(document.DueDate)}</span></div>
+                <h2>Содержание акта</h2>
+                <p>{description}</p>
+                """,
+            _ => $"""
+                <div class="doc-title">{typeLabel} № {document.DocumentId}</div>
+                <div class="doc-subtitle">{title}</div>
+                <p>{description}</p>
+                """
+        };
+
+        var style = """
+            body { margin: 0; background: #eef2f7; color: #111827; font-family: "Times New Roman", serif; }
+            .page { width: 210mm; min-height: 297mm; margin: 18px auto; background: #fff; padding: 18mm 20mm; box-sizing: border-box; box-shadow: 0 12px 32px rgba(15, 23, 42, .16); }
+            .org { display: grid; grid-template-columns: 1fr auto; gap: 24px; border-bottom: 2px solid #111827; padding-bottom: 12px; margin-bottom: 22px; }
+            .org-name { font-size: 18px; font-weight: 700; text-transform: uppercase; }
+            .org-meta { margin-top: 5px; font-size: 12px; line-height: 1.45; color: #374151; }
+            .stamp { width: 84px; height: 84px; border: 2px solid #9ca3af; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 11px; text-align: center; transform: rotate(-8deg); }
+            .doc-title { margin: 26px 0 10px; text-align: center; font-size: 20px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+            .doc-subtitle { text-align: center; font-size: 15px; font-weight: 700; margin-bottom: 18px; }
+            .row { display: flex; justify-content: space-between; gap: 24px; margin: 8px 0 18px; font-size: 14px; }
+            .recipient { text-align: right; line-height: 1.5; margin-bottom: 28px; }
+            h2 { margin: 22px 0 8px; font-size: 14px; text-transform: uppercase; border-bottom: 1px solid #d1d5db; padding-bottom: 4px; }
+            p { font-size: 14px; line-height: 1.55; text-align: justify; white-space: pre-wrap; overflow-wrap: anywhere; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+            .grid > div { border: 1px solid #d1d5db; padding: 8px 10px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+            th, td { border: 1px solid #111827; padding: 8px; vertical-align: top; }
+            th { background: #f3f4f6; }
+            .signatures { margin-top: 34px; display: grid; grid-template-columns: 1fr 1fr; gap: 42px; }
+            .line { border-bottom: 1px solid #111827; height: 34px; margin-top: 10px; }
+            .hint { margin-top: 4px; color: #6b7280; font-size: 11px; font-family: Arial, sans-serif; text-align: center; }
+            .footer { margin-top: 28px; padding-top: 8px; border-top: 1px solid #d1d5db; color: #6b7280; font-size: 11px; font-family: Arial, sans-serif; }
+            @media print { body { background: #fff; } .page { margin: 0; box-shadow: none; } }
+            """;
+
+        return $"""
+            <!DOCTYPE html>
+            <html lang="ru">
+            <head>
+                <meta charset="utf-8">
+                <title>Итоговый файл исполнения #{document.DocumentId}</title>
+                <style>{style}</style>
+            </head>
+            <body>
+                <main class="page">
+                    <header class="org">
+                        <div>
+                            <div class="org-name">ООО «Документооборот»</div>
+                            <div class="org-meta">190000, г. Санкт-Петербург, Невский проспект, д. 1<br>ИНН 7800000000 / КПП 780001001<br>Электронная система документационного обеспечения управления</div>
+                        </div>
+                        <div class="stamp">Место<br>печати</div>
+                    </header>
+                    {body}
+                    <h2>Служебная информация</h2>
+                    <div class="grid">
+                        <div><b>Номер карточки</b><br>{document.DocumentId}</div>
+                        <div><b>Статус</b><br>{statusLabel}</div>
+                        <div><b>Исполнитель</b><br>{Enc(executorName)}</div>
+                        <div><b>Результат</b><br>{Enc(document.ExecutionResult)}</div>
+                        <div><b>Начало исполнения</b><br>{DateTimeLabel(document.ExecutionStartedAt)}</div>
+                        <div><b>Завершение исполнения</b><br>{DateTimeLabel(document.ExecutionCompletedAt)}</div>
+                    </div>
+                    <h2>Комментарий исполнителя</h2>
+                    <p>{Enc(document.ExecutionComment)}</p>
+                    <section class="signatures">
+                        <div><strong>Ответственный</strong><div class="line"></div><div class="hint">подпись / расшифровка</div></div>
+                        <div><strong>Дата</strong><div class="line"></div><div class="hint">дд.мм.гггг</div></div>
+                    </section>
+                    <div class="footer">Файл сформирован автоматически из электронной карточки документа #{document.DocumentId} в DocManager. Дата формирования: {generatedAt}.</div>
+                </main>
+            </body>
+            </html>
+            """;
+    }
+
+    private static string GetTemplateFieldValue(string? text, string label, string fallback = "Не указано")
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return fallback;
+
+        var prefix = $"- {label}:";
+        foreach (var line in text.Split(["\r\n", "\n"], StringSplitOptions.None))
+        {
+            var trimmed = line.Trim();
+            if (!trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var value = trimmed[prefix.Length..].Trim();
+            return string.IsNullOrWhiteSpace(value) ? fallback : value;
+        }
+
+        return fallback;
+    }
+
     private static bool IsAllowedPdf(IFormFile file)
     {
         var ext = Path.GetExtension(file.FileName);
@@ -1475,6 +1684,10 @@ public class DocumentsController : Controller
             string.Equals(ext, ".webp", StringComparison.OrdinalIgnoreCase))
             return "image";
 
+        if (string.Equals(ext, ".html", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(ext, ".htm", StringComparison.OrdinalIgnoreCase))
+            return "html";
+
         return "other";
     }
 
@@ -1486,6 +1699,7 @@ public class DocumentsController : Controller
             ".pdf" => "application/pdf",
             ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".html" or ".htm" => "text/html; charset=utf-8",
             ".jpg" or ".jpeg" => "image/jpeg",
             ".png" => "image/png",
             ".gif" => "image/gif",
