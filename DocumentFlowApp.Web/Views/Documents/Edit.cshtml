@@ -188,6 +188,37 @@
                                 </div>
                             </fieldset>
                         </section>
+
+                        @if (Model.TemplateFields.Count > 0)
+                        {
+                            <section class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                                <div class="flex items-start justify-between gap-4">
+                                    <div>
+                                        <h2 class="text-sm font-bold uppercase tracking-widest text-slate-600">Данные шаблона</h2>
+                                        <p class="mt-1 text-sm text-slate-500">
+                                            @(string.IsNullOrWhiteSpace(Model.TemplateName) ? "Поля документа" : Model.TemplateName)
+                                        </p>
+                                    </div>
+                                    <span class="rounded-lg bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">Только просмотр</span>
+                                </div>
+
+                                <div class="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    @foreach (var field in Model.TemplateFields)
+                                    {
+                                        <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                            <div class="text-xs font-bold uppercase tracking-wider text-slate-500">
+                                                @field.Label
+                                                @if (field.Required)
+                                                {
+                                                    <span class="text-red-500">*</span>
+                                                }
+                                            </div>
+                                            <div class="mt-1 text-sm font-medium text-slate-900 whitespace-pre-wrap break-words">@field.Value</div>
+                                        </div>
+                                    }
+                                </div>
+                            </section>
+                        }
                     </form>
                 </div>
 
@@ -265,6 +296,19 @@
                                         <div class="mt-1 font-medium text-slate-900">@(Model.ExecutionCompletedAt.HasValue ? Model.ExecutionCompletedAt.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm") : "Еще не завершено")</div>
                                     </div>
                                 </div>
+
+                                @if (Model.ExecutionHintItems.Count > 0)
+                                {
+                                    <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                                        <div class="text-xs font-bold uppercase tracking-wider text-blue-700">@Model.ExecutionHintTitle</div>
+                                        <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-blue-900">
+                                            @foreach (var item in Model.ExecutionHintItems)
+                                            {
+                                                <li>@item</li>
+                                            }
+                                        </ul>
+                                    </div>
+                                }
 
                                 @if (Model.CanSaveExecutionProgress)
                                 {
@@ -389,6 +433,35 @@
                             else if (canAssignExecutor)
                             {
                                 <div class="text-sm text-slate-500">Назначение доступно после утверждения документа.</div>
+                            }
+                        </div>
+                    </section>
+
+                    <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+                            <div class="text-sm font-semibold text-slate-700">Номенклатура дела</div>
+                        </div>
+                        <div class="p-4 space-y-4">
+                            <div class="rounded-xl bg-slate-50 px-4 py-3">
+                                <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Текущее дело</div>
+                                <div class="mt-1 font-medium text-slate-900">@(string.IsNullOrWhiteSpace(Model.NomenclatureCaseLabel) ? "Не привязано" : Model.NomenclatureCaseLabel)</div>
+                            </div>
+
+                            @if (canAssignExecutor)
+                            {
+                                <form method="post" action="/Documents/@Model.Id/nomenclature" class="space-y-3">
+                                    @Html.AntiForgeryToken()
+                                    <label class="block text-xs uppercase tracking-wider font-bold text-slate-500">Привязать к делу номенклатуры</label>
+                                    <select name="nomenclatureCaseId" class="w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5">
+                                        <option value="">Не выбрано</option>
+                                        @foreach (var item in Model.NomenclatureCaseOptions)
+                                        {
+                                            <option value="@item.Id" selected="@(Model.NomenclatureCaseId == item.Id)">@item.Label</option>
+                                        }
+                                    </select>
+                                    <div class="text-xs text-slate-500">Перед архивированием документ должен быть привязан к делу номенклатуры.</div>
+                                    <button type="submit" class="w-full rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900">Сохранить номенклатуру</button>
+                                </form>
                             }
                         </div>
                     </section>

@@ -36,6 +36,10 @@ build_metadata.AdditionalFiles.CssScope =
 build_metadata.AdditionalFiles.TargetPath = Vmlld3NcQWRtaW5cSW5kZXguY3NodG1s
 build_metadata.AdditionalFiles.CssScope = 
 
+[D:/DocumentApp/DocumentFlowApp/DocumentFlowApp.Web/Views/Admin/Nomenclature.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcQWRtaW5cTm9tZW5jbGF0dXJlLmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
 [D:/DocumentApp/DocumentFlowApp/DocumentFlowApp.Web/Views/Admin/Section.cshtml]
 build_metadata.AdditionalFiles.TargetPath = Vmlld3NcQWRtaW5cU2VjdGlvbi5jc2h0bWw=
 build_metadata.AdditionalFiles.CssScope = 

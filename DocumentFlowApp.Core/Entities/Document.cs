@@ -15,6 +15,9 @@ public class Document
     public int? TemplateId { get; set; }
     public Template? Template { get; set; }
 
+    public int? NomenclatureCaseId { get; set; }
+    public NomenclatureCase? NomenclatureCase { get; set; }
+
     public string? DocumentType { get; set; }
     public string? Status { get; set; }
     public DateTime CreatedDate { get; set; }

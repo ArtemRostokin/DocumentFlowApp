@@ -109,6 +109,9 @@ namespace DocumentFlowApp.Services
             if (RequiresComment(currentStatus, newStatus) && string.IsNullOrWhiteSpace(transitionComment))
                 throw new InvalidOperationException("Комментарий обязателен при возврате документа на предыдущий этап.");
 
+            if (newStatus == DocumentStatus.Archived && document.NomenclatureCaseId is null)
+                throw new InvalidOperationException("Перед архивированием документ должен быть привязан к делу номенклатуры.");
+
             document.Status = newStatus.ToString();
             document.UpdatedDate = DateTime.UtcNow;
 

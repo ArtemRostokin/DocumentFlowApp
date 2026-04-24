@@ -118,6 +118,9 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                     b.Property<string>("FileHash")
                         .HasColumnType("text");
 
+                    b.Property<int?>("NomenclatureCaseId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("FilePath")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
@@ -159,6 +162,9 @@ namespace DocumentFlowApp.Infrastructure.Migrations
 
                     b.HasIndex("CreatedDate")
                         .HasDatabaseName("IX_Documents_CreatedDate");
+
+                    b.HasIndex("NomenclatureCaseId")
+                        .HasDatabaseName("IX_Documents_NomenclatureCaseId");
 
                     b.HasIndex("DocumentType")
                         .HasDatabaseName("IX_Documents_Type");
@@ -244,6 +250,87 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                     b.HasIndex("ModelId");
 
                     b.ToTable("DocumentAiMetadata");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.NomenclatureCase", b =>
+                {
+                    b.Property<int>("NomenclatureCaseId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("NomenclatureCaseId"));
+
+                    b.Property<string>("Department")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<string>("Index")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("LegalBasis")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("RetentionPeriod")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("NomenclatureCaseId");
+
+                    b.HasIndex("Index")
+                        .IsUnique();
+
+                    b.ToTable("NomenclatureCases", t =>
+                        {
+                            t.HasComment("Дела номенклатуры");
+                        });
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.NomenclatureRule", b =>
+                {
+                    b.Property<int>("NomenclatureRuleId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("NomenclatureRuleId"));
+
+                    b.Property<string>("Department")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<string>("DocumentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("NomenclatureCaseId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("NomenclatureRuleId");
+
+                    b.HasIndex("NomenclatureCaseId");
+
+                    b.ToTable("NomenclatureRules", t =>
+                        {
+                            t.HasComment("Правила автопривязки дел номенклатуры");
+                        });
                 });
 
             modelBuilder.Entity("DocumentFlowApp.Core.Entities.DocumentRelation", b =>
@@ -548,6 +635,11 @@ namespace DocumentFlowApp.Infrastructure.Migrations
 
             modelBuilder.Entity("DocumentFlowApp.Core.Entities.Document", b =>
                 {
+                    b.HasOne("DocumentFlowApp.Core.Entities.NomenclatureCase", "NomenclatureCase")
+                        .WithMany("Documents")
+                        .HasForeignKey("NomenclatureCaseId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("DocumentFlowApp.Core.Entities.Template", "Template")
                         .WithMany("Documents")
                         .HasForeignKey("TemplateId");
@@ -555,6 +647,8 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                     b.HasOne("DocumentFlowApp.Core.Entities.User", "User")
                         .WithMany("Documents")
                         .HasForeignKey("UserId");
+
+                    b.Navigation("NomenclatureCase");
 
                     b.Navigation("Template");
 
@@ -663,6 +757,17 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.NomenclatureRule", b =>
+                {
+                    b.HasOne("DocumentFlowApp.Core.Entities.NomenclatureCase", "NomenclatureCase")
+                        .WithMany("Rules")
+                        .HasForeignKey("NomenclatureCaseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("NomenclatureCase");
+                });
+
             modelBuilder.Entity("DocumentFlowApp.Core.Entities.User", b =>
                 {
                     b.HasOne("DocumentFlowApp.Core.Entities.Role", "Role")
@@ -689,11 +794,20 @@ namespace DocumentFlowApp.Infrastructure.Migrations
 
                     b.Navigation("AiMetadata");
 
+                    b.Navigation("NomenclatureCase");
+
                     b.Navigation("SourceRelations");
 
                     b.Navigation("Statistics");
 
                     b.Navigation("TargetRelations");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.NomenclatureCase", b =>
+                {
+                    b.Navigation("Documents");
+
+                    b.Navigation("Rules");
                 });
 
             modelBuilder.Entity("DocumentFlowApp.Core.Entities.Permission", b =>

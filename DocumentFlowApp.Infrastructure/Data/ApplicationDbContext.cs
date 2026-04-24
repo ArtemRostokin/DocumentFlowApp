@@ -30,6 +30,8 @@ namespace DocumentFlowApp.Infrastructure.Data
         public DbSet<RolePermission> RolePermissions { get; set; } = null!;
         public DbSet<User> Users { get; set; } = null!;
         public DbSet<Template> Templates { get; set; } = null!;
+        public DbSet<NomenclatureCase> NomenclatureCases { get; set; } = null!;
+        public DbSet<NomenclatureRule> NomenclatureRules { get; set; } = null!;
         public DbSet<DocumentAiMetadata> DocumentAiMetadata { get; set; } = null!;
         public DbSet<DocumentRelation> DocumentRelations { get; set; } = null!;
         public DbSet<DocumentStatistic> DocumentStatistics { get; set; } = null!;
@@ -96,10 +98,16 @@ namespace DocumentFlowApp.Infrastructure.Data
                     .HasMaxLength(500)
                     .HasComment("Путь к файлу документа");
 
+                entity.HasOne(d => d.NomenclatureCase)
+                    .WithMany(c => c.Documents)
+                    .HasForeignKey(d => d.NomenclatureCaseId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
                 // Индексы
                 entity.HasIndex(d => d.Status).HasDatabaseName("IX_Documents_Status");
                 entity.HasIndex(d => d.DocumentType).HasDatabaseName("IX_Documents_Type");
                 entity.HasIndex(d => d.CreatedDate).HasDatabaseName("IX_Documents_CreatedDate");
+                entity.HasIndex(d => d.NomenclatureCaseId).HasDatabaseName("IX_Documents_NomenclatureCaseId");
             });
 
             // AiModel
@@ -118,6 +126,31 @@ namespace DocumentFlowApp.Infrastructure.Data
                 entity.Property(t => t.TemplateId).ValueGeneratedOnAdd();
                 entity.Property(t => t.Name).IsRequired().HasMaxLength(200);
                 entity.Property(t => t.AiSuggestedFields).HasColumnType("jsonb").HasComment("JSON предложенных полей AI");
+            });
+
+            modelBuilder.Entity<NomenclatureCase>(entity =>
+            {
+                entity.HasKey(n => n.NomenclatureCaseId);
+                entity.Property(n => n.NomenclatureCaseId).ValueGeneratedOnAdd();
+                entity.Property(n => n.Index).IsRequired().HasMaxLength(50);
+                entity.Property(n => n.Title).IsRequired().HasMaxLength(300);
+                entity.Property(n => n.RetentionPeriod).HasMaxLength(100);
+                entity.Property(n => n.LegalBasis).HasMaxLength(300);
+                entity.Property(n => n.Department).HasMaxLength(150);
+                entity.HasIndex(n => n.Index).IsUnique();
+            });
+
+            modelBuilder.Entity<NomenclatureRule>(entity =>
+            {
+                entity.HasKey(r => r.NomenclatureRuleId);
+                entity.Property(r => r.NomenclatureRuleId).ValueGeneratedOnAdd();
+                entity.Property(r => r.DocumentType).HasMaxLength(100);
+                entity.Property(r => r.Department).HasMaxLength(150);
+                entity.Property(r => r.Note).HasMaxLength(300);
+                entity.HasOne(r => r.NomenclatureCase)
+                    .WithMany(c => c.Rules)
+                    .HasForeignKey(r => r.NomenclatureCaseId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
 
             // User
@@ -249,6 +282,8 @@ namespace DocumentFlowApp.Infrastructure.Data
             modelBuilder.Entity<AiModel>().HasComment("AI модели");
             modelBuilder.Entity<Template>().HasComment("Шаблоны документов");
             modelBuilder.Entity<User>().HasComment("Пользователи системы");
+            modelBuilder.Entity<NomenclatureCase>().HasComment("Дела номенклатуры");
+            modelBuilder.Entity<NomenclatureRule>().HasComment("Правила автопривязки дел номенклатуры");
         }
     }
 }

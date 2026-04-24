@@ -190,8 +190,12 @@ public class DocumentsController : Controller
             Priority = doc.Priority,
             Tags = doc.Tags,
             Status = doc.Status ?? string.Empty,
+            NomenclatureCaseId = doc.NomenclatureCaseId,
+            NomenclatureCaseLabel = await BuildNomenclatureCaseLabelAsync(doc.NomenclatureCaseId, cancellationToken),
+            NomenclatureCaseOptions = await LoadNomenclatureCaseOptionsAsync(cancellationToken),
             FileUrl = doc.FilePath,
             FileKind = GetFileKind(doc.FilePath),
+            TemplateFields = await BuildTemplateFieldDisplayAsync(doc, cancellationToken),
             ExecutionComment = doc.ExecutionComment ?? string.Empty,
             ExecutionResult = doc.ExecutionResult,
             ExecutionStartedAt = doc.ExecutionStartedAt,
@@ -202,6 +206,10 @@ public class DocumentsController : Controller
             AiSuggestions = BuildAiSuggestions(doc),
             Assignment = await BuildAssignmentPanelAsync(doc, cancellationToken)
         };
+        model.TemplateName = model.TemplateFields.Count > 0
+            ? await GetTemplateNameAsync(doc.TemplateId, cancellationToken)
+            : null;
+        ApplyExecutionHints(model);
 
         ApplyEditAccessState(model, doc);
 
@@ -233,8 +241,12 @@ public class DocumentsController : Controller
             Priority = doc.Priority,
             Tags = doc.Tags,
             Status = doc.Status ?? string.Empty,
+            NomenclatureCaseId = doc.NomenclatureCaseId,
+            NomenclatureCaseLabel = await BuildNomenclatureCaseLabelAsync(doc.NomenclatureCaseId, cancellationToken),
+            NomenclatureCaseOptions = await LoadNomenclatureCaseOptionsAsync(cancellationToken),
             FileUrl = doc.FilePath,
             FileKind = GetFileKind(doc.FilePath),
+            TemplateFields = await BuildTemplateFieldDisplayAsync(doc, cancellationToken),
             ExecutionComment = doc.ExecutionComment ?? string.Empty,
             ExecutionResult = doc.ExecutionResult,
             ExecutionStartedAt = doc.ExecutionStartedAt,
@@ -244,6 +256,10 @@ public class DocumentsController : Controller
             ExecutionFileKind = GetFileKind(doc.ExecutionFilePath),
             Assignment = await BuildAssignmentPanelAsync(doc, cancellationToken)
         };
+        model.TemplateName = model.TemplateFields.Count > 0
+            ? await GetTemplateNameAsync(doc.TemplateId, cancellationToken)
+            : null;
+        ApplyExecutionHints(model);
 
         return View(model);
     }
@@ -273,6 +289,7 @@ public class DocumentsController : Controller
             doc.DueDate = model.DueDate;
             doc.Priority = model.Priority;
             doc.Tags = model.Tags;
+            doc.NomenclatureCaseId = model.NomenclatureCaseId;
 
             await _documentService.UpdateDocumentAsync(doc);
 
@@ -442,6 +459,46 @@ public class DocumentsController : Controller
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
+    [Route("Documents/{id:int}/nomenclature")]
+    public async Task<IActionResult> AssignNomenclature(int id, int? nomenclatureCaseId, CancellationToken cancellationToken)
+    {
+        var doc = await _documentService.GetDocumentByIdAsync(id);
+        if (doc is null)
+            return NotFound();
+
+        if (nomenclatureCaseId is not null)
+        {
+            var exists = await _dbContext.NomenclatureCases
+                .AsNoTracking()
+                .AnyAsync(x => x.NomenclatureCaseId == nomenclatureCaseId.Value && x.IsActive, cancellationToken);
+
+            if (!exists)
+            {
+                TempData["ErrorMessage"] = "Выбранное дело номенклатуры не найдено.";
+                return RedirectToAction(nameof(Edit), new { id });
+            }
+        }
+
+        try
+        {
+            doc.NomenclatureCaseId = nomenclatureCaseId;
+            await _documentService.UpdateDocumentAsync(doc);
+            TempData["SuccessMessage"] = nomenclatureCaseId is null
+                ? "Привязка к номенклатуре снята."
+                : "Номенклатура документа обновлена.";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось обновить номенклатуру для документа {DocumentId}", id);
+            TempData["ErrorMessage"] = "Не удалось сохранить номенклатуру документа.";
+        }
+
+        return RedirectToAction(nameof(Edit), new { id });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
     [Route("Documents/{id:int}/assign")]
     public async Task<IActionResult> AssignExecutor(int id, int assignedUserId, CancellationToken cancellationToken)
     {
@@ -552,7 +609,7 @@ public class DocumentsController : Controller
                 var classifiedType = ClassifyIncomingDocument(file.FileName);
                 var title = Path.GetFileNameWithoutExtension(file.FileName);
 
-                await _documentService.CreateDocumentAsync(new CreateDocumentRequest
+                var created = await _documentService.CreateDocumentAsync(new CreateDocumentRequest
                 {
                     Title = string.IsNullOrWhiteSpace(title) ? $"Входящий документ {DateTime.UtcNow:yyyyMMdd-HHmmss}" : title,
                     Description = $"Загружено из внешнего источника. Предварительная AI-классификация: {GetDocumentTypeLabel(classifiedType)}.",
@@ -563,6 +620,8 @@ public class DocumentsController : Controller
                     FileSize = stored.FileSize,
                     FileHash = stored.FileHash
                 });
+
+                await TryAutoAssignNomenclatureAsync(created, cancellationToken);
 
                 createdCount++;
             }
@@ -635,7 +694,7 @@ public class DocumentsController : Controller
                 fileHash = stored.FileHash;
             }
 
-            await _documentService.CreateDocumentAsync(new CreateDocumentRequest
+            var created = await _documentService.CreateDocumentAsync(new CreateDocumentRequest
             {
                 Title = model.Title,
                 Description = BuildTemplateAwareDescription(model.Description, selectedTemplate, model.TemplateFieldValues),
@@ -648,6 +707,8 @@ public class DocumentsController : Controller
                 FileSize = fileSize,
                 FileHash = fileHash
             });
+
+            await TryAutoAssignNomenclatureAsync(created, cancellationToken);
 
             TempData["SuccessMessage"] = "Документ успешно создан.";
             return RedirectToAction("Index", "Home");
@@ -949,6 +1010,149 @@ public class DocumentsController : Controller
             AssignedUserId = document.UserId,
             AssignedUserName = assignedExecutor?.DisplayName,
             Executors = executors
+        };
+    }
+
+    private async Task<IReadOnlyList<NomenclatureCaseOptionViewModel>> LoadNomenclatureCaseOptionsAsync(CancellationToken cancellationToken)
+    {
+        return await _dbContext.NomenclatureCases
+            .AsNoTracking()
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.Index)
+            .Select(x => new NomenclatureCaseOptionViewModel
+            {
+                Id = x.NomenclatureCaseId,
+                Label = $"{x.Index} - {x.Title}"
+            })
+            .ToListAsync(cancellationToken);
+    }
+
+    private async Task<string?> BuildNomenclatureCaseLabelAsync(int? nomenclatureCaseId, CancellationToken cancellationToken)
+    {
+        if (nomenclatureCaseId is null)
+            return null;
+
+        var item = await _dbContext.NomenclatureCases
+            .AsNoTracking()
+            .Where(x => x.NomenclatureCaseId == nomenclatureCaseId.Value)
+            .Select(x => new { x.Index, x.Title })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return item is null ? null : $"{item.Index} - {item.Title}";
+    }
+
+    private async Task TryAutoAssignNomenclatureAsync(Document document, CancellationToken cancellationToken)
+    {
+        if (document.NomenclatureCaseId is not null)
+            return;
+
+        var documentType = document.DocumentType;
+        if (string.IsNullOrWhiteSpace(documentType))
+            return;
+
+        var matchedCaseId = await _dbContext.NomenclatureRules
+            .AsNoTracking()
+            .Where(r => r.IsActive && r.NomenclatureCase != null && r.NomenclatureCase.IsActive)
+            .Where(r => r.DocumentType == documentType)
+            .OrderBy(r => r.NomenclatureRuleId)
+            .Select(r => (int?)r.NomenclatureCaseId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (matchedCaseId is null)
+            return;
+
+        document.NomenclatureCaseId = matchedCaseId.Value;
+        await _documentService.UpdateDocumentAsync(document);
+    }
+
+    private async Task<string?> GetTemplateNameAsync(int? templateId, CancellationToken cancellationToken)
+    {
+        if (templateId is null)
+            return null;
+
+        return await _dbContext.Templates
+            .AsNoTracking()
+            .Where(t => t.TemplateId == templateId.Value)
+            .Select(t => t.Name)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<DocumentTemplateFieldDisplayViewModel>> BuildTemplateFieldDisplayAsync(
+        Document document,
+        CancellationToken cancellationToken)
+    {
+        if (document.TemplateId is null)
+            return [];
+
+        var template = await _dbContext.Templates
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.TemplateId == document.TemplateId.Value, cancellationToken);
+
+        if (template is null)
+            return [];
+
+        var mappedTemplate = MapTemplate(template);
+        return mappedTemplate.Fields
+            .Select(field => new DocumentTemplateFieldDisplayViewModel
+            {
+                Label = field.Label,
+                Value = GetTemplateFieldValue(document.ExtractedText, field.Label, "Не заполнено"),
+                Required = field.Required
+            })
+            .ToList();
+    }
+
+    private static void ApplyExecutionHints(EditDocumentPageViewModel model)
+    {
+        var type = model.Type ?? DocumentType.Other;
+        model.ExecutionHintTitle = type switch
+        {
+            DocumentType.Contract => "Что проверить по договору",
+            DocumentType.Invoice => "Что проверить по счету",
+            DocumentType.Application => "Что проверить по заявлению",
+            DocumentType.Order => "Что проверить по приказу",
+            DocumentType.Act => "Что проверить по акту",
+            _ => "Что проверить при исполнении"
+        };
+
+        model.ExecutionHintItems = type switch
+        {
+            DocumentType.Contract =>
+            [
+                "Проверьте контрагента, предмет договора и сумму.",
+                "Убедитесь, что условия договора соответствуют задаче.",
+                "Зафиксируйте итог: согласовано, нужны правки или требуются материалы."
+            ],
+            DocumentType.Invoice =>
+            [
+                "Проверьте поставщика, сумму и срок оплаты.",
+                "Сверьте счет с основанием для оплаты.",
+                "При необходимости приложите платежное поручение или подтверждение."
+            ],
+            DocumentType.Application =>
+            [
+                "Проверьте заявителя, подразделение и тему обращения.",
+                "Подготовьте решение или комментарий по заявлению.",
+                "При необходимости приложите ответ или подтверждающий файл."
+            ],
+            DocumentType.Order =>
+            [
+                "Проверьте основание приказа и ответственных лиц.",
+                "Убедитесь, что поручения сформулированы однозначно.",
+                "Зафиксируйте результат ознакомления или исполнения."
+            ],
+            DocumentType.Act =>
+            [
+                "Проверьте основание акта и описанную выполненную работу.",
+                "Убедитесь, что результат можно подтвердить документально.",
+                "При необходимости приложите подписанный акт или скан."
+            ],
+            _ =>
+            [
+                "Ознакомьтесь с данными документа.",
+                "Выполните поручение по документу.",
+                "Заполните комментарий и результат исполнения."
+            ]
         };
     }
 
@@ -1654,8 +1858,15 @@ public class DocumentsController : Controller
             return;
 
         model.Status = doc.Status ?? model.Status;
+        model.NomenclatureCaseId = doc.NomenclatureCaseId;
+        model.NomenclatureCaseLabel = await BuildNomenclatureCaseLabelAsync(doc.NomenclatureCaseId, CancellationToken.None);
+        model.NomenclatureCaseOptions = await LoadNomenclatureCaseOptionsAsync(CancellationToken.None);
         model.FileUrl = doc.FilePath;
         model.FileKind = GetFileKind(doc.FilePath);
+        model.TemplateFields = await BuildTemplateFieldDisplayAsync(doc, CancellationToken.None);
+        model.TemplateName = model.TemplateFields.Count > 0
+            ? await GetTemplateNameAsync(doc.TemplateId, CancellationToken.None)
+            : null;
         model.ExecutionComment = doc.ExecutionComment ?? string.Empty;
         model.ExecutionResult = doc.ExecutionResult;
         model.ExecutionStartedAt = doc.ExecutionStartedAt;
@@ -1665,6 +1876,7 @@ public class DocumentsController : Controller
         model.ExecutionFileKind = GetFileKind(doc.ExecutionFilePath);
         model.AiSuggestions = BuildAiSuggestions(doc);
         model.Assignment = await BuildAssignmentPanelAsync(doc, CancellationToken.None);
+        ApplyExecutionHints(model);
         ApplyEditAccessState(model, doc);
     }
 

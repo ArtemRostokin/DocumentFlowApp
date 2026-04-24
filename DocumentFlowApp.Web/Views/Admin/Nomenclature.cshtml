@@ -1,0 +1,173 @@
+@model DocumentFlowApp.Web.Models.NomenclatureAdminPageViewModel
+@{
+    ViewData["Title"] = "Номенклатура дел";
+}
+
+<div class="container py-4">
+    <div class="mb-4">
+        <h1 class="h3 mb-2">Номенклатура дел</h1>
+        <p class="text-muted mb-0">Справочник дел и правила автопривязки документов по типу и подразделению.</p>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.SuccessMessage))
+    {
+        <div class="alert alert-success">@Model.SuccessMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="alert alert-danger">@Model.ErrorMessage</div>
+    }
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Добавить дело номенклатуры</h2>
+                    <form asp-action="CreateNomenclatureCase" method="post" class="row g-3">
+                        @Html.AntiForgeryToken()
+                        <div asp-validation-summary="ModelOnly" class="text-danger small"></div>
+                        <div class="col-md-4">
+                            <label asp-for="NewCase.Index" class="form-label">Индекс</label>
+                            <input asp-for="NewCase.Index" class="form-control" />
+                            <span asp-validation-for="NewCase.Index" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-8">
+                            <label asp-for="NewCase.Title" class="form-label">Название дела</label>
+                            <input asp-for="NewCase.Title" class="form-control" />
+                            <span asp-validation-for="NewCase.Title" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="NewCase.RetentionPeriod" class="form-label">Срок хранения</label>
+                            <input asp-for="NewCase.RetentionPeriod" class="form-control" placeholder="Например: 5 лет" />
+                            <span asp-validation-for="NewCase.RetentionPeriod" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="NewCase.Department" class="form-label">Подразделение</label>
+                            <input asp-for="NewCase.Department" class="form-control" placeholder="Например: Бухгалтерия" />
+                            <span asp-validation-for="NewCase.Department" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="NewCase.LegalBasis" class="form-label">Правовое основание</label>
+                            <input asp-for="NewCase.LegalBasis" class="form-control" placeholder="Перечень типовых документов..." />
+                            <span asp-validation-for="NewCase.LegalBasis" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-primary">Сохранить дело</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Добавить правило автопривязки</h2>
+                    <form asp-action="CreateNomenclatureRule" method="post" class="row g-3">
+                        @Html.AntiForgeryToken()
+                        <div class="col-12">
+                            <label asp-for="NewRule.NomenclatureCaseId" class="form-label">Дело номенклатуры</label>
+                            <select asp-for="NewRule.NomenclatureCaseId" class="form-select">
+                                <option value="">Выберите дело</option>
+                                @foreach (var item in Model.Cases.Where(x => x.IsActive))
+                                {
+                                    <option value="@item.Id">@item.Index - @item.Title</option>
+                                }
+                            </select>
+                            <span asp-validation-for="NewRule.NomenclatureCaseId" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="NewRule.DocumentType" class="form-label">Тип документа</label>
+                            <input asp-for="NewRule.DocumentType" class="form-control" placeholder="Например: Contract" />
+                            <span asp-validation-for="NewRule.DocumentType" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="NewRule.Department" class="form-label">Подразделение</label>
+                            <input asp-for="NewRule.Department" class="form-control" placeholder="Опционально" />
+                            <span asp-validation-for="NewRule.Department" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="NewRule.Note" class="form-label">Примечание</label>
+                            <input asp-for="NewRule.Note" class="form-control" placeholder="Например: Для всех договоров отдела закупок" />
+                            <span asp-validation-for="NewRule.Note" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-primary">Сохранить правило</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mt-1">
+        <div class="col-lg-7">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Дела номенклатуры</h2>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Индекс</th>
+                                    <th>Название</th>
+                                    <th>Срок хранения</th>
+                                    <th>Подразделение</th>
+                                    <th>Документов</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var item in Model.Cases)
+                            {
+                                <tr>
+                                    <td>@item.Index</td>
+                                    <td>@item.Title</td>
+                                    <td>@item.RetentionPeriod</td>
+                                    <td>@(string.IsNullOrWhiteSpace(item.Department) ? "—" : item.Department)</td>
+                                    <td>@item.DocumentsCount</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Правила автопривязки</h2>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Дело</th>
+                                    <th>Тип</th>
+                                    <th>Подразделение</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var item in Model.Rules)
+                            {
+                                <tr>
+                                    <td>@item.CaseLabel</td>
+                                    <td>@item.DocumentType</td>
+                                    <td>@item.Department</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <a class="btn btn-outline-secondary" asp-action="Index">Назад в администрирование</a>
+    </div>
+</div>
+
+<partial name="_ValidationScriptsPartial" />

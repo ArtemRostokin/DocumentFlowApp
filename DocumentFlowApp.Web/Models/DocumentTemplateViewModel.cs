@@ -18,3 +18,10 @@ public sealed class DocumentTemplateFieldViewModel
     public bool Required { get; init; }
     public string InputType { get; init; } = "text";
 }
+
+public sealed class DocumentTemplateFieldDisplayViewModel
+{
+    public string Label { get; init; } = string.Empty;
+    public string Value { get; init; } = string.Empty;
+    public bool Required { get; init; }
+}

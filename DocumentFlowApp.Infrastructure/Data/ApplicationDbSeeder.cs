@@ -79,6 +79,37 @@ public static class ApplicationDbSeeder
             ],
             cancellationToken);
 
+        var contractCase = await EnsureNomenclatureCaseAsync(
+            context,
+            "01-01",
+            "Договоры с контрагентами",
+            "5 лет",
+            "Перечень типовых управленческих документов",
+            "Юридический отдел",
+            cancellationToken);
+
+        var invoiceCase = await EnsureNomenclatureCaseAsync(
+            context,
+            "02-03",
+            "Счета и платежные документы",
+            "5 лет",
+            "Перечень типовых управленческих документов",
+            "Бухгалтерия",
+            cancellationToken);
+
+        var applicationCase = await EnsureNomenclatureCaseAsync(
+            context,
+            "03-02",
+            "Заявления и внутренние обращения сотрудников",
+            "3 года",
+            "Локальная номенклатура организации",
+            "Отдел кадров",
+            cancellationToken);
+
+        await EnsureNomenclatureRuleAsync(context, contractCase.NomenclatureCaseId, "Contract", null, "Автопривязка для договоров", cancellationToken);
+        await EnsureNomenclatureRuleAsync(context, invoiceCase.NomenclatureCaseId, "Invoice", null, "Автопривязка для счетов", cancellationToken);
+        await EnsureNomenclatureRuleAsync(context, applicationCase.NomenclatureCaseId, "Application", null, "Автопривязка для заявлений", cancellationToken);
+
         await context.SaveChangesAsync(cancellationToken);
     }
 
@@ -159,5 +190,70 @@ public static class ApplicationDbSeeder
         template.Category = category;
         template.Content = description;
         template.AiSuggestedFields = serializedFields;
+    }
+
+    private static async Task<NomenclatureCase> EnsureNomenclatureCaseAsync(
+        ApplicationDbContext context,
+        string index,
+        string title,
+        string retentionPeriod,
+        string legalBasis,
+        string department,
+        CancellationToken cancellationToken)
+    {
+        var item = await context.NomenclatureCases.FirstOrDefaultAsync(x => x.Index == index, cancellationToken);
+        if (item is null)
+        {
+            item = new NomenclatureCase
+            {
+                Index = index,
+                Title = title,
+                RetentionPeriod = retentionPeriod,
+                LegalBasis = legalBasis,
+                Department = department,
+                IsActive = true
+            };
+            context.NomenclatureCases.Add(item);
+            await context.SaveChangesAsync(cancellationToken);
+            return item;
+        }
+
+        item.Title = title;
+        item.RetentionPeriod = retentionPeriod;
+        item.LegalBasis = legalBasis;
+        item.Department = department;
+        item.IsActive = true;
+        return item;
+    }
+
+    private static async Task EnsureNomenclatureRuleAsync(
+        ApplicationDbContext context,
+        int nomenclatureCaseId,
+        string? documentType,
+        string? department,
+        string? note,
+        CancellationToken cancellationToken)
+    {
+        var rule = await context.NomenclatureRules.FirstOrDefaultAsync(
+            x => x.NomenclatureCaseId == nomenclatureCaseId &&
+                 x.DocumentType == documentType &&
+                 x.Department == department,
+            cancellationToken);
+
+        if (rule is null)
+        {
+            context.NomenclatureRules.Add(new NomenclatureRule
+            {
+                NomenclatureCaseId = nomenclatureCaseId,
+                DocumentType = documentType,
+                Department = department,
+                Note = note,
+                IsActive = true
+            });
+            return;
+        }
+
+        rule.Note = note;
+        rule.IsActive = true;
     }
 }

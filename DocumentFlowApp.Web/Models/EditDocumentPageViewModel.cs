@@ -26,9 +26,15 @@ public sealed class EditDocumentPageViewModel
     public string? Tags { get; set; }
 
     public string Status { get; set; } = string.Empty;
+    public int? NomenclatureCaseId { get; set; }
+    public string? NomenclatureCaseLabel { get; set; }
+    public IReadOnlyList<NomenclatureCaseOptionViewModel> NomenclatureCaseOptions { get; set; } = [];
 
     public string? FileUrl { get; set; }
     public string FileKind { get; set; } = "none";
+
+    public string? TemplateName { get; set; }
+    public IReadOnlyList<DocumentTemplateFieldDisplayViewModel> TemplateFields { get; set; } = [];
 
     public string ExecutionComment { get; set; } = string.Empty;
     public string? ExecutionResult { get; set; }
@@ -49,6 +55,8 @@ public sealed class EditDocumentPageViewModel
 
     public IReadOnlyList<AiSuggestionViewModel> AiSuggestions { get; set; } = [];
     public AssignmentPanelViewModel Assignment { get; set; } = new();
+    public string ExecutionHintTitle { get; set; } = "Что проверить при исполнении";
+    public IReadOnlyList<string> ExecutionHintItems { get; set; } = [];
 
     public IReadOnlyList<string> ExecutionResultOptions { get; set; } =
     [
