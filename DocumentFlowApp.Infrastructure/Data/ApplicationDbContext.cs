@@ -247,7 +247,7 @@ namespace DocumentFlowApp.Infrastructure.Data
                 entity.HasOne(a => a.Document)
                       .WithMany(d => d.Activities)
                       .HasForeignKey(a => a.DocumentId)
-                      .OnDelete(DeleteBehavior.Cascade);
+                      .OnDelete(DeleteBehavior.SetNull);
 
                 entity.HasOne(a => a.User)
                       .WithMany(u => u.DocumentActivities)

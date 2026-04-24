@@ -10,7 +10,7 @@
     </div>
 
     <div class="row g-3 mb-4">
-        <div class="col-md-4">
+        <div class="col-lg-3 col-md-6">
             <div class="card shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small mb-1">Всего записей</div>
@@ -18,7 +18,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-lg-3 col-md-6">
             <div class="card shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small mb-1">За сегодня</div>
@@ -26,11 +26,19 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-lg-3 col-md-6">
             <div class="card shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small mb-1">Документов в выборке</div>
                     <div class="display-6 mb-0">@Model.DistinctDocumentsCount</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small mb-1">Системных событий</div>
+                    <div class="display-6 mb-0">@Model.SystemEventsCount</div>
                 </div>
             </div>
         </div>
@@ -97,10 +105,18 @@
                                     <div class="text-muted small">@item.ActivityType</div>
                                 </td>
                                 <td>
-                                    <a asp-controller="Documents" asp-action="Edit" asp-route-id="@item.DocumentId" class="text-decoration-none">
-                                        #@item.DocumentId
-                                    </a>
-                                    <div class="text-muted small">@item.DocumentTitle</div>
+                                    @if (item.DocumentId is int documentId)
+                                    {
+                                        <a asp-controller="Documents" asp-action="Edit" asp-route-id="@documentId" class="text-decoration-none">
+                                            #@documentId
+                                        </a>
+                                        <div class="text-muted small">@item.DocumentTitle</div>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                        <div class="text-muted small">@item.DocumentTitle</div>
+                                    }
                                 </td>
                                 <td>@item.UserDisplayName</td>
                                 <td class="small">@item.Details</td>

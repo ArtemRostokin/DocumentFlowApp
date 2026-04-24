@@ -23,6 +23,25 @@ public class AuditService : IAuditService
         string details,
         CancellationToken cancellationToken = default)
     {
+        await LogActivityCoreAsync(documentId, userId, activityType, details, cancellationToken);
+    }
+
+    public async Task LogSystemActivityAsync(
+        int? userId,
+        string activityType,
+        string details,
+        CancellationToken cancellationToken = default)
+    {
+        await LogActivityCoreAsync(null, userId, activityType, details, cancellationToken);
+    }
+
+    private async Task LogActivityCoreAsync(
+        int? documentId,
+        int? userId,
+        string activityType,
+        string details,
+        CancellationToken cancellationToken)
+    {
         try
         {
             _dbContext.DocumentActivity.Add(new DocumentActivity

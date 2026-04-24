@@ -8,7 +8,7 @@ public class DocumentActivity
     [Key]
     public int ActivityId { get; set; }
 
-    public int DocumentId { get; set; }
+    public int? DocumentId { get; set; }
     public Document? Document { get; set; }
 
     public int? UserId { get; set; }

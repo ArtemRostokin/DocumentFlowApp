@@ -1,4 +1,6 @@
-﻿using DocumentFlowApp.Core.Interfaces;
+using System.Security.Claims;
+using DocumentFlowApp.Core.Audit;
+using DocumentFlowApp.Core.Interfaces;
 using DocumentFlowApp.Core.Security;
 using DocumentFlowApp.Web.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -10,10 +12,12 @@ public class AccountController : Controller
 {
     private const string AuthCookieName = "df_auth_token";
     private readonly IAuthService _authService;
+    private readonly IAuditService _auditService;
 
-    public AccountController(IAuthService authService)
+    public AccountController(IAuthService authService, IAuditService auditService)
     {
         _authService = authService;
+        _auditService = auditService;
     }
 
     [AllowAnonymous]
@@ -49,6 +53,12 @@ public class AccountController : Controller
             Expires = model.RememberMe ? authResult.ExpiresAtUtc : null
         });
 
+        await _auditService.LogSystemActivityAsync(
+            authResult.UserId,
+            AuditActivityTypes.UserLogin,
+            $"Пользователь {authResult.UserName} выполнил вход в систему.",
+            cancellationToken);
+
         if (!string.IsNullOrWhiteSpace(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
             return Redirect(model.ReturnUrl);
 
@@ -58,9 +68,19 @@ public class AccountController : Controller
     [Authorize]
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public IActionResult Logout()
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken)
     {
+        var currentUserId = GetCurrentUserId();
+        var currentUserName = User.Identity?.Name ?? "Неизвестный пользователь";
+
         Response.Cookies.Delete(AuthCookieName);
+
+        await _auditService.LogSystemActivityAsync(
+            currentUserId,
+            AuditActivityTypes.UserLogout,
+            $"Пользователь {currentUserName} вышел из системы.",
+            cancellationToken);
+
         return RedirectToAction(nameof(Login));
     }
 
@@ -68,7 +88,7 @@ public class AccountController : Controller
     {
         var normalizedRole = AppRoles.Normalize(role)
             ?? AppRoles.Normalize(User.Claims.FirstOrDefault(c => c.Type == "df_role")?.Value)
-            ?? AppRoles.Normalize(User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Role)?.Value)
+            ?? AppRoles.Normalize(User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value)
             ?? AppRoles.Employee;
 
         if (normalizedRole == AppRoles.Admin)
@@ -78,5 +98,11 @@ public class AccountController : Controller
             return RedirectToAction("Index", "Home");
 
         return RedirectToAction("Index", "Home");
+    }
+
+    private int? GetCurrentUserId()
+    {
+        var raw = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue(ClaimTypes.Name);
+        return int.TryParse(raw, out var userId) ? userId : null;
     }
 }

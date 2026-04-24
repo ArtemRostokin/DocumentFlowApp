@@ -15,6 +15,10 @@ public static class AuditActivityTypes
     public const string ExecutionSaved = "execution-saved";
     public const string ExecutionFileGenerated = "execution-file-generated";
     public const string ExecutionFileUploaded = "execution-file-uploaded";
+    public const string UserLogin = "user-login";
+    public const string UserLogout = "user-logout";
+    public const string NomenclatureCaseCreated = "nomenclature-case-created";
+    public const string NomenclatureRuleCreated = "nomenclature-rule-created";
 
     public static IReadOnlyList<string> All { get; } =
     [
@@ -30,7 +34,11 @@ public static class AuditActivityTypes
         WorkCompleted,
         ExecutionSaved,
         ExecutionFileGenerated,
-        ExecutionFileUploaded
+        ExecutionFileUploaded,
+        UserLogin,
+        UserLogout,
+        NomenclatureCaseCreated,
+        NomenclatureRuleCreated
     ];
 
     public static string GetDisplayName(string? activityType) => activityType switch
@@ -48,6 +56,10 @@ public static class AuditActivityTypes
         ExecutionSaved => "Сохранение хода исполнения",
         ExecutionFileGenerated => "Формирование итогового файла",
         ExecutionFileUploaded => "Загрузка итогового файла",
+        UserLogin => "Вход в систему",
+        UserLogout => "Выход из системы",
+        NomenclatureCaseCreated => "Создание дела номенклатуры",
+        NomenclatureRuleCreated => "Создание правила номенклатуры",
         _ => "Прочее действие"
     };
 }

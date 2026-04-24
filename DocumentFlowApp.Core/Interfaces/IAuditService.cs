@@ -8,4 +8,10 @@ public interface IAuditService
         string activityType,
         string details,
         CancellationToken cancellationToken = default);
+
+    Task LogSystemActivityAsync(
+        int? userId,
+        string activityType,
+        string details,
+        CancellationToken cancellationToken = default);
 }

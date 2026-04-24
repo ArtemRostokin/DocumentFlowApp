@@ -199,7 +199,7 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                     b.Property<string>("Details")
                         .HasColumnType("text");
 
-                    b.Property<int>("DocumentId")
+                    b.Property<int?>("DocumentId")
                         .HasColumnType("integer");
 
                     b.Property<int?>("UserId")
@@ -660,8 +660,7 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                     b.HasOne("DocumentFlowApp.Core.Entities.Document", "Document")
                         .WithMany("Activities")
                         .HasForeignKey("DocumentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("DocumentFlowApp.Core.Entities.User", "User")
                         .WithMany("DocumentActivities")

@@ -1,5 +1,6 @@
 using DocumentFlowApp.Core.Audit;
 using DocumentFlowApp.Core.Entities;
+using DocumentFlowApp.Core.Interfaces;
 using DocumentFlowApp.Infrastructure.Data;
 using DocumentFlowApp.Web.Models;
 using DocumentFlowApp.Web.Security;
@@ -13,11 +14,13 @@ namespace DocumentFlowApp.Web.Controllers;
 public class AdminController : Controller
 {
     private readonly ApplicationDbContext _dbContext;
+    private readonly IAuditService _auditService;
     private readonly ILogger<AdminController> _logger;
 
-    public AdminController(ApplicationDbContext dbContext, ILogger<AdminController> logger)
+    public AdminController(ApplicationDbContext dbContext, IAuditService auditService, ILogger<AdminController> logger)
     {
         _dbContext = dbContext;
+        _auditService = auditService;
         _logger = logger;
     }
 
@@ -68,6 +71,11 @@ public class AdminController : Controller
             });
 
             await _dbContext.SaveChangesAsync(cancellationToken);
+            await _auditService.LogSystemActivityAsync(
+                GetCurrentUserId(),
+                AuditActivityTypes.NomenclatureCaseCreated,
+                $"Создано дело номенклатуры {input.Index.Trim()} - {input.Title.Trim()}.",
+                cancellationToken);
             TempData["SuccessMessage"] = "Дело номенклатуры добавлено.";
             return RedirectToAction(nameof(Nomenclature));
         }
@@ -114,6 +122,11 @@ public class AdminController : Controller
             });
 
             await _dbContext.SaveChangesAsync(cancellationToken);
+            await _auditService.LogSystemActivityAsync(
+                GetCurrentUserId(),
+                AuditActivityTypes.NomenclatureRuleCreated,
+                $"Создано правило автопривязки для типа {(string.IsNullOrWhiteSpace(input.DocumentType) ? "любого типа" : input.DocumentType.Trim())}.",
+                cancellationToken);
             TempData["SuccessMessage"] = "Правило автопривязки добавлено.";
             return RedirectToAction(nameof(Nomenclature));
         }
@@ -207,9 +220,11 @@ public class AdminController : Controller
             x => (x.ActivityDate ?? DateTime.MinValue) >= todayUtc,
             cancellationToken);
         var distinctDocumentsCount = await query
+            .Where(x => x.DocumentId != null)
             .Select(x => x.DocumentId)
             .Distinct()
             .CountAsync(cancellationToken);
+        var systemEventsCount = await query.CountAsync(x => x.DocumentId == null, cancellationToken);
 
         var rawEntries = await query
             .OrderByDescending(x => x.ActivityDate ?? DateTime.MinValue)
@@ -237,9 +252,11 @@ public class AdminController : Controller
                 ActivityType = x.ActivityType ?? string.Empty,
                 ActivityTypeLabel = AuditActivityTypes.GetDisplayName(x.ActivityType),
                 DocumentId = x.DocumentId,
-                DocumentTitle = string.IsNullOrWhiteSpace(x.DocumentTitle)
-                    ? $"Документ #{x.DocumentId}"
-                    : x.DocumentTitle,
+                DocumentTitle = x.DocumentId == null
+                    ? "Системное событие"
+                    : (string.IsNullOrWhiteSpace(x.DocumentTitle)
+                        ? $"Документ #{x.DocumentId}"
+                        : x.DocumentTitle),
                 UserDisplayName = BuildAuditUserDisplayName(x.UserLastName, x.UserFirstName, x.UserName),
                 Details = x.Details ?? string.Empty
             })
@@ -252,6 +269,7 @@ public class AdminController : Controller
             TotalCount = totalCount,
             TodayCount = todayCount,
             DistinctDocumentsCount = distinctDocumentsCount,
+            SystemEventsCount = systemEventsCount,
             ActivityTypes = AuditActivityTypes.All
                 .Select(x => new AuditActivityTypeOptionViewModel
                 {
@@ -273,5 +291,13 @@ public class AdminController : Controller
             return userName;
 
         return "Системное действие";
+    }
+
+    private int? GetCurrentUserId()
+    {
+        var raw = User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? User.Identity?.Name;
+
+        return int.TryParse(raw, out var userId) ? userId : null;
     }
 }

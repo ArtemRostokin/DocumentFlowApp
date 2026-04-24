@@ -7,6 +7,7 @@ public sealed class AuditAdminPageViewModel
     public int TotalCount { get; init; }
     public int TodayCount { get; init; }
     public int DistinctDocumentsCount { get; init; }
+    public int SystemEventsCount { get; init; }
     public IReadOnlyList<AuditActivityTypeOptionViewModel> ActivityTypes { get; init; } = [];
     public IReadOnlyList<AuditEntryItemViewModel> Entries { get; init; } = [];
 }
@@ -23,7 +24,7 @@ public sealed class AuditEntryItemViewModel
     public DateTime? ActivityDateUtc { get; init; }
     public string ActivityType { get; init; } = string.Empty;
     public string ActivityTypeLabel { get; init; } = string.Empty;
-    public int DocumentId { get; init; }
+    public int? DocumentId { get; init; }
     public string DocumentTitle { get; init; } = string.Empty;
     public string UserDisplayName { get; init; } = string.Empty;
     public string Details { get; init; } = string.Empty;
