@@ -1,0 +1,119 @@
+@model DocumentFlowApp.Web.Models.AuditAdminPageViewModel
+@{
+    ViewData["Title"] = "Журнал аудита";
+}
+
+<div class="container py-4">
+    <div class="mb-4">
+        <h1 class="h3 mb-2">Журнал аудита</h1>
+        <p class="text-muted mb-0">Здесь отображаются ключевые действия по документам: создание, согласование, назначение, исполнение и смена статусов.</p>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small mb-1">Всего записей</div>
+                    <div class="display-6 mb-0">@Model.TotalCount</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small mb-1">За сегодня</div>
+                    <div class="display-6 mb-0">@Model.TodayCount</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small mb-1">Документов в выборке</div>
+                    <div class="display-6 mb-0">@Model.DistinctDocumentsCount</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label" for="activityType">Тип действия</label>
+                    <select class="form-select" id="activityType" name="activityType">
+                        <option value="">Все действия</option>
+                        @foreach (var option in Model.ActivityTypes)
+                        {
+                            <option value="@option.Value" selected="@(Model.SelectedActivityType == option.Value ? "selected" : null)">@option.Label</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="documentId">Документ</label>
+                    <input class="form-control" id="documentId" name="documentId" type="number" min="1" value="@Model.SelectedDocumentId" placeholder="Например: 12" />
+                </div>
+                <div class="col-md-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary flex-grow-1">Применить</button>
+                    <a asp-action="Audit" class="btn btn-outline-secondary">Сбросить</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2 class="h5 mb-0">Последние записи</h2>
+                <span class="text-muted small">Показаны последние 200 событий</span>
+            </div>
+
+            @if (Model.Entries.Count == 0)
+            {
+                <div class="alert alert-light border mb-0">
+                    По выбранным фильтрам записи не найдены.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Дата и время</th>
+                                <th>Действие</th>
+                                <th>Документ</th>
+                                <th>Пользователь</th>
+                                <th>Детали</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var item in Model.Entries)
+                        {
+                            <tr>
+                                <td class="text-nowrap">@(item.ActivityDateUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss") ?? "—")</td>
+                                <td>
+                                    <div>@item.ActivityTypeLabel</div>
+                                    <div class="text-muted small">@item.ActivityType</div>
+                                </td>
+                                <td>
+                                    <a asp-controller="Documents" asp-action="Edit" asp-route-id="@item.DocumentId" class="text-decoration-none">
+                                        #@item.DocumentId
+                                    </a>
+                                    <div class="text-muted small">@item.DocumentTitle</div>
+                                </td>
+                                <td>@item.UserDisplayName</td>
+                                <td class="small">@item.Details</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <a class="btn btn-outline-secondary" asp-action="Index">Назад в администрирование</a>
+    </div>
+</div>

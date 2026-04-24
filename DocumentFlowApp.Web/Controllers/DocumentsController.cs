@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using DocumentFlowApp.Core.Audit;
 using DocumentFlowApp.Core.Entities;
 using DocumentFlowApp.Core.Enums;
 using DocumentFlowApp.Core.Interfaces;
@@ -20,17 +21,20 @@ public class DocumentsController : Controller
 {
     private const string UploadFolderName = "DocumentFlowAppUploads";
     private readonly IDocumentService _documentService;
+    private readonly IAuditService _auditService;
     private readonly ApplicationDbContext _dbContext;
     private readonly IWebHostEnvironment _environment;
     private readonly ILogger<DocumentsController> _logger;
 
     public DocumentsController(
         IDocumentService documentService,
+        IAuditService auditService,
         ApplicationDbContext dbContext,
         IWebHostEnvironment environment,
         ILogger<DocumentsController> logger)
     {
         _documentService = documentService;
+        _auditService = auditService;
         _dbContext = dbContext;
         _environment = environment;
         _logger = logger;
@@ -99,11 +103,21 @@ public class DocumentsController : Controller
             if (decision == "approve")
             {
                 await _documentService.ChangeDocumentStatusAsync(id, DocumentStatus.Approved);
+                await LogDocumentActivityAsync(
+                    id,
+                    AuditActivityTypes.ApprovalApproved,
+                    "Менеджер утвердил документ из очереди согласования.",
+                    cancellationToken);
                 TempData["SuccessMessage"] = $"Документ #{id} утвержден.";
             }
             else
             {
                 await _documentService.ChangeDocumentStatusAsync(id, DocumentStatus.Draft, input.Comment);
+                await LogDocumentActivityAsync(
+                    id,
+                    AuditActivityTypes.ApprovalRework,
+                    BuildReworkAuditDetails(input.Comment, "Менеджер вернул документ на доработку."),
+                    cancellationToken);
                 TempData["SuccessMessage"] = $"Документ #{id} возвращен на доработку.";
             }
         }
@@ -292,6 +306,11 @@ public class DocumentsController : Controller
             doc.NomenclatureCaseId = model.NomenclatureCaseId;
 
             await _documentService.UpdateDocumentAsync(doc);
+            await LogDocumentActivityAsync(
+                doc.DocumentId,
+                AuditActivityTypes.DocumentUpdated,
+                $"Карточка обновлена. Тип: {GetDocumentTypeLabel(model.Type ?? DocumentType.Other)}.",
+                cancellationToken);
 
             TempData["SuccessMessage"] = "Изменения сохранены.";
             return RedirectToAction("Index", "Home");
@@ -338,6 +357,11 @@ public class DocumentsController : Controller
             document.ExecutionStartedAt ??= DateTime.UtcNow;
 
             await _documentService.UpdateDocumentAsync(document);
+            await LogDocumentActivityAsync(
+                document.DocumentId,
+                AuditActivityTypes.ExecutionSaved,
+                BuildExecutionAuditDetails(document),
+                cancellationToken);
             TempData["SuccessMessage"] = "Ход исполнения сохранен.";
         }
         catch (Exception ex)
@@ -381,6 +405,11 @@ public class DocumentsController : Controller
             document.ExecutionStartedAt ??= DateTime.UtcNow;
 
             await _documentService.UpdateDocumentAsync(document);
+            await LogDocumentActivityAsync(
+                document.DocumentId,
+                AuditActivityTypes.ExecutionFileGenerated,
+                $"Сформирован итоговый файл исполнения: {document.ExecutionFileName}.",
+                cancellationToken);
             TempData["SuccessMessage"] = "Печатная форма сохранена как итоговый файл исполнения.";
         }
         catch (Exception ex)
@@ -444,6 +473,11 @@ public class DocumentsController : Controller
             document.ExecutionStartedAt ??= DateTime.UtcNow;
 
             await _documentService.UpdateDocumentAsync(document);
+            await LogDocumentActivityAsync(
+                document.DocumentId,
+                AuditActivityTypes.ExecutionFileUploaded,
+                $"Загружен итоговый файл исполнения: {document.ExecutionFileName}.",
+                cancellationToken);
             _logger.LogInformation("Итоговый файл сохранен для документа {DocumentId}: {FilePath}", id, document.ExecutionFilePath);
             TempData["SuccessMessage"] = "Итоговый файл загружен.";
         }
@@ -483,6 +517,11 @@ public class DocumentsController : Controller
         {
             doc.NomenclatureCaseId = nomenclatureCaseId;
             await _documentService.UpdateDocumentAsync(doc);
+            await LogDocumentActivityAsync(
+                doc.DocumentId,
+                AuditActivityTypes.NomenclatureAssigned,
+                await BuildNomenclatureAuditDetailsAsync(nomenclatureCaseId, cancellationToken),
+                cancellationToken);
             TempData["SuccessMessage"] = nomenclatureCaseId is null
                 ? "Привязка к номенклатуре снята."
                 : "Номенклатура документа обновлена.";
@@ -525,6 +564,11 @@ public class DocumentsController : Controller
         {
             doc.UserId = assignedUserId;
             await _documentService.UpdateDocumentAsync(doc);
+            await LogDocumentActivityAsync(
+                doc.DocumentId,
+                AuditActivityTypes.ExecutorAssigned,
+                $"Назначен исполнитель: {executor.DisplayName}.",
+                cancellationToken);
             TempData["SuccessMessage"] = $"Исполнитель назначен: {executor.DisplayName}.";
         }
         catch (Exception ex)
@@ -554,6 +598,11 @@ public class DocumentsController : Controller
         try
         {
             await _documentService.ChangeDocumentStatusAsync(id, next);
+            await LogDocumentActivityAsync(
+                id,
+                AuditActivityTypes.StatusChanged,
+                $"Менеджер перевел документ из статуса {GetDocumentStatusLabel(current)} в статус {GetDocumentStatusLabel(next)}.",
+                cancellationToken);
             TempData["SuccessMessage"] = $"Статус изменен: {current} -> {next}";
             return RedirectToAction("Index", "Home");
         }
@@ -621,6 +670,11 @@ public class DocumentsController : Controller
                     FileHash = stored.FileHash
                 });
 
+                await LogDocumentActivityAsync(
+                    created.DocumentId,
+                    AuditActivityTypes.IncomingUploaded,
+                    $"Загружен входящий файл {Path.GetFileName(file.FileName)}.",
+                    cancellationToken);
                 await TryAutoAssignNomenclatureAsync(created, cancellationToken);
 
                 createdCount++;
@@ -708,6 +762,11 @@ public class DocumentsController : Controller
                 FileHash = fileHash
             });
 
+            await LogDocumentActivityAsync(
+                created.DocumentId,
+                AuditActivityTypes.DocumentCreated,
+                $"Документ создан по шаблону{(selectedTemplate is null ? string.Empty : $": {selectedTemplate.Name}")}.",
+                cancellationToken);
             await TryAutoAssignNomenclatureAsync(created, cancellationToken);
 
             TempData["SuccessMessage"] = "Документ успешно создан.";
@@ -770,11 +829,21 @@ public class DocumentsController : Controller
             if (decision == "approve")
             {
                 await _documentService.ChangeDocumentStatusAsync(id, DocumentStatus.Approved);
+                await LogDocumentActivityAsync(
+                    id,
+                    AuditActivityTypes.ApprovalApproved,
+                    "Пользователь утвердил документ на этапе согласования.",
+                    cancellationToken);
                 TempData["SuccessMessage"] = $"Документ #{id} утвержден.";
             }
             else
             {
                 await _documentService.ChangeDocumentStatusAsync(id, DocumentStatus.Draft, input.Comment);
+                await LogDocumentActivityAsync(
+                    id,
+                    AuditActivityTypes.ApprovalRework,
+                    BuildReworkAuditDetails(input.Comment, "Пользователь вернул документ на доработку."),
+                    cancellationToken);
                 TempData["SuccessMessage"] = $"Документ #{id} возвращен на доработку.";
             }
         }
@@ -828,7 +897,13 @@ public class DocumentsController : Controller
                     return BadRequest(new { message = "Пользователь может менять статус только в своей цепочке: На согласовании -> К исполнению -> В работе -> Завершено." });
             }
 
+            var previousStatus = ParseDocumentStatus(document.Status);
             await _documentService.ChangeDocumentStatusAsync(id, newStatus, request.Comment);
+            await LogDocumentActivityAsync(
+                id,
+                AuditActivityTypes.StatusChanged,
+                BuildStatusChangeAuditDetails(previousStatus, newStatus, request.Comment, isManagerOrAdmin),
+                cancellationToken);
             return Ok(new { id, status = newStatus.ToString() });
         }
         catch (InvalidOperationException ex)
@@ -1063,6 +1138,95 @@ public class DocumentsController : Controller
 
         document.NomenclatureCaseId = matchedCaseId.Value;
         await _documentService.UpdateDocumentAsync(document);
+        await LogDocumentActivityAsync(
+            document.DocumentId,
+            AuditActivityTypes.NomenclatureAssigned,
+            await BuildNomenclatureAuditDetailsAsync(matchedCaseId, cancellationToken, true),
+            cancellationToken);
+    }
+
+    private Task LogDocumentActivityAsync(
+        int documentId,
+        string activityType,
+        string details,
+        CancellationToken cancellationToken)
+    {
+        return _auditService.LogDocumentActivityAsync(
+            documentId,
+            GetCurrentUserId(),
+            activityType,
+            details,
+            cancellationToken);
+    }
+
+    private async Task<string> BuildNomenclatureAuditDetailsAsync(
+        int? nomenclatureCaseId,
+        CancellationToken cancellationToken,
+        bool autoAssigned = false)
+    {
+        if (nomenclatureCaseId is null)
+            return "Привязка к делу номенклатуры снята.";
+
+        var targetCase = await _dbContext.NomenclatureCases
+            .AsNoTracking()
+            .Where(x => x.NomenclatureCaseId == nomenclatureCaseId.Value)
+            .Select(x => $"{x.Index} - {x.Title}")
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(targetCase))
+            return autoAssigned
+                ? "Документ автоматически привязан к делу номенклатуры."
+                : "Номенклатура документа обновлена.";
+
+        return autoAssigned
+            ? $"Документ автоматически привязан к делу номенклатуры: {targetCase}."
+            : $"Номенклатура документа обновлена: {targetCase}.";
+    }
+
+    private static string BuildReworkAuditDetails(string? comment, string prefix)
+    {
+        var normalizedComment = string.IsNullOrWhiteSpace(comment)
+            ? "Комментарий не указан."
+            : comment.Trim();
+
+        return $"{prefix} Комментарий: {normalizedComment}";
+    }
+
+    private static string BuildExecutionAuditDetails(Document document)
+    {
+        var result = string.IsNullOrWhiteSpace(document.ExecutionResult)
+            ? "не указан"
+            : document.ExecutionResult.Trim();
+
+        var comment = string.IsNullOrWhiteSpace(document.ExecutionComment)
+            ? "без комментария"
+            : document.ExecutionComment.Trim();
+
+        return $"Исполнитель сохранил ход работы. Результат: {result}. Комментарий: {comment}";
+    }
+
+    private string BuildStatusChangeAuditDetails(
+        DocumentStatus fromStatus,
+        DocumentStatus newStatus,
+        string? comment,
+        bool isManagerOrAdmin)
+    {
+        var actor = isManagerOrAdmin ? "Менеджер или администратор" : "Исполнитель";
+        var details = $"{actor} перевел документ из статуса {GetDocumentStatusLabel(fromStatus)} в статус {GetDocumentStatusLabel(newStatus)}.";
+
+        if (!string.IsNullOrWhiteSpace(comment))
+            details += $" Комментарий: {comment.Trim()}";
+
+        return details;
+    }
+
+    private static string BuildWorkCompletedAuditDetails(Document document)
+    {
+        var result = string.IsNullOrWhiteSpace(document.ExecutionResult)
+            ? "не указан"
+            : document.ExecutionResult.Trim();
+
+        return $"Исполнитель завершил работу по документу. Результат: {result}.";
     }
 
     private async Task<string?> GetTemplateNameAsync(int? templateId, CancellationToken cancellationToken)
@@ -1268,6 +1432,13 @@ public class DocumentsController : Controller
                 await _documentService.UpdateDocumentAsync(updatedDocument);
             }
 
+            await LogDocumentActivityAsync(
+                documentId,
+                newStatus == DocumentStatus.InWork ? AuditActivityTypes.WorkStarted : AuditActivityTypes.WorkCompleted,
+                newStatus == DocumentStatus.InWork
+                    ? "Исполнитель начал работу по документу."
+                    : BuildWorkCompletedAuditDetails(updatedDocument ?? document),
+                cancellationToken);
             TempData["SuccessMessage"] = successMessage;
         }
         catch (Exception ex)

@@ -134,9 +134,10 @@ try
         options.UseNpgsql(DatabaseConfig.GetConnectionString());
         options.EnableDetailedErrors();
     });
-    builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
-    builder.Services.AddScoped<IDocumentService, DocumentService>();
-    builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
+builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IAuditService, AuditService>();
 
     var app = builder.Build();
     AppendTrace("App built");

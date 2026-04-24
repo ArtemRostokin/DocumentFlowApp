@@ -1,3 +1,4 @@
+using DocumentFlowApp.Core.Audit;
 using DocumentFlowApp.Core.Entities;
 using DocumentFlowApp.Infrastructure.Data;
 using DocumentFlowApp.Web.Models;
@@ -124,11 +125,10 @@ public class AdminController : Controller
         }
     }
 
-    public IActionResult Audit()
+    [HttpGet]
+    public async Task<IActionResult> Audit(string? activityType, int? documentId, CancellationToken cancellationToken)
     {
-        ViewData["SectionTitle"] = "Журнал аудита";
-        ViewData["SectionDescription"] = "Раздел подготовлен под просмотр аудита действий пользователей и документов.";
-        return View("Section");
+        return View(await BuildAuditPageAsync(activityType, documentId, cancellationToken));
     }
 
     private async Task<NomenclatureAdminPageViewModel> BuildNomenclaturePageAsync(
@@ -177,5 +177,101 @@ public class AdminController : Controller
             Cases = cases,
             Rules = rules
         };
+    }
+
+    private async Task<AuditAdminPageViewModel> BuildAuditPageAsync(
+        string? activityType,
+        int? documentId,
+        CancellationToken cancellationToken)
+    {
+        var normalizedType = string.IsNullOrWhiteSpace(activityType)
+            ? null
+            : activityType.Trim();
+
+        var query = _dbContext.DocumentActivity
+            .AsNoTracking()
+            .Include(x => x.Document)
+            .Include(x => x.User)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(normalizedType))
+            query = query.Where(x => x.ActivityType == normalizedType);
+
+        if (documentId.HasValue)
+            query = query.Where(x => x.DocumentId == documentId.Value);
+
+        var todayUtc = DateTime.UtcNow.Date;
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var todayCount = await query.CountAsync(
+            x => (x.ActivityDate ?? DateTime.MinValue) >= todayUtc,
+            cancellationToken);
+        var distinctDocumentsCount = await query
+            .Select(x => x.DocumentId)
+            .Distinct()
+            .CountAsync(cancellationToken);
+
+        var rawEntries = await query
+            .OrderByDescending(x => x.ActivityDate ?? DateTime.MinValue)
+            .ThenByDescending(x => x.ActivityId)
+            .Take(200)
+            .Select(x => new
+            {
+                x.ActivityId,
+                x.ActivityDate,
+                x.ActivityType,
+                x.DocumentId,
+                DocumentTitle = x.Document != null ? x.Document.Title : null,
+                UserFirstName = x.User != null ? x.User.FirstName : null,
+                UserLastName = x.User != null ? x.User.LastName : null,
+                UserName = x.User != null ? x.User.UserName : null,
+                x.Details
+            })
+            .ToListAsync(cancellationToken);
+
+        var entries = rawEntries
+            .Select(x => new AuditEntryItemViewModel
+            {
+                Id = x.ActivityId,
+                ActivityDateUtc = x.ActivityDate,
+                ActivityType = x.ActivityType ?? string.Empty,
+                ActivityTypeLabel = AuditActivityTypes.GetDisplayName(x.ActivityType),
+                DocumentId = x.DocumentId,
+                DocumentTitle = string.IsNullOrWhiteSpace(x.DocumentTitle)
+                    ? $"Документ #{x.DocumentId}"
+                    : x.DocumentTitle,
+                UserDisplayName = BuildAuditUserDisplayName(x.UserLastName, x.UserFirstName, x.UserName),
+                Details = x.Details ?? string.Empty
+            })
+            .ToList();
+
+        return new AuditAdminPageViewModel
+        {
+            SelectedActivityType = normalizedType,
+            SelectedDocumentId = documentId,
+            TotalCount = totalCount,
+            TodayCount = todayCount,
+            DistinctDocumentsCount = distinctDocumentsCount,
+            ActivityTypes = AuditActivityTypes.All
+                .Select(x => new AuditActivityTypeOptionViewModel
+                {
+                    Value = x,
+                    Label = AuditActivityTypes.GetDisplayName(x)
+                })
+                .ToList(),
+            Entries = entries
+        };
+    }
+
+    private static string BuildAuditUserDisplayName(string? lastName, string? firstName, string? userName)
+    {
+        var fullName = string.Join(" ", new[] { lastName, firstName }.Where(v => !string.IsNullOrWhiteSpace(v)));
+        if (!string.IsNullOrWhiteSpace(fullName))
+            return fullName;
+
+        if (!string.IsNullOrWhiteSpace(userName))
+            return userName;
+
+        return "Системное действие";
     }
 }
