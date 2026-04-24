@@ -127,3 +127,16 @@ D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Tests\bin\Debug\net9.0\Microsoft.
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Tests\bin\Debug\net9.0\Microsoft.IdentityModel.Logging.dll
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Tests\bin\Debug\net9.0\Microsoft.IdentityModel.Tokens.dll
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Tests\bin\Debug\net9.0\System.IdentityModel.Tokens.Jwt.dll
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Tests\bin\Debug\net9.0\DocumentFlowApp.Web.deps.json
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Tests\bin\Debug\net9.0\DocumentFlowApp.Web.runtimeconfig.json
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Tests\bin\Debug\net9.0\appsettings.Development.json
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Tests\bin\Debug\net9.0\appsettings.json
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Tests\bin\Debug\net9.0\DocumentFlowApp.Web.staticwebassets.runtime.json
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Tests\bin\Debug\net9.0\DocumentFlowApp.Web.staticwebassets.endpoints.json
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Tests\bin\Debug\net9.0\DocumentFlowApp.Web.exe
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Tests\bin\Debug\net9.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Tests\bin\Debug\net9.0\Microsoft.IdentityModel.Protocols.dll
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Tests\bin\Debug\net9.0\Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Tests\bin\Debug\net9.0\DocumentFlowApp.Web.dll
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Tests\bin\Debug\net9.0\DocumentFlowApp.Web.pdb
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Tests\bin\Debug\net9.0\Microsoft.EntityFrameworkCore.InMemory.dll
