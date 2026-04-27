@@ -1,0 +1,112 @@
+@model DocumentFlowApp.Web.Models.RoutesAdminPageViewModel
+@{
+    ViewData["Title"] = "Маршруты согласования";
+}
+
+<div class="container py-4">
+    <div class="mb-4">
+        <h1 class="h3 mb-2">Маршруты согласования</h1>
+        <p class="text-muted mb-0">В текущем MVP используется базовый маршрут жизненного цикла документа. Ниже показаны его этапы, роли и текущая нагрузка по статусам.</p>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-lg-3 col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small mb-1">На согласовании</div>
+                    <div class="display-6 mb-0">@Model.PendingApprovalDocuments</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small mb-1">Утверждено</div>
+                    <div class="display-6 mb-0">@Model.ApprovedDocuments</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small mb-1">В работе</div>
+                    <div class="display-6 mb-0">@Model.InWorkDocuments</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small mb-1">Завершено</div>
+                    <div class="display-6 mb-0">@Model.CompletedDocuments</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-xl-8">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Текущий маршрут документа</h2>
+                    <div class="table-responsive">
+                        <table class="table align-middle">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Этап</th>
+                                    <th>Код статуса</th>
+                                    <th>Ответственная роль</th>
+                                    <th>Описание</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var item in Model.Stages.OrderBy(x => x.Order))
+                            {
+                                <tr>
+                                    <td>@item.Order</td>
+                                    <td>@item.Title</td>
+                                    <td><code>@item.StatusCode</code></td>
+                                    <td>@item.ResponsibleRole</td>
+                                    <td class="small">@item.Description</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Ответственность ролей</h2>
+                    <div class="d-flex flex-column gap-3">
+                        @foreach (var item in Model.Roles)
+                        {
+                            <div>
+                                <div class="fw-semibold">@item.RoleName</div>
+                                <div class="small text-muted">@item.Responsibilities</div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Примечание</h2>
+                    <p class="small text-muted mb-0">
+                        В этой версии проекта маршрут пока фиксированный. Страница уже показывает фактический жизненный цикл и состояние очереди,
+                        а следующим этапом можно будет вынести шаги согласования в настраиваемые шаблоны маршрутов.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <a class="btn btn-outline-secondary" asp-action="Index">Назад в администрирование</a>
+    </div>
+</div>

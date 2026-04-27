@@ -6,7 +6,7 @@
 <div class="container py-4">
     <div class="mb-4">
         <h1 class="h3 mb-2">Журнал аудита</h1>
-        <p class="text-muted mb-0">Здесь отображаются ключевые действия по документам: создание, согласование, назначение, исполнение и смена статусов.</p>
+        <p class="text-muted mb-0">Здесь отображаются системные и документные действия: создание, согласование, назначение, исполнение и изменения статусов.</p>
     </div>
 
     <div class="row g-3 mb-4">
@@ -78,9 +78,7 @@
 
             @if (Model.Entries.Count == 0)
             {
-                <div class="alert alert-light border mb-0">
-                    По выбранным фильтрам записи не найдены.
-                </div>
+                <div class="alert alert-light border mb-0">По выбранным фильтрам записи не найдены.</div>
             }
             else
             {

@@ -49,7 +49,7 @@
                         </div>
                         <div class="col-12">
                             <label asp-for="NewCase.LegalBasis" class="form-label">Правовое основание</label>
-                            <input asp-for="NewCase.LegalBasis" class="form-control" placeholder="Перечень типовых документов..." />
+                            <input asp-for="NewCase.LegalBasis" class="form-control" placeholder="Перечень типовых документов или регламент" />
                             <span asp-validation-for="NewCase.LegalBasis" class="text-danger small"></span>
                         </div>
                         <div class="col-12">
@@ -89,7 +89,7 @@
                         </div>
                         <div class="col-12">
                             <label asp-for="NewRule.Note" class="form-label">Примечание</label>
-                            <input asp-for="NewRule.Note" class="form-control" placeholder="Например: Для всех договоров отдела закупок" />
+                            <input asp-for="NewRule.Note" class="form-control" placeholder="Например: для всех договоров отдела закупок" />
                             <span asp-validation-for="NewRule.Note" class="text-danger small"></span>
                         </div>
                         <div class="col-12">
@@ -122,7 +122,13 @@
                             {
                                 <tr>
                                     <td>@item.Index</td>
-                                    <td>@item.Title</td>
+                                    <td>
+                                        <div>@item.Title</div>
+                                        @if (!string.IsNullOrWhiteSpace(item.LegalBasis))
+                                        {
+                                            <div class="small text-muted">@item.LegalBasis</div>
+                                        }
+                                    </td>
                                     <td>@item.RetentionPeriod</td>
                                     <td>@(string.IsNullOrWhiteSpace(item.Department) ? "—" : item.Department)</td>
                                     <td>@item.DocumentsCount</td>
@@ -152,7 +158,13 @@
                             @foreach (var item in Model.Rules)
                             {
                                 <tr>
-                                    <td>@item.CaseLabel</td>
+                                    <td>
+                                        <div>@item.CaseLabel</div>
+                                        @if (!string.IsNullOrWhiteSpace(item.Note))
+                                        {
+                                            <div class="small text-muted">@item.Note</div>
+                                        }
+                                    </td>
                                     <td>@item.DocumentType</td>
                                     <td>@item.Department</td>
                                 </tr>

@@ -1,0 +1,171 @@
+@model DocumentFlowApp.Web.Models.UsersAdminPageViewModel
+@{
+    ViewData["Title"] = "Пользователи";
+}
+
+<div class="container py-4">
+    <div class="mb-4">
+        <h1 class="h3 mb-2">Пользователи</h1>
+        <p class="text-muted mb-0">Управление учетными записями, ролями, доступом и паролями пользователей.</p>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.SuccessMessage))
+    {
+        <div class="alert alert-success">@Model.SuccessMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="alert alert-danger">@Model.ErrorMessage</div>
+    }
+
+    <div class="row g-4">
+        <div class="col-xl-4">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Создать пользователя</h2>
+                    <form asp-action="CreateUser" method="post" class="row g-3">
+                        @Html.AntiForgeryToken()
+                        <div asp-validation-summary="ModelOnly" class="text-danger small"></div>
+
+                        <div class="col-md-6">
+                            <label asp-for="NewUser.UserName" class="form-label">Логин</label>
+                            <input asp-for="NewUser.UserName" class="form-control" />
+                            <span asp-validation-for="NewUser.UserName" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="NewUser.Email" class="form-label">Email</label>
+                            <input asp-for="NewUser.Email" class="form-control" />
+                            <span asp-validation-for="NewUser.Email" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="NewUser.FirstName" class="form-label">Имя</label>
+                            <input asp-for="NewUser.FirstName" class="form-control" />
+                            <span asp-validation-for="NewUser.FirstName" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="NewUser.LastName" class="form-label">Фамилия</label>
+                            <input asp-for="NewUser.LastName" class="form-control" />
+                            <span asp-validation-for="NewUser.LastName" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="NewUser.Password" class="form-label">Временный пароль</label>
+                            <input asp-for="NewUser.Password" class="form-control" type="password" />
+                            <span asp-validation-for="NewUser.Password" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="NewUser.RoleId" class="form-label">Роль</label>
+                            <select asp-for="NewUser.RoleId" class="form-select">
+                                <option value="">Выберите роль</option>
+                                @foreach (var role in Model.Roles)
+                                {
+                                    <option value="@role.Id">@role.Label</option>
+                                }
+                            </select>
+                            <span asp-validation-for="NewUser.RoleId" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input asp-for="NewUser.IsActive" class="form-check-input" />
+                                <label asp-for="NewUser.IsActive" class="form-check-label">Активен сразу после создания</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-primary">Создать пользователя</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-8">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2 class="h5 mb-0">Список пользователей</h2>
+                        <span class="text-muted small">Всего: @Model.Users.Count</span>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Логин и email</th>
+                                    <th>Имя</th>
+                                    <th>Фамилия</th>
+                                    <th>Роль</th>
+                                    <th>Статус</th>
+                                    <th>Последний вход</th>
+                                    <th>Новый пароль</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var item in Model.Users)
+                            {
+                                var updateFormId = $"user-update-{item.UserId}";
+                                var resetFormId = $"user-reset-{item.UserId}";
+                                <tr>
+                                    <td style="min-width: 220px;">
+                                        <form id="@updateFormId" asp-action="UpdateUser" method="post">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="UserId" value="@item.UserId" />
+                                        </form>
+                                        <input form="@updateFormId" type="text" name="UserName" value="@item.UserName" class="form-control form-control-sm mb-2" placeholder="Логин" />
+                                        <input form="@updateFormId" type="email" name="Email" value="@item.Email" class="form-control form-control-sm" placeholder="Email" />
+                                    </td>
+                                    <td style="min-width: 140px;">
+                                        <input form="@updateFormId" type="text" name="FirstName" value="@item.FirstName" class="form-control form-control-sm" placeholder="Имя" />
+                                    </td>
+                                    <td style="min-width: 160px;">
+                                        <input form="@updateFormId" type="text" name="LastName" value="@item.LastName" class="form-control form-control-sm" placeholder="Фамилия" />
+                                    </td>
+                                    <td style="min-width: 170px;">
+                                        <select form="@updateFormId" name="RoleId" class="form-select form-select-sm">
+                                            @foreach (var role in Model.Roles)
+                                            {
+                                                <option value="@role.Id" selected="@(item.RoleId == role.Id ? "selected" : null)">@role.Label</option>
+                                            }
+                                        </select>
+                                    </td>
+                                    <td style="min-width: 160px;">
+                                        <div class="form-check mb-1">
+                                            <input form="@updateFormId" type="hidden" name="IsActive" value="false" />
+                                            <input form="@updateFormId" class="form-check-input" type="checkbox" name="IsActive" value="true" checked="@item.IsActive" />
+                                            <label class="form-check-label small">Активен</label>
+                                        </div>
+                                        <div class="small text-muted">
+                                            Email: @(item.EmailConfirmed ? "подтвержден" : "не подтвержден")
+                                        </div>
+                                    </td>
+                                    <td class="small text-muted" style="min-width: 130px;">
+                                        @(item.LastLoginUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ?? "Еще не входил")
+                                    </td>
+                                    <td style="min-width: 190px;">
+                                        <form id="@resetFormId" asp-action="ResetUserPassword" method="post" class="d-flex flex-column gap-2">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="UserId" value="@item.UserId" />
+                                            <input type="password" name="NewPassword" class="form-control form-control-sm" placeholder="Новый пароль" />
+                                            <button type="submit" class="btn btn-outline-warning btn-sm">Сохранить новый пароль</button>
+                                        </form>
+                                    </td>
+                                    <td class="text-end">
+                                        <button form="@updateFormId" type="submit" class="btn btn-outline-primary btn-sm">Сохранить профиль</button>
+                                        <div class="small text-muted mt-2">Создан: @item.CreatedDateUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</div>
+                                    </td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <a class="btn btn-outline-secondary" asp-action="Index">Назад в администрирование</a>
+    </div>
+</div>
+
+<partial name="_ValidationScriptsPartial" />

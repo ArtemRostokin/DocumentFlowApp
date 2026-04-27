@@ -1,10 +1,13 @@
+using System.Security.Claims;
 using DocumentFlowApp.Core.Audit;
 using DocumentFlowApp.Core.Entities;
+using DocumentFlowApp.Core.Enums;
 using DocumentFlowApp.Core.Interfaces;
 using DocumentFlowApp.Infrastructure.Data;
 using DocumentFlowApp.Web.Models;
 using DocumentFlowApp.Web.Security;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,6 +19,7 @@ public class AdminController : Controller
     private readonly ApplicationDbContext _dbContext;
     private readonly IAuditService _auditService;
     private readonly ILogger<AdminController> _logger;
+    private readonly PasswordHasher<User> _passwordHasher = new();
 
     public AdminController(ApplicationDbContext dbContext, IAuditService auditService, ILogger<AdminController> logger)
     {
@@ -24,16 +28,209 @@ public class AdminController : Controller
         _logger = logger;
     }
 
-    public IActionResult Index()
+    [HttpGet]
+    public async Task<IActionResult> Index(CancellationToken cancellationToken)
     {
-        return View();
+        return View(await BuildDashboardPageAsync(cancellationToken));
     }
 
-    public IActionResult Routes()
+    [HttpGet]
+    public async Task<IActionResult> Routes(CancellationToken cancellationToken)
     {
-        ViewData["SectionTitle"] = "Шаблоны маршрутов";
-        ViewData["SectionDescription"] = "Раздел подготовлен под управление маршрутами согласования и шагами маршрута.";
-        return View("Section");
+        return View(await BuildRoutesPageAsync(cancellationToken));
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Users(CancellationToken cancellationToken)
+    {
+        return View(await BuildUsersPageAsync(cancellationToken));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateUser([Bind(Prefix = "NewUser")] CreateUserAdminInputModel input, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+            return View("Users", await BuildUsersPageAsync(cancellationToken, input));
+
+        var normalizedUserName = input.UserName.Trim();
+        var normalizedEmail = input.Email.Trim().ToLowerInvariant();
+
+        if (await _dbContext.Users.AnyAsync(x => x.UserName == normalizedUserName, cancellationToken))
+            ModelState.AddModelError(nameof(input.UserName), "Пользователь с таким логином уже существует.");
+
+        if (await _dbContext.Users.AnyAsync(x => x.Email.ToLower() == normalizedEmail, cancellationToken))
+            ModelState.AddModelError(nameof(input.Email), "Пользователь с таким email уже существует.");
+
+        var role = await _dbContext.Roles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.RoleId == input.RoleId, cancellationToken);
+
+        if (role is null)
+            ModelState.AddModelError(nameof(input.RoleId), "Выберите существующую роль.");
+
+        if (!ModelState.IsValid)
+            return View("Users", await BuildUsersPageAsync(cancellationToken, input));
+
+        try
+        {
+            var isActive = ReadPostedBoolean("NewUser.IsActive", input.IsActive);
+            var user = new User
+            {
+                UserName = normalizedUserName,
+                Email = input.Email.Trim(),
+                FirstName = input.FirstName.Trim(),
+                LastName = input.LastName.Trim(),
+                RoleId = input.RoleId,
+                IsActive = isActive,
+                EmailConfirmed = true,
+                CreatedDate = DateTime.UtcNow
+            };
+
+            user.PasswordHash = _passwordHasher.HashPassword(user, input.Password);
+
+            _dbContext.Users.Add(user);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            await _auditService.LogSystemActivityAsync(
+                GetCurrentUserId(),
+                AuditActivityTypes.UserCreated,
+                $"Создан пользователь {user.UserName} ({user.Email}) с ролью {role!.RoleName}.",
+                cancellationToken);
+
+            TempData["SuccessMessage"] = "Пользователь создан.";
+            return RedirectToAction(nameof(Users));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось создать пользователя {UserName}", input.UserName);
+            ModelState.AddModelError(string.Empty, "Не удалось создать пользователя.");
+            return View("Users", await BuildUsersPageAsync(cancellationToken, input));
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateUser(UpdateUserAdminInputModel input, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            TempData["ErrorMessage"] = "Проверьте корректность данных пользователя.";
+            return RedirectToAction(nameof(Users));
+        }
+
+        var user = await _dbContext.Users
+            .Include(x => x.Role)
+            .FirstOrDefaultAsync(x => x.UserId == input.UserId, cancellationToken);
+
+        if (user is null)
+        {
+            TempData["ErrorMessage"] = "Пользователь не найден.";
+            return RedirectToAction(nameof(Users));
+        }
+
+        var normalizedUserName = input.UserName.Trim();
+        var normalizedEmail = input.Email.Trim().ToLowerInvariant();
+
+        if (await _dbContext.Users.AnyAsync(x => x.UserId != input.UserId && x.UserName == normalizedUserName, cancellationToken))
+        {
+            TempData["ErrorMessage"] = "Другой пользователь уже использует этот логин.";
+            return RedirectToAction(nameof(Users));
+        }
+
+        if (await _dbContext.Users.AnyAsync(x => x.UserId != input.UserId && x.Email.ToLower() == normalizedEmail, cancellationToken))
+        {
+            TempData["ErrorMessage"] = "Другой пользователь уже использует этот email.";
+            return RedirectToAction(nameof(Users));
+        }
+
+        var role = await _dbContext.Roles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.RoleId == input.RoleId, cancellationToken);
+
+        if (role is null)
+        {
+            TempData["ErrorMessage"] = "Выберите существующую роль.";
+            return RedirectToAction(nameof(Users));
+        }
+
+        try
+        {
+            var previousRole = user.Role?.RoleName ?? "без роли";
+            var previousState = user.IsActive ? "активен" : "отключен";
+            var previousUserName = user.UserName;
+            var previousEmail = user.Email;
+            var previousFullName = string.Join(" ", new[] { user.FirstName, user.LastName }.Where(v => !string.IsNullOrWhiteSpace(v)));
+            var isActive = ReadPostedBoolean("IsActive", input.IsActive);
+
+            user.UserName = normalizedUserName;
+            user.Email = input.Email.Trim();
+            user.FirstName = input.FirstName.Trim();
+            user.LastName = input.LastName.Trim();
+            user.RoleId = input.RoleId;
+            user.IsActive = isActive;
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            var currentState = user.IsActive ? "активен" : "отключен";
+            var currentFullName = string.Join(" ", new[] { user.FirstName, user.LastName }.Where(v => !string.IsNullOrWhiteSpace(v)));
+
+            await _auditService.LogSystemActivityAsync(
+                GetCurrentUserId(),
+                AuditActivityTypes.UserUpdated,
+                $"Обновлен пользователь {previousUserName}: логин {previousUserName} -> {user.UserName}, email {previousEmail} -> {user.Email}, ФИО {previousFullName} -> {currentFullName}, роль {previousRole} -> {role.RoleName}, состояние {previousState} -> {currentState}.",
+                cancellationToken);
+
+            TempData["SuccessMessage"] = "Данные пользователя обновлены.";
+            return RedirectToAction(nameof(Users));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось обновить пользователя {UserId}", input.UserId);
+            TempData["ErrorMessage"] = "Не удалось обновить пользователя.";
+            return RedirectToAction(nameof(Users));
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResetUserPassword(ResetUserPasswordAdminInputModel input, CancellationToken cancellationToken)
+    {
+        var newPassword = ReadPostedString("NewPassword", input.NewPassword);
+
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length is < 8 or > 100)
+        {
+            TempData["ErrorMessage"] = "Новый пароль должен содержать от 8 до 100 символов.";
+            return RedirectToAction(nameof(Users));
+        }
+
+        var user = await _dbContext.Users.FirstOrDefaultAsync(x => x.UserId == input.UserId, cancellationToken);
+        if (user is null)
+        {
+            TempData["ErrorMessage"] = "Пользователь не найден.";
+            return RedirectToAction(nameof(Users));
+        }
+
+        try
+        {
+            user.PasswordHash = _passwordHasher.HashPassword(user, newPassword);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            await _auditService.LogSystemActivityAsync(
+                GetCurrentUserId(),
+                AuditActivityTypes.UserPasswordReset,
+                $"Администратор сбросил пароль пользователя {user.UserName}.",
+                cancellationToken);
+
+            TempData["SuccessMessage"] = $"Пароль пользователя {user.UserName} обновлен.";
+            return RedirectToAction(nameof(Users));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось сбросить пароль пользователя {UserId}", input.UserId);
+            TempData["ErrorMessage"] = "Не удалось обновить пароль пользователя.";
+            return RedirectToAction(nameof(Users));
+        }
     }
 
     [HttpGet]
@@ -44,7 +241,7 @@ public class AdminController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CreateNomenclatureCase(CreateNomenclatureCaseInputModel input, CancellationToken cancellationToken)
+    public async Task<IActionResult> CreateNomenclatureCase([Bind(Prefix = "NewCase")] CreateNomenclatureCaseInputModel input, CancellationToken cancellationToken)
     {
         if (!ModelState.IsValid)
             return View("Nomenclature", await BuildNomenclaturePageAsync(cancellationToken, input, null));
@@ -89,7 +286,7 @@ public class AdminController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CreateNomenclatureRule(CreateNomenclatureRuleInputModel input, CancellationToken cancellationToken)
+    public async Task<IActionResult> CreateNomenclatureRule([Bind(Prefix = "NewRule")] CreateNomenclatureRuleInputModel input, CancellationToken cancellationToken)
     {
         if (!ModelState.IsValid)
             return View("Nomenclature", await BuildNomenclaturePageAsync(cancellationToken, null, input));
@@ -142,6 +339,207 @@ public class AdminController : Controller
     public async Task<IActionResult> Audit(string? activityType, int? documentId, CancellationToken cancellationToken)
     {
         return View(await BuildAuditPageAsync(activityType, documentId, cancellationToken));
+    }
+
+    private async Task<AdminDashboardPageViewModel> BuildDashboardPageAsync(CancellationToken cancellationToken)
+    {
+        var todayUtc = DateTime.UtcNow.Date;
+        var totalUsers = await _dbContext.Users.CountAsync(cancellationToken);
+        var activeUsers = await _dbContext.Users.CountAsync(x => x.IsActive, cancellationToken);
+        var totalDocuments = await _dbContext.Documents.CountAsync(cancellationToken);
+        var pendingApprovalDocuments = await _dbContext.Documents.CountAsync(x => x.Status == nameof(DocumentStatus.OnApproval), cancellationToken);
+        var inWorkDocuments = await _dbContext.Documents.CountAsync(x => x.Status == nameof(DocumentStatus.InWork), cancellationToken);
+        var completedDocuments = await _dbContext.Documents.CountAsync(x => x.Status == nameof(DocumentStatus.Completed), cancellationToken);
+        var auditEventsToday = await _dbContext.DocumentActivity.CountAsync(x => (x.ActivityDate ?? DateTime.MinValue) >= todayUtc, cancellationToken);
+        var activeNomenclatureCases = await _dbContext.NomenclatureCases.CountAsync(x => x.IsActive, cancellationToken);
+        var activeNomenclatureRules = await _dbContext.NomenclatureRules.CountAsync(x => x.IsActive, cancellationToken);
+
+        var rawRecentActivities = await _dbContext.DocumentActivity
+            .AsNoTracking()
+            .Include(x => x.User)
+            .OrderByDescending(x => x.ActivityDate ?? DateTime.MinValue)
+            .ThenByDescending(x => x.ActivityId)
+            .Take(8)
+            .Select(x => new
+            {
+                x.ActivityDate,
+                x.ActivityType,
+                x.Details,
+                x.DocumentId,
+                UserFirstName = x.User != null ? x.User.FirstName : null,
+                UserLastName = x.User != null ? x.User.LastName : null,
+                UserName = x.User != null ? x.User.UserName : null
+            })
+            .ToListAsync(cancellationToken);
+
+        var recentActivities = rawRecentActivities
+            .Select(x => new AdminRecentActivityItemViewModel
+            {
+                ActivityDateUtc = x.ActivityDate,
+                ActivityTypeLabel = AuditActivityTypes.GetDisplayName(x.ActivityType),
+                UserDisplayName = BuildAuditUserDisplayName(x.UserLastName, x.UserFirstName, x.UserName),
+                Details = x.Details ?? string.Empty,
+                DocumentId = x.DocumentId
+            })
+            .ToList();
+
+        return new AdminDashboardPageViewModel
+        {
+            TotalUsers = totalUsers,
+            ActiveUsers = activeUsers,
+            TotalDocuments = totalDocuments,
+            PendingApprovalDocuments = pendingApprovalDocuments,
+            InWorkDocuments = inWorkDocuments,
+            CompletedDocuments = completedDocuments,
+            AuditEventsToday = auditEventsToday,
+            ActiveNomenclatureCases = activeNomenclatureCases,
+            ActiveNomenclatureRules = activeNomenclatureRules,
+            RecentActivities = recentActivities
+        };
+    }
+
+    private async Task<RoutesAdminPageViewModel> BuildRoutesPageAsync(CancellationToken cancellationToken)
+    {
+        return new RoutesAdminPageViewModel
+        {
+            PendingApprovalDocuments = await _dbContext.Documents.CountAsync(x => x.Status == nameof(DocumentStatus.OnApproval), cancellationToken),
+            ApprovedDocuments = await _dbContext.Documents.CountAsync(x => x.Status == nameof(DocumentStatus.Approved), cancellationToken),
+            InWorkDocuments = await _dbContext.Documents.CountAsync(x => x.Status == nameof(DocumentStatus.InWork), cancellationToken),
+            CompletedDocuments = await _dbContext.Documents.CountAsync(x => x.Status == nameof(DocumentStatus.Completed), cancellationToken),
+            Stages =
+            [
+                new RouteStageItemViewModel
+                {
+                    Order = 1,
+                    Title = "Черновик",
+                    StatusCode = nameof(DocumentStatus.Draft),
+                    ResponsibleRole = "Менеджер",
+                    Description = "Менеджер создает карточку, проверяет реквизиты, шаблон и номенклатуру."
+                },
+                new RouteStageItemViewModel
+                {
+                    Order = 2,
+                    Title = "На согласовании",
+                    StatusCode = nameof(DocumentStatus.OnApproval),
+                    ResponsibleRole = "Пользователь",
+                    Description = "Согласующий проверяет данные документа и может утвердить его или вернуть на доработку."
+                },
+                new RouteStageItemViewModel
+                {
+                    Order = 3,
+                    Title = "Утвержден",
+                    StatusCode = nameof(DocumentStatus.Approved),
+                    ResponsibleRole = "Менеджер",
+                    Description = "После согласования менеджер назначает исполнителя и подготавливает документ к работе."
+                },
+                new RouteStageItemViewModel
+                {
+                    Order = 4,
+                    Title = "В работе",
+                    StatusCode = nameof(DocumentStatus.InWork),
+                    ResponsibleRole = "Исполнитель",
+                    Description = "Исполнитель фиксирует ход работы, результат и итоговый файл исполнения."
+                },
+                new RouteStageItemViewModel
+                {
+                    Order = 5,
+                    Title = "Завершен",
+                    StatusCode = nameof(DocumentStatus.Completed),
+                    ResponsibleRole = "Менеджер / Администратор",
+                    Description = "Документ завершен и готов к архивированию при наличии номенклатуры."
+                },
+                new RouteStageItemViewModel
+                {
+                    Order = 6,
+                    Title = "Архив",
+                    StatusCode = nameof(DocumentStatus.Archived),
+                    ResponsibleRole = "Менеджер / Администратор",
+                    Description = "Документ переводится в архив только после завершения и привязки к делу номенклатуры."
+                }
+            ],
+            Roles =
+            [
+                new RouteRoleResponsibilityViewModel
+                {
+                    RoleName = "Администратор",
+                    Responsibilities = "Настраивает пользователей, аудит, номенклатуру и контролирует системный контур."
+                },
+                new RouteRoleResponsibilityViewModel
+                {
+                    RoleName = "Менеджер",
+                    Responsibilities = "Создает документы, отправляет их на согласование, назначает исполнителей и контролирует маршрут."
+                },
+                new RouteRoleResponsibilityViewModel
+                {
+                    RoleName = "Пользователь / Исполнитель",
+                    Responsibilities = "Согласует документы, возвращает их на доработку и выполняет назначенные задачи."
+                }
+            ]
+        };
+    }
+
+    private async Task<UsersAdminPageViewModel> BuildUsersPageAsync(
+        CancellationToken cancellationToken,
+        CreateUserAdminInputModel? createInput = null)
+    {
+        var roles = await _dbContext.Roles
+            .AsNoTracking()
+            .OrderBy(x => x.RoleName)
+            .Select(x => new RoleOptionViewModel
+            {
+                Id = x.RoleId,
+                Label = x.RoleName
+            })
+            .ToListAsync(cancellationToken);
+
+        var rawUsers = await _dbContext.Users
+            .AsNoTracking()
+            .Include(x => x.Role)
+            .OrderBy(x => x.LastName)
+            .ThenBy(x => x.FirstName)
+            .ThenBy(x => x.UserName)
+            .Select(x => new
+            {
+                x.UserId,
+                x.UserName,
+                x.Email,
+                x.FirstName,
+                x.LastName,
+                RoleName = x.Role != null ? x.Role.RoleName : null,
+                x.RoleId,
+                x.IsActive,
+                x.EmailConfirmed,
+                x.CreatedDate,
+                x.LastLogin
+            })
+            .ToListAsync(cancellationToken);
+
+        var users = rawUsers
+            .Select(x => new UserAdminItemViewModel
+            {
+                UserId = x.UserId,
+                UserName = x.UserName,
+                Email = x.Email,
+                FirstName = x.FirstName ?? string.Empty,
+                LastName = x.LastName ?? string.Empty,
+                FullName = string.Join(" ", new[] { x.LastName, x.FirstName }.Where(v => !string.IsNullOrWhiteSpace(v))),
+                RoleName = string.IsNullOrWhiteSpace(x.RoleName) ? "Без роли" : x.RoleName,
+                RoleId = x.RoleId,
+                IsActive = x.IsActive,
+                EmailConfirmed = x.EmailConfirmed,
+                CreatedDateUtc = x.CreatedDate,
+                LastLoginUtc = x.LastLogin
+            })
+            .ToList();
+
+        return new UsersAdminPageViewModel
+        {
+            SuccessMessage = TempData["SuccessMessage"] as string,
+            ErrorMessage = TempData["ErrorMessage"] as string,
+            NewUser = createInput ?? new CreateUserAdminInputModel(),
+            Roles = roles,
+            Users = users
+        };
     }
 
     private async Task<NomenclatureAdminPageViewModel> BuildNomenclaturePageAsync(
@@ -216,9 +614,7 @@ public class AdminController : Controller
         var todayUtc = DateTime.UtcNow.Date;
 
         var totalCount = await query.CountAsync(cancellationToken);
-        var todayCount = await query.CountAsync(
-            x => (x.ActivityDate ?? DateTime.MinValue) >= todayUtc,
-            cancellationToken);
+        var todayCount = await query.CountAsync(x => (x.ActivityDate ?? DateTime.MinValue) >= todayUtc, cancellationToken);
         var distinctDocumentsCount = await query
             .Where(x => x.DocumentId != null)
             .Select(x => x.DocumentId)
@@ -254,9 +650,7 @@ public class AdminController : Controller
                 DocumentId = x.DocumentId,
                 DocumentTitle = x.DocumentId == null
                     ? "Системное событие"
-                    : (string.IsNullOrWhiteSpace(x.DocumentTitle)
-                        ? $"Документ #{x.DocumentId}"
-                        : x.DocumentTitle),
+                    : (string.IsNullOrWhiteSpace(x.DocumentTitle) ? $"Документ #{x.DocumentId}" : x.DocumentTitle),
                 UserDisplayName = BuildAuditUserDisplayName(x.UserLastName, x.UserFirstName, x.UserName),
                 Details = x.Details ?? string.Empty
             })
@@ -295,9 +689,31 @@ public class AdminController : Controller
 
     private int? GetCurrentUserId()
     {
-        var raw = User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-            ?? User.Identity?.Name;
-
+        var raw = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.Identity?.Name;
         return int.TryParse(raw, out var userId) ? userId : null;
+    }
+
+    private bool ReadPostedBoolean(string key, bool fallback)
+    {
+        if (!Request.HasFormContentType)
+            return fallback;
+
+        if (!Request.Form.TryGetValue(key, out var values))
+            return fallback;
+
+        return values.Any(value =>
+            string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(value, "on", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string ReadPostedString(string key, string fallback)
+    {
+        if (!Request.HasFormContentType)
+            return fallback;
+
+        if (!Request.Form.TryGetValue(key, out var values))
+            return fallback;
+
+        return values.LastOrDefault() ?? fallback;
     }
 }

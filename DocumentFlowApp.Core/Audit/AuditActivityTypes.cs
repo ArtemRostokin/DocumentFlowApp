@@ -17,6 +17,9 @@ public static class AuditActivityTypes
     public const string ExecutionFileUploaded = "execution-file-uploaded";
     public const string UserLogin = "user-login";
     public const string UserLogout = "user-logout";
+    public const string UserCreated = "user-created";
+    public const string UserUpdated = "user-updated";
+    public const string UserPasswordReset = "user-password-reset";
     public const string NomenclatureCaseCreated = "nomenclature-case-created";
     public const string NomenclatureRuleCreated = "nomenclature-rule-created";
 
@@ -37,6 +40,9 @@ public static class AuditActivityTypes
         ExecutionFileUploaded,
         UserLogin,
         UserLogout,
+        UserCreated,
+        UserUpdated,
+        UserPasswordReset,
         NomenclatureCaseCreated,
         NomenclatureRuleCreated
     ];
@@ -58,6 +64,9 @@ public static class AuditActivityTypes
         ExecutionFileUploaded => "Загрузка итогового файла",
         UserLogin => "Вход в систему",
         UserLogout => "Выход из системы",
+        UserCreated => "Создание пользователя",
+        UserUpdated => "Обновление пользователя",
+        UserPasswordReset => "Сброс пароля пользователя",
         NomenclatureCaseCreated => "Создание дела номенклатуры",
         NomenclatureRuleCreated => "Создание правила номенклатуры",
         _ => "Прочее действие"
