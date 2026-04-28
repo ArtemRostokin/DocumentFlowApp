@@ -30,6 +30,9 @@ namespace DocumentFlowApp.Infrastructure.Data
         public DbSet<RolePermission> RolePermissions { get; set; } = null!;
         public DbSet<User> Users { get; set; } = null!;
         public DbSet<Template> Templates { get; set; } = null!;
+        public DbSet<RouteTemplate> RouteTemplates { get; set; } = null!;
+        public DbSet<RouteStep> RouteSteps { get; set; } = null!;
+        public DbSet<DocumentApprovalStep> DocumentApprovalSteps { get; set; } = null!;
         public DbSet<NomenclatureCase> NomenclatureCases { get; set; } = null!;
         public DbSet<NomenclatureRule> NomenclatureRules { get; set; } = null!;
         public DbSet<DocumentAiMetadata> DocumentAiMetadata { get; set; } = null!;
@@ -103,11 +106,17 @@ namespace DocumentFlowApp.Infrastructure.Data
                     .HasForeignKey(d => d.NomenclatureCaseId)
                     .OnDelete(DeleteBehavior.SetNull);
 
+                entity.HasOne(d => d.RouteTemplate)
+                    .WithMany(t => t.Documents)
+                    .HasForeignKey(d => d.RouteTemplateId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
                 // Индексы
                 entity.HasIndex(d => d.Status).HasDatabaseName("IX_Documents_Status");
                 entity.HasIndex(d => d.DocumentType).HasDatabaseName("IX_Documents_Type");
                 entity.HasIndex(d => d.CreatedDate).HasDatabaseName("IX_Documents_CreatedDate");
                 entity.HasIndex(d => d.NomenclatureCaseId).HasDatabaseName("IX_Documents_NomenclatureCaseId");
+                entity.HasIndex(d => d.RouteTemplateId).HasDatabaseName("IX_Documents_RouteTemplateId");
             });
 
             // AiModel
@@ -126,6 +135,68 @@ namespace DocumentFlowApp.Infrastructure.Data
                 entity.Property(t => t.TemplateId).ValueGeneratedOnAdd();
                 entity.Property(t => t.Name).IsRequired().HasMaxLength(200);
                 entity.Property(t => t.AiSuggestedFields).HasColumnType("jsonb").HasComment("JSON предложенных полей AI");
+            });
+
+            modelBuilder.Entity<RouteTemplate>(entity =>
+            {
+                entity.HasKey(t => t.RouteTemplateId);
+                entity.Property(t => t.RouteTemplateId).ValueGeneratedOnAdd();
+                entity.Property(t => t.Name).IsRequired().HasMaxLength(200);
+                entity.Property(t => t.Description).HasMaxLength(500);
+                entity.Property(t => t.DocumentType).HasMaxLength(100);
+                entity.Property(t => t.Department).HasMaxLength(150);
+                entity.Property(t => t.CreatedDate).HasDefaultValueSql("NOW()");
+            });
+
+            modelBuilder.Entity<RouteStep>(entity =>
+            {
+                entity.HasKey(s => s.RouteStepId);
+                entity.Property(s => s.RouteStepId).ValueGeneratedOnAdd();
+                entity.Property(s => s.Title).IsRequired().HasMaxLength(200);
+                entity.Property(s => s.ApproverRole).IsRequired().HasMaxLength(100);
+                entity.HasOne(s => s.RouteTemplate)
+                    .WithMany(t => t.Steps)
+                    .HasForeignKey(s => s.RouteTemplateId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(s => s.ApproverUser)
+                    .WithMany(u => u.RouteStepsAsApprover)
+                    .HasForeignKey(s => s.ApproverUserId)
+                    .OnDelete(DeleteBehavior.SetNull);
+                entity.HasIndex(s => new { s.RouteTemplateId, s.StepOrder }).IsUnique();
+            });
+
+            modelBuilder.Entity<DocumentApprovalStep>(entity =>
+            {
+                entity.HasKey(s => s.DocumentApprovalStepId);
+                entity.Property(s => s.DocumentApprovalStepId).ValueGeneratedOnAdd();
+                entity.Property(s => s.Title).IsRequired().HasMaxLength(200);
+                entity.Property(s => s.ApproverRole).IsRequired().HasMaxLength(100);
+                entity.Property(s => s.Status).IsRequired().HasMaxLength(50);
+                entity.Property(s => s.Comment).HasMaxLength(1000);
+
+                entity.HasOne(s => s.Document)
+                    .WithMany(d => d.ApprovalSteps)
+                    .HasForeignKey(s => s.DocumentId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(s => s.RouteTemplate)
+                    .WithMany(t => t.DocumentApprovalSteps)
+                    .HasForeignKey(s => s.RouteTemplateId)
+                    .OnDelete(DeleteBehavior.SetNull);
+                entity.HasOne(s => s.RouteStep)
+                    .WithMany(t => t.DocumentApprovalSteps)
+                    .HasForeignKey(s => s.RouteStepId)
+                    .OnDelete(DeleteBehavior.SetNull);
+                entity.HasOne(s => s.ApproverUser)
+                    .WithMany(u => u.ApprovalStepsAsApprover)
+                    .HasForeignKey(s => s.ApproverUserId)
+                    .OnDelete(DeleteBehavior.SetNull);
+                entity.HasOne(s => s.ActionByUser)
+                    .WithMany(u => u.ApprovalStepsAsActor)
+                    .HasForeignKey(s => s.ActionByUserId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(s => new { s.DocumentId, s.StepOrder }).IsUnique();
+                entity.HasIndex(s => new { s.DocumentId, s.IsCurrent });
             });
 
             modelBuilder.Entity<NomenclatureCase>(entity =>
@@ -281,6 +352,9 @@ namespace DocumentFlowApp.Infrastructure.Data
             modelBuilder.Entity<Document>().HasComment("Таблица для хранения документов системы");
             modelBuilder.Entity<AiModel>().HasComment("AI модели");
             modelBuilder.Entity<Template>().HasComment("Шаблоны документов");
+            modelBuilder.Entity<RouteTemplate>().HasComment("Шаблоны маршрутов согласования");
+            modelBuilder.Entity<RouteStep>().HasComment("Шаги шаблона маршрута согласования");
+            modelBuilder.Entity<DocumentApprovalStep>().HasComment("Шаги согласования, привязанные к конкретному документу");
             modelBuilder.Entity<User>().HasComment("Пользователи системы");
             modelBuilder.Entity<NomenclatureCase>().HasComment("Дела номенклатуры");
             modelBuilder.Entity<NomenclatureRule>().HasComment("Правила автопривязки дел номенклатуры");

@@ -25,6 +25,9 @@ public class User
     public ICollection<Document> Documents { get; set; } = new List<Document>();
     public ICollection<DocumentStatistic> DocumentStatistics { get; set; } = new List<DocumentStatistic>();
     public ICollection<DocumentActivity> DocumentActivities { get; set; } = new List<DocumentActivity>();
+    public ICollection<RouteStep> RouteStepsAsApprover { get; set; } = new List<RouteStep>();
+    public ICollection<DocumentApprovalStep> ApprovalStepsAsApprover { get; set; } = new List<DocumentApprovalStep>();
+    public ICollection<DocumentApprovalStep> ApprovalStepsAsActor { get; set; } = new List<DocumentApprovalStep>();
     public ICollection<SearchHistory> SearchHistories { get; set; } = new List<SearchHistory>();
     public ICollection<UserSession> Sessions { get; set; } = new List<UserSession>();
 }

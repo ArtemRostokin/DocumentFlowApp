@@ -31,9 +31,10 @@ public static class ApplicationDbSeeder
 
         await context.SaveChangesAsync(cancellationToken);
 
-        await EnsureUserAsync(context, adminRole.RoleId, "admin", "admin@docflow.local", "Admin123!", "Системный", "Администратор", cancellationToken);
-        await EnsureUserAsync(context, managerRole.RoleId, "manager", "manager@docflow.local", "Manager123!", "Ирина", "Менеджер", cancellationToken);
-        await EnsureUserAsync(context, employeeRole.RoleId, "employee", "employee@docflow.local", "Employee123!", "Алексей", "Исполнитель", cancellationToken);
+        var adminUser = await EnsureUserAsync(context, adminRole.RoleId, "admin", "admin@docflow.local", "Admin123!", "Системный", "Администратор", cancellationToken);
+        var managerUser = await EnsureUserAsync(context, managerRole.RoleId, "manager", "manager@docflow.local", "Manager123!", "Ирина", "Менеджер", cancellationToken);
+        var secondManagerUser = await EnsureUserAsync(context, managerRole.RoleId, "manager2", "manager2@docflow.local", "Manager123!", "Олег", "Согласующий", cancellationToken);
+        var employeeUser = await EnsureUserAsync(context, employeeRole.RoleId, "employee", "employee@docflow.local", "Employee123!", "Алексей", "Исполнитель", cancellationToken);
 
         await EnsureTemplateAsync(
             context,
@@ -110,6 +111,42 @@ public static class ApplicationDbSeeder
         await EnsureNomenclatureRuleAsync(context, invoiceCase.NomenclatureCaseId, "Invoice", null, "Автопривязка для счетов", cancellationToken);
         await EnsureNomenclatureRuleAsync(context, applicationCase.NomenclatureCaseId, "Application", null, "Автопривязка для заявлений", cancellationToken);
 
+        await EnsureRouteTemplateAsync(
+            context,
+            "Базовый маршрут договоров",
+            "Contract",
+            "Согласование договоров вторым менеджером.",
+            secondManagerUser.UserId,
+            secondManagerUser.Role?.RoleName ?? AppRoles.Manager,
+            cancellationToken);
+
+        await EnsureRouteTemplateAsync(
+            context,
+            "Базовый маршрут счетов",
+            "Invoice",
+            "Согласование счетов вторым менеджером.",
+            secondManagerUser.UserId,
+            secondManagerUser.Role?.RoleName ?? AppRoles.Manager,
+            cancellationToken);
+
+        await EnsureRouteTemplateAsync(
+            context,
+            "Базовый маршрут заявлений",
+            "Application",
+            "Согласование заявлений вторым менеджером.",
+            secondManagerUser.UserId,
+            secondManagerUser.Role?.RoleName ?? AppRoles.Manager,
+            cancellationToken);
+
+        await EnsureRouteTemplateAsync(
+            context,
+            "Общий маршрут по умолчанию",
+            null,
+            "Используется для типов документов без отдельного шаблона маршрута.",
+            secondManagerUser.UserId,
+            secondManagerUser.Role?.RoleName ?? AppRoles.Manager,
+            cancellationToken);
+
         await context.SaveChangesAsync(cancellationToken);
     }
 
@@ -129,7 +166,7 @@ public static class ApplicationDbSeeder
         return role;
     }
 
-    private static async Task EnsureUserAsync(
+    private static async Task<User> EnsureUserAsync(
         ApplicationDbContext context,
         int roleId,
         string userName,
@@ -141,7 +178,7 @@ public static class ApplicationDbSeeder
     {
         var existingUser = await context.Users.FirstOrDefaultAsync(u => u.Email == email, cancellationToken);
         if (existingUser is not null)
-            return;
+            return existingUser;
 
         var user = new User
         {
@@ -159,6 +196,9 @@ public static class ApplicationDbSeeder
         user.PasswordHash = passwordHasher.HashPassword(user, password);
 
         context.Users.Add(user);
+        await context.SaveChangesAsync(cancellationToken);
+
+        return user;
     }
 
     private static async Task EnsureTemplateAsync(
@@ -255,5 +295,62 @@ public static class ApplicationDbSeeder
 
         rule.Note = note;
         rule.IsActive = true;
+    }
+
+    private static async Task EnsureRouteTemplateAsync(
+        ApplicationDbContext context,
+        string name,
+        string? documentType,
+        string description,
+        int approverUserId,
+        string approverRole,
+        CancellationToken cancellationToken)
+    {
+        var template = await context.RouteTemplates
+            .Include(x => x.Steps)
+            .FirstOrDefaultAsync(x => x.Name == name, cancellationToken);
+
+        if (template is null)
+        {
+            template = new RouteTemplate
+            {
+                Name = name,
+                DocumentType = documentType,
+                Description = description,
+                IsActive = true,
+                IsDefault = true,
+                CreatedDate = DateTime.UtcNow
+            };
+            context.RouteTemplates.Add(template);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        else
+        {
+            template.DocumentType = documentType;
+            template.Description = description;
+            template.IsActive = true;
+            template.IsDefault = true;
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
+        var existingStep = await context.RouteSteps.FirstOrDefaultAsync(x => x.RouteTemplateId == template.RouteTemplateId && x.StepOrder == 1, cancellationToken);
+        if (existingStep is null)
+        {
+            context.RouteSteps.Add(new RouteStep
+            {
+                RouteTemplateId = template.RouteTemplateId,
+                StepOrder = 1,
+                Title = "Согласование",
+                ApproverRole = approverRole,
+                ApproverUserId = approverUserId,
+                IsRequired = true
+            });
+            return;
+        }
+
+        existingStep.Title = "Согласование";
+        existingStep.ApproverRole = approverRole;
+        existingStep.ApproverUserId = approverUserId;
+        existingStep.IsRequired = true;
     }
 }

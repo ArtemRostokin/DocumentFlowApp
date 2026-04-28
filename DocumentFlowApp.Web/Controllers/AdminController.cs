@@ -40,6 +40,152 @@ public class AdminController : Controller
         return View(await BuildRoutesPageAsync(cancellationToken));
     }
 
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateRouteTemplate([Bind(Prefix = "NewTemplate")] CreateRouteTemplateAdminInputModel input, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(input.Name))
+            ModelState.AddModelError(nameof(input.Name), "Введите название шаблона маршрута.");
+
+        if (!ModelState.IsValid)
+            return View("Routes", await BuildRoutesPageAsync(cancellationToken, newTemplate: input));
+
+        try
+        {
+            if (input.IsDefault)
+            {
+                var currentDefaults = await _dbContext.RouteTemplates
+                    .Where(x => x.DocumentType == (input.DocumentType == null ? null : input.DocumentType.ToString()) && x.IsDefault)
+                    .ToListAsync(cancellationToken);
+
+                foreach (var currentDefault in currentDefaults)
+                    currentDefault.IsDefault = false;
+            }
+
+            var template = new RouteTemplate
+            {
+                Name = input.Name.Trim(),
+                Description = string.IsNullOrWhiteSpace(input.Description) ? null : input.Description.Trim(),
+                DocumentType = input.DocumentType?.ToString(),
+                Department = string.IsNullOrWhiteSpace(input.Department) ? null : input.Department.Trim(),
+                IsActive = input.IsActive,
+                IsDefault = input.IsDefault,
+                CreatedDate = DateTime.UtcNow
+            };
+
+            _dbContext.RouteTemplates.Add(template);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            await _auditService.LogSystemActivityAsync(
+                GetCurrentUserId(),
+                AuditActivityTypes.DocumentUpdated,
+                $"Создан шаблон маршрута \"{template.Name}\" для типа {(template.DocumentType ?? "Any")}.",
+                cancellationToken);
+
+            TempData["SuccessMessage"] = "Шаблон маршрута создан.";
+            return RedirectToAction(nameof(Routes));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось создать шаблон маршрута {RouteTemplateName}", input.Name);
+            ModelState.AddModelError(string.Empty, "Не удалось создать шаблон маршрута.");
+            return View("Routes", await BuildRoutesPageAsync(cancellationToken, newTemplate: input));
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddRouteStep([Bind(Prefix = "NewStep")] AddRouteStepAdminInputModel input, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(input.Title))
+            ModelState.AddModelError(nameof(input.Title), "Введите название шага.");
+
+        if (input.ApproverUserId is null)
+            ModelState.AddModelError(nameof(input.ApproverUserId), "Выберите согласующего.");
+
+        var template = await _dbContext.RouteTemplates.FirstOrDefaultAsync(x => x.RouteTemplateId == input.RouteTemplateId, cancellationToken);
+        if (template is null)
+            ModelState.AddModelError(nameof(input.RouteTemplateId), "Шаблон маршрута не найден.");
+
+        var approver = input.ApproverUserId is null
+            ? null
+            : await _dbContext.Users
+                .Include(x => x.Role)
+                .FirstOrDefaultAsync(x => x.UserId == input.ApproverUserId.Value && x.IsActive, cancellationToken);
+
+        if (input.ApproverUserId is not null && approver is null)
+            ModelState.AddModelError(nameof(input.ApproverUserId), "Выберите активного согласующего.");
+
+        if (!ModelState.IsValid)
+            return View("Routes", await BuildRoutesPageAsync(cancellationToken, newStep: input));
+
+        try
+        {
+            var step = new RouteStep
+            {
+                RouteTemplateId = input.RouteTemplateId,
+                StepOrder = input.StepOrder,
+                Title = input.Title.Trim(),
+                ApproverUserId = input.ApproverUserId,
+                ApproverRole = approver?.Role?.RoleName ?? "User",
+                IsRequired = input.IsRequired
+            };
+
+            _dbContext.RouteSteps.Add(step);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            await _auditService.LogSystemActivityAsync(
+                GetCurrentUserId(),
+                AuditActivityTypes.DocumentUpdated,
+                $"Добавлен шаг маршрута \"{step.Title}\" в шаблон \"{template!.Name}\".",
+                cancellationToken);
+
+            TempData["SuccessMessage"] = "Шаг маршрута добавлен.";
+            return RedirectToAction(nameof(Routes));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось добавить шаг маршрута в шаблон {RouteTemplateId}", input.RouteTemplateId);
+            ModelState.AddModelError(string.Empty, "Не удалось добавить шаг маршрута.");
+            return View("Routes", await BuildRoutesPageAsync(cancellationToken, newStep: input));
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateRouteTemplate(UpdateRouteTemplateAdminInputModel input, CancellationToken cancellationToken)
+    {
+        var template = await _dbContext.RouteTemplates.FirstOrDefaultAsync(x => x.RouteTemplateId == input.RouteTemplateId, cancellationToken);
+        if (template is null)
+        {
+            TempData["ErrorMessage"] = "Шаблон маршрута не найден.";
+            return RedirectToAction(nameof(Routes));
+        }
+
+        if (input.IsDefault)
+        {
+            var currentDefaults = await _dbContext.RouteTemplates
+                .Where(x => x.RouteTemplateId != template.RouteTemplateId && x.DocumentType == template.DocumentType && x.IsDefault)
+                .ToListAsync(cancellationToken);
+
+            foreach (var currentDefault in currentDefaults)
+                currentDefault.IsDefault = false;
+        }
+
+        template.IsActive = input.IsActive;
+        template.IsDefault = input.IsDefault;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await _auditService.LogSystemActivityAsync(
+            GetCurrentUserId(),
+            AuditActivityTypes.DocumentUpdated,
+            $"Обновлены параметры шаблона маршрута \"{template.Name}\".",
+            cancellationToken);
+
+        TempData["SuccessMessage"] = "Параметры шаблона маршрута обновлены.";
+        return RedirectToAction(nameof(Routes));
+    }
+
     [HttpGet]
     public async Task<IActionResult> Users(CancellationToken cancellationToken)
     {
@@ -398,14 +544,52 @@ public class AdminController : Controller
         };
     }
 
-    private async Task<RoutesAdminPageViewModel> BuildRoutesPageAsync(CancellationToken cancellationToken)
+    private async Task<RoutesAdminPageViewModel> BuildRoutesPageAsync(
+        CancellationToken cancellationToken,
+        CreateRouteTemplateAdminInputModel? newTemplate = null,
+        AddRouteStepAdminInputModel? newStep = null)
     {
+        var templates = await _dbContext.RouteTemplates
+            .AsNoTracking()
+            .Include(x => x.Steps)
+            .ThenInclude(x => x.ApproverUser)
+            .ThenInclude(x => x!.Role)
+            .OrderBy(x => x.DocumentType)
+            .ThenBy(x => x.Name)
+            .ToListAsync(cancellationToken);
+
         return new RoutesAdminPageViewModel
         {
             PendingApprovalDocuments = await _dbContext.Documents.CountAsync(x => x.Status == nameof(DocumentStatus.OnApproval), cancellationToken),
             ApprovedDocuments = await _dbContext.Documents.CountAsync(x => x.Status == nameof(DocumentStatus.Approved), cancellationToken),
             InWorkDocuments = await _dbContext.Documents.CountAsync(x => x.Status == nameof(DocumentStatus.InWork), cancellationToken),
             CompletedDocuments = await _dbContext.Documents.CountAsync(x => x.Status == nameof(DocumentStatus.Completed), cancellationToken),
+            Templates = templates.Select(template => new RouteTemplateAdminListItemViewModel
+            {
+                Id = template.RouteTemplateId,
+                Name = template.Name,
+                Description = template.Description,
+                DocumentType = TryParseEnum<DocumentType>(template.DocumentType),
+                Department = template.Department,
+                IsActive = template.IsActive,
+                IsDefault = template.IsDefault,
+                Steps = template.Steps
+                    .OrderBy(step => step.StepOrder)
+                    .Select(step => new RouteTemplateStepAdminViewModel
+                    {
+                        RouteStepId = step.RouteStepId,
+                        StepOrder = step.StepOrder,
+                        Title = step.Title,
+                        ApproverRole = step.ApproverRole,
+                        ApproverUserId = step.ApproverUserId,
+                        ApproverDisplayName = FormatUserDisplayName(step.ApproverUser?.FirstName, step.ApproverUser?.LastName, step.ApproverUser?.UserName),
+                        IsRequired = step.IsRequired
+                    })
+                    .ToList(),
+            }).ToList(),
+            Approvers = await BuildRouteApproverOptionsAsync(cancellationToken),
+            NewTemplate = newTemplate ?? new CreateRouteTemplateAdminInputModel(),
+            NewStep = newStep ?? new AddRouteStepAdminInputModel(),
             Stages =
             [
                 new RouteStageItemViewModel
@@ -476,6 +660,49 @@ public class AdminController : Controller
                 }
             ]
         };
+    }
+
+    private async Task<IReadOnlyList<RouteApproverOptionViewModel>> BuildRouteApproverOptionsAsync(CancellationToken cancellationToken)
+    {
+        var items = await _dbContext.Users
+            .AsNoTracking()
+            .Include(x => x.Role)
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.LastName)
+            .ThenBy(x => x.FirstName)
+            .ThenBy(x => x.UserName)
+            .Select(x => new
+            {
+                x.UserId,
+                x.UserName,
+                x.FirstName,
+                x.LastName,
+                RoleName = x.Role != null ? x.Role.RoleName : "User"
+            })
+            .ToListAsync(cancellationToken);
+
+        return items
+            .Select(x => new RouteApproverOptionViewModel
+            {
+                UserId = x.UserId,
+                DisplayName = FormatUserDisplayName(x.FirstName, x.LastName, x.UserName),
+                RoleName = x.RoleName
+            })
+            .ToList();
+    }
+
+    private static string FormatUserDisplayName(string? firstName, string? lastName, string? userName)
+    {
+        var fullName = string.Join(" ", new[] { lastName, firstName }.Where(v => !string.IsNullOrWhiteSpace(v)));
+        return string.IsNullOrWhiteSpace(fullName) ? (userName ?? "Не назначен") : fullName;
+    }
+
+    private static TEnum? TryParseEnum<TEnum>(string? raw) where TEnum : struct
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        return Enum.TryParse<TEnum>(raw, true, out var parsed) ? parsed : null;
     }
 
     private async Task<UsersAdminPageViewModel> BuildUsersPageAsync(

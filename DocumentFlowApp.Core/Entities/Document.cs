@@ -15,6 +15,9 @@ public class Document
     public int? TemplateId { get; set; }
     public Template? Template { get; set; }
 
+    public int? RouteTemplateId { get; set; }
+    public RouteTemplate? RouteTemplate { get; set; }
+
     public int? NomenclatureCaseId { get; set; }
     public NomenclatureCase? NomenclatureCase { get; set; }
 
@@ -49,4 +52,5 @@ public class Document
     public ICollection<DocumentRelation> TargetRelations { get; set; } = new List<DocumentRelation>();
     public ICollection<DocumentStatistic> Statistics { get; set; } = new List<DocumentStatistic>();
     public ICollection<DocumentActivity> Activities { get; set; } = new List<DocumentActivity>();
+    public ICollection<DocumentApprovalStep> ApprovalSteps { get; set; } = new List<DocumentApprovalStep>();
 }

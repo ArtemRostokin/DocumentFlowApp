@@ -150,6 +150,7 @@ builder.Services.AddScoped<IAuditService, AuditService>();
     catch (Exception ex)
     {
         AppendCrashLog("Database seeding failed", ex.ToString());
+        throw;
     }
 
     if (!app.Environment.IsDevelopment())

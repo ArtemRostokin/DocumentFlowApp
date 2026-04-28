@@ -31,6 +31,10 @@ public sealed class RoutesAdminPageViewModel
     public int CompletedDocuments { get; init; }
     public IReadOnlyList<RouteStageItemViewModel> Stages { get; init; } = [];
     public IReadOnlyList<RouteRoleResponsibilityViewModel> Roles { get; init; } = [];
+    public IReadOnlyList<RouteTemplateAdminListItemViewModel> Templates { get; init; } = [];
+    public IReadOnlyList<RouteApproverOptionViewModel> Approvers { get; init; } = [];
+    public CreateRouteTemplateAdminInputModel NewTemplate { get; init; } = new();
+    public AddRouteStepAdminInputModel NewStep { get; init; } = new();
 }
 
 public sealed class RouteStageItemViewModel

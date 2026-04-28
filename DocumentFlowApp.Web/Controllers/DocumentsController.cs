@@ -20,6 +20,14 @@ namespace DocumentFlowApp.Web.Controllers;
 public class DocumentsController : Controller
 {
     private const string UploadFolderName = "DocumentFlowAppUploads";
+    private static readonly HashSet<DocumentType> MakerCheckerProtectedTypes =
+    [
+        DocumentType.Contract,
+        DocumentType.Invoice,
+        DocumentType.Order,
+        DocumentType.Act
+    ];
+
     private readonly IDocumentService _documentService;
     private readonly IAuditService _auditService;
     private readonly ApplicationDbContext _dbContext;
@@ -75,7 +83,7 @@ public class DocumentsController : Controller
     [Route("Documents/{id:int}/approval")]
     public async Task<IActionResult> ApprovalAction(int id, ApprovalActionInputModel input, CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
+        var currentUserId = GetCurrentUserId();
 
         var decision = (input.Decision ?? string.Empty).Trim().ToLowerInvariant();
         if (decision is not ("approve" or "rework"))
@@ -102,7 +110,19 @@ public class DocumentsController : Controller
         {
             if (decision == "approve")
             {
-                await _documentService.ChangeDocumentStatusAsync(id, DocumentStatus.Approved);
+                var makerCheckerMessage = await GetMakerCheckerViolationMessageAsync(
+                    document,
+                    currentStatus,
+                    DocumentStatus.Approved,
+                    currentUserId,
+                    cancellationToken);
+                if (makerCheckerMessage is not null)
+                {
+                    TempData["ErrorMessage"] = makerCheckerMessage;
+                    return RedirectToAction(nameof(ApprovalQueue));
+                }
+
+                var approvalStatus = await AdvanceApprovalWorkflowAsync(document, currentUserId, cancellationToken);
                 await LogDocumentActivityAsync(
                     id,
                     AuditActivityTypes.ApprovalApproved,
@@ -112,6 +132,8 @@ public class DocumentsController : Controller
             }
             else
             {
+                await CaptureApprovalReworkAsync(document, currentUserId, input.Comment, cancellationToken);
+                await CaptureApprovalReworkAsync(document, currentUserId, input.Comment, cancellationToken);
                 await _documentService.ChangeDocumentStatusAsync(id, DocumentStatus.Draft, input.Comment);
                 await LogDocumentActivityAsync(
                     id,
@@ -204,6 +226,11 @@ public class DocumentsController : Controller
             Priority = doc.Priority,
             Tags = doc.Tags,
             Status = doc.Status ?? string.Empty,
+            RouteTemplateId = doc.RouteTemplateId,
+            RouteTemplateName = await GetRouteTemplateNameAsync(doc.RouteTemplateId, cancellationToken),
+            RouteTemplateOptions = await LoadRouteTemplateOptionsAsync(cancellationToken, TryParseEnum<DocumentType>(doc.DocumentType)),
+            ApprovalRouteSteps = await BuildApprovalRouteStepsAsync(doc, cancellationToken),
+            RouteApproverOptions = await LoadRouteApproverOptionsAsync(cancellationToken),
             NomenclatureCaseId = doc.NomenclatureCaseId,
             NomenclatureCaseLabel = await BuildNomenclatureCaseLabelAsync(doc.NomenclatureCaseId, cancellationToken),
             NomenclatureCaseOptions = await LoadNomenclatureCaseOptionsAsync(cancellationToken),
@@ -303,6 +330,7 @@ public class DocumentsController : Controller
             doc.DueDate = model.DueDate;
             doc.Priority = model.Priority;
             doc.Tags = model.Tags;
+            doc.RouteTemplateId = model.RouteTemplateId;
             doc.NomenclatureCaseId = model.NomenclatureCaseId;
 
             await _documentService.UpdateDocumentAsync(doc);
@@ -583,6 +611,78 @@ public class DocumentsController : Controller
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
+    [Route("Documents/{id:int}/approval-route")]
+    public async Task<IActionResult> PrepareApprovalRoute(int id, int? routeTemplateId, CancellationToken cancellationToken)
+    {
+        var document = await _documentService.GetDocumentByIdAsync(id);
+        if (document is null)
+            return NotFound();
+
+        var status = ParseDocumentStatus(document.Status);
+        if (status != DocumentStatus.Draft)
+        {
+            TempData["ErrorMessage"] = "Маршрут согласования можно настраивать только для черновика.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        document.RouteTemplateId = routeTemplateId;
+        await _documentService.UpdateDocumentAsync(document);
+
+        var prepared = await EnsureApprovalRoutePreparedAsync(document, regenerate: true, cancellationToken);
+        if (!prepared)
+        {
+            TempData["ErrorMessage"] = "Не удалось подготовить маршрут: выберите шаблон с хотя бы одним шагом согласования.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        TempData["SuccessMessage"] = "Маршрут согласования подготовлен.";
+        return RedirectToAction(nameof(Edit), new { id });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
+    [Route("Documents/{id:int}/approval-route/step")]
+    public async Task<IActionResult> UpdateApprovalRouteStep(int id, int documentApprovalStepId, int approverUserId, CancellationToken cancellationToken)
+    {
+        var document = await _documentService.GetDocumentByIdAsync(id);
+        if (document is null)
+            return NotFound();
+
+        if (ParseDocumentStatus(document.Status) != DocumentStatus.Draft)
+        {
+            TempData["ErrorMessage"] = "Шаги маршрута можно менять только до отправки на согласование.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        var step = await _dbContext.DocumentApprovalSteps
+            .FirstOrDefaultAsync(x => x.DocumentApprovalStepId == documentApprovalStepId && x.DocumentId == id, cancellationToken);
+        if (step is null)
+        {
+            TempData["ErrorMessage"] = "Шаг маршрута не найден.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        var approver = await _dbContext.Users
+            .Include(x => x.Role)
+            .FirstOrDefaultAsync(x => x.UserId == approverUserId && x.IsActive, cancellationToken);
+        if (approver is null)
+        {
+            TempData["ErrorMessage"] = "Выберите активного согласующего.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        step.ApproverUserId = approver.UserId;
+        step.ApproverRole = approver.Role?.RoleName ?? step.ApproverRole;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["SuccessMessage"] = "Согласующий шага обновлен.";
+        return RedirectToAction(nameof(Edit), new { id });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOrAdmin)]
     [Route("Documents/{id:int}/next-stage")]
     public async Task<IActionResult> NextStage(int id, CancellationToken cancellationToken)
     {
@@ -597,7 +697,40 @@ public class DocumentsController : Controller
 
         try
         {
-            await _documentService.ChangeDocumentStatusAsync(id, next);
+            var currentUserId = GetCurrentUserId();
+            var makerCheckerMessage = await GetMakerCheckerViolationMessageAsync(
+                doc,
+                current,
+                next,
+                currentUserId,
+                cancellationToken);
+            if (makerCheckerMessage is not null)
+            {
+                TempData["ErrorMessage"] = makerCheckerMessage;
+                return RedirectToAction(nameof(Edit), new { id });
+            }
+
+            if (current == DocumentStatus.Draft && next == DocumentStatus.OnApproval)
+            {
+                var prepared = await EnsureApprovalRoutePreparedAsync(doc, regenerate: false, cancellationToken);
+                if (!prepared)
+                {
+                    TempData["ErrorMessage"] = "Перед отправкой на согласование нужно выбрать шаблон маршрута и подготовить хотя бы один шаг согласования.";
+                    return RedirectToAction(nameof(Edit), new { id });
+                }
+            }
+
+            if (current == DocumentStatus.OnApproval && next == DocumentStatus.Approved)
+            {
+                next = await AdvanceApprovalWorkflowAsync(doc, currentUserId, cancellationToken);
+            }
+            else
+            {
+                await _documentService.ChangeDocumentStatusAsync(id, next);
+                if (current == DocumentStatus.Draft && next == DocumentStatus.OnApproval)
+                    await ActivatePreparedApprovalRouteAsync(doc, cancellationToken);
+            }
+
             await LogDocumentActivityAsync(
                 id,
                 AuditActivityTypes.StatusChanged,
@@ -675,6 +808,7 @@ public class DocumentsController : Controller
                     AuditActivityTypes.IncomingUploaded,
                     $"Загружен входящий файл {Path.GetFileName(file.FileName)}.",
                     cancellationToken);
+                await TryAutoAssignRouteTemplateAsync(created, cancellationToken);
                 await TryAutoAssignNomenclatureAsync(created, cancellationToken);
 
                 createdCount++;
@@ -753,6 +887,7 @@ public class DocumentsController : Controller
                 Title = model.Title,
                 Description = BuildTemplateAwareDescription(model.Description, selectedTemplate, model.TemplateFieldValues),
                 Type = model.Type ?? DocumentType.Other,
+                RouteTemplateId = model.RouteTemplateId,
                 DueDate = model.DueDate,
                 Priority = model.Priority,
                 Tags = BuildTemplateAwareTags(model.Tags, model.TemplateId),
@@ -767,6 +902,7 @@ public class DocumentsController : Controller
                 AuditActivityTypes.DocumentCreated,
                 $"Документ создан по шаблону{(selectedTemplate is null ? string.Empty : $": {selectedTemplate.Name}")}.",
                 cancellationToken);
+            await TryAutoAssignRouteTemplateAsync(created, cancellationToken);
             await TryAutoAssignNomenclatureAsync(created, cancellationToken);
 
             TempData["SuccessMessage"] = "Документ успешно создан.";
@@ -828,7 +964,19 @@ public class DocumentsController : Controller
         {
             if (decision == "approve")
             {
-                await _documentService.ChangeDocumentStatusAsync(id, DocumentStatus.Approved);
+                var makerCheckerMessage = await GetMakerCheckerViolationMessageAsync(
+                    document,
+                    currentStatus,
+                    DocumentStatus.Approved,
+                    currentUserId,
+                    cancellationToken);
+                if (makerCheckerMessage is not null)
+                {
+                    TempData["ErrorMessage"] = makerCheckerMessage;
+                    return RedirectToAction(nameof(Edit), new { id });
+                }
+
+                var approvalStatus = await AdvanceApprovalWorkflowAsync(document, currentUserId, cancellationToken);
                 await LogDocumentActivityAsync(
                     id,
                     AuditActivityTypes.ApprovalApproved,
@@ -898,7 +1046,33 @@ public class DocumentsController : Controller
             }
 
             var previousStatus = ParseDocumentStatus(document.Status);
-            await _documentService.ChangeDocumentStatusAsync(id, newStatus, request.Comment);
+            var makerCheckerMessage = await GetMakerCheckerViolationMessageAsync(
+                document,
+                previousStatus,
+                newStatus,
+                currentUserId,
+                cancellationToken);
+            if (makerCheckerMessage is not null)
+                return BadRequest(new { message = makerCheckerMessage });
+
+            if (previousStatus == DocumentStatus.Draft && newStatus == DocumentStatus.OnApproval)
+            {
+                var prepared = await EnsureApprovalRoutePreparedAsync(document, regenerate: false, cancellationToken);
+                if (!prepared)
+                    return BadRequest(new { message = "Перед отправкой на согласование нужно выбрать шаблон маршрута и подготовить хотя бы один шаг согласования." });
+            }
+
+            if (previousStatus == DocumentStatus.OnApproval && newStatus == DocumentStatus.Approved)
+            {
+                newStatus = await AdvanceApprovalWorkflowAsync(document, currentUserId, cancellationToken);
+            }
+            else
+            {
+                await _documentService.ChangeDocumentStatusAsync(id, newStatus, request.Comment);
+                if (previousStatus == DocumentStatus.Draft && newStatus == DocumentStatus.OnApproval)
+                    await ActivatePreparedApprovalRouteAsync(document, cancellationToken);
+            }
+
             await LogDocumentActivityAsync(
                 id,
                 AuditActivityTypes.StatusChanged,
@@ -921,9 +1095,12 @@ public class DocumentsController : Controller
     {
         try
         {
+            var currentUserId = GetCurrentUserId();
+            var isAdmin = AuthorizationPolicies.IsInAppRole(User, DocumentFlowApp.Core.Security.AppRoles.Admin);
             var documents = await _documentService.GetAllDocumentsAsync();
             var items = documents
                 .Where(d => ParseDocumentStatus(d.Status) == DocumentStatus.OnApproval)
+                .Where(d => isAdmin || currentUserId is null || d.UserId == currentUserId.Value)
                 .OrderBy(d => d.DueDate ?? DateTime.MaxValue)
                 .ThenByDescending(d => d.CreatedDate)
                 .Select(ToApprovalQueueItem)
@@ -952,6 +1129,7 @@ public class DocumentsController : Controller
     private async Task<CreateDocumentPageViewModel> BuildCreatePageModelAsync(CreateDocumentPageViewModel model, CancellationToken cancellationToken)
     {
         await PopulateTemplateStateAsync(model, cancellationToken);
+        model.RouteTemplateOptions = await LoadRouteTemplateOptionsAsync(cancellationToken, model.Type);
         return model;
     }
 
@@ -1008,6 +1186,146 @@ public class DocumentsController : Controller
             .FirstOrDefaultAsync(t => t.TemplateId == templateId.Value, cancellationToken);
 
         return template is null ? null : MapTemplate(template);
+    }
+
+    private async Task<IReadOnlyList<RouteTemplateOptionViewModel>> LoadRouteTemplateOptionsAsync(CancellationToken cancellationToken, DocumentType? documentType = null)
+    {
+        var requestedType = documentType?.ToString();
+        var templates = await _dbContext.RouteTemplates
+            .AsNoTracking()
+            .Include(x => x.Steps)
+            .ThenInclude(x => x.ApproverUser)
+            .Where(x => x.IsActive)
+            .Where(x => x.DocumentType == null || requestedType == null || x.DocumentType == requestedType)
+            .OrderByDescending(x => x.IsDefault)
+            .ThenBy(x => x.Name)
+            .ToListAsync(cancellationToken);
+
+        return templates.Select(x => new RouteTemplateOptionViewModel
+        {
+            Id = x.RouteTemplateId,
+            Name = x.Name,
+            DocumentType = x.DocumentType,
+            ApproverSummary = x.Steps.Count == 0
+                ? "Шаги не настроены"
+                : string.Join(" -> ", x.Steps.OrderBy(s => s.StepOrder).Select(s => string.IsNullOrWhiteSpace(s.ApproverUser?.UserName) ? s.Title : $"{s.Title}: {s.ApproverUser.UserName}"))
+        }).ToList();
+    }
+
+    private async Task<IReadOnlyList<RouteApproverOptionViewModel>> LoadRouteApproverOptionsAsync(CancellationToken cancellationToken)
+    {
+        var items = await _dbContext.Users
+            .AsNoTracking()
+            .Include(x => x.Role)
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.LastName)
+            .ThenBy(x => x.FirstName)
+            .ThenBy(x => x.UserName)
+            .Select(x => new
+            {
+                x.UserId,
+                x.UserName,
+                x.FirstName,
+                x.LastName,
+                RoleName = x.Role != null ? x.Role.RoleName : "User"
+            })
+            .ToListAsync(cancellationToken);
+
+        return items
+            .Select(x => new RouteApproverOptionViewModel
+            {
+                UserId = x.UserId,
+                DisplayName = string.Join(" ", new[] { x.LastName, x.FirstName }.Where(v => !string.IsNullOrWhiteSpace(v))).Trim() == string.Empty
+                    ? x.UserName
+                    : string.Join(" ", new[] { x.LastName, x.FirstName }.Where(v => !string.IsNullOrWhiteSpace(v))),
+                RoleName = x.RoleName
+            })
+            .ToList();
+    }
+
+    private async Task<string?> GetRouteTemplateNameAsync(int? routeTemplateId, CancellationToken cancellationToken)
+    {
+        if (routeTemplateId is null)
+            return null;
+
+        return await _dbContext.RouteTemplates
+            .AsNoTracking()
+            .Where(x => x.RouteTemplateId == routeTemplateId.Value)
+            .Select(x => x.Name)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<ApprovalRouteStepViewModel>> BuildApprovalRouteStepsAsync(Document document, CancellationToken cancellationToken)
+    {
+        var steps = await _dbContext.DocumentApprovalSteps
+            .AsNoTracking()
+            .Include(x => x.ApproverUser)
+            .OrderBy(x => x.StepOrder)
+            .Where(x => x.DocumentId == document.DocumentId)
+            .ToListAsync(cancellationToken);
+
+        if (steps.Count == 0 && document.RouteTemplateId is not null)
+        {
+            var templateSteps = await _dbContext.RouteSteps
+                .AsNoTracking()
+                .Include(x => x.ApproverUser)
+                .Where(x => x.RouteTemplateId == document.RouteTemplateId.Value)
+                .OrderBy(x => x.StepOrder)
+                .ToListAsync(cancellationToken);
+
+            return templateSteps.Select(step => new ApprovalRouteStepViewModel
+            {
+                RouteStepId = step.RouteStepId,
+                Order = step.StepOrder,
+                Title = step.Title,
+                ApproverRole = step.ApproverRole,
+                ApproverUserId = step.ApproverUserId,
+                ApproverDisplayName = FormatDisplayName(step.ApproverUser),
+                Status = "Template",
+                IsCurrent = false
+            }).ToList();
+        }
+
+        return steps.Select(step => new ApprovalRouteStepViewModel
+        {
+            DocumentApprovalStepId = step.DocumentApprovalStepId,
+            RouteStepId = step.RouteStepId,
+            Order = step.StepOrder,
+            Title = step.Title,
+            ApproverRole = step.ApproverRole,
+            ApproverUserId = step.ApproverUserId,
+            ApproverDisplayName = FormatDisplayName(step.ApproverUser),
+            Status = step.Status,
+            IsCurrent = step.IsCurrent,
+            Comment = step.Comment
+        }).ToList();
+    }
+
+    private async Task TryAutoAssignRouteTemplateAsync(Document document, CancellationToken cancellationToken)
+    {
+        if (document.RouteTemplateId is not null)
+            return;
+
+        var matchedTemplateId = await _dbContext.RouteTemplates
+            .AsNoTracking()
+            .Where(x => x.IsActive)
+            .Where(x => x.DocumentType == document.DocumentType && x.IsDefault)
+            .OrderBy(x => x.RouteTemplateId)
+            .Select(x => (int?)x.RouteTemplateId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        matchedTemplateId ??= await _dbContext.RouteTemplates
+            .AsNoTracking()
+            .Where(x => x.IsActive && x.DocumentType == null && x.IsDefault)
+            .OrderBy(x => x.RouteTemplateId)
+            .Select(x => (int?)x.RouteTemplateId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (matchedTemplateId is null)
+            return;
+
+        document.RouteTemplateId = matchedTemplateId.Value;
+        await _documentService.UpdateDocumentAsync(document);
     }
 
     private async Task<MyTasksPageViewModel> BuildMyTasksPageModelAsync(int currentUserId, CancellationToken cancellationToken)
@@ -1157,6 +1475,205 @@ public class DocumentsController : Controller
             activityType,
             details,
             cancellationToken);
+    }
+
+    private async Task<string?> GetMakerCheckerViolationMessageAsync(
+        Document document,
+        DocumentStatus currentStatus,
+        DocumentStatus targetStatus,
+        int? actingUserId,
+        CancellationToken cancellationToken)
+    {
+        if (currentStatus != DocumentStatus.OnApproval || targetStatus != DocumentStatus.Approved)
+            return null;
+
+        if (actingUserId is null || !RequiresMakerChecker(document))
+            return null;
+
+        var creatorUserId = await GetDocumentCreatorUserIdAsync(document.DocumentId, cancellationToken);
+        if (creatorUserId != actingUserId)
+            return null;
+
+        return "Для критичных документов действует maker-checker: автор не может самостоятельно утвердить документ.";
+    }
+
+    private bool RequiresMakerChecker(Document document)
+    {
+        var documentType = TryParseEnum<DocumentType>(document.DocumentType);
+        return documentType.HasValue && MakerCheckerProtectedTypes.Contains(documentType.Value);
+    }
+
+    private async Task<int?> GetDocumentCreatorUserIdAsync(int documentId, CancellationToken cancellationToken)
+    {
+        return await _dbContext.DocumentActivity
+            .AsNoTracking()
+            .Where(activity =>
+                activity.DocumentId == documentId &&
+                activity.ActivityType == AuditActivityTypes.DocumentCreated &&
+                activity.UserId.HasValue)
+            .OrderBy(activity => activity.ActivityDate ?? DateTime.MinValue)
+            .ThenBy(activity => activity.ActivityId)
+            .Select(activity => activity.UserId)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<bool> EnsureApprovalRoutePreparedAsync(Document document, bool regenerate, CancellationToken cancellationToken)
+    {
+        if (document.RouteTemplateId is null)
+            return false;
+
+        var templateSteps = await _dbContext.RouteSteps
+            .AsNoTracking()
+            .Where(x => x.RouteTemplateId == document.RouteTemplateId.Value)
+            .OrderBy(x => x.StepOrder)
+            .ToListAsync(cancellationToken);
+
+        if (templateSteps.Count == 0)
+            return false;
+
+        var existingSteps = await _dbContext.DocumentApprovalSteps
+            .Where(x => x.DocumentId == document.DocumentId)
+            .OrderBy(x => x.StepOrder)
+            .ToListAsync(cancellationToken);
+
+        if (existingSteps.Count > 0 && !regenerate)
+            return existingSteps.All(x => x.ApproverUserId is not null);
+
+        if (existingSteps.Count > 0)
+            _dbContext.DocumentApprovalSteps.RemoveRange(existingSteps);
+
+        foreach (var templateStep in templateSteps)
+        {
+            _dbContext.DocumentApprovalSteps.Add(new DocumentApprovalStep
+            {
+                DocumentId = document.DocumentId,
+                RouteTemplateId = document.RouteTemplateId,
+                RouteStepId = templateStep.RouteStepId,
+                StepOrder = templateStep.StepOrder,
+                Title = templateStep.Title,
+                ApproverRole = templateStep.ApproverRole,
+                ApproverUserId = templateStep.ApproverUserId,
+                Status = "Pending",
+                IsCurrent = false
+            });
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return templateSteps.All(x => x.ApproverUserId is not null);
+    }
+
+    private async Task ActivatePreparedApprovalRouteAsync(Document document, CancellationToken cancellationToken)
+    {
+        var steps = await _dbContext.DocumentApprovalSteps
+            .Where(x => x.DocumentId == document.DocumentId)
+            .OrderBy(x => x.StepOrder)
+            .ToListAsync(cancellationToken);
+
+        foreach (var step in steps)
+        {
+            step.Status = "Pending";
+            step.IsCurrent = false;
+            step.Comment = null;
+            step.ActionDate = null;
+            step.ActionByUserId = null;
+        }
+
+        var firstStep = steps.FirstOrDefault();
+        if (firstStep is not null)
+        {
+            firstStep.IsCurrent = true;
+            document.UserId = firstStep.ApproverUserId;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await _documentService.UpdateDocumentAsync(document);
+    }
+
+    private async Task<DocumentStatus> AdvanceApprovalWorkflowAsync(Document document, int? actingUserId, CancellationToken cancellationToken)
+    {
+        var steps = await _dbContext.DocumentApprovalSteps
+            .Where(x => x.DocumentId == document.DocumentId)
+            .OrderBy(x => x.StepOrder)
+            .ToListAsync(cancellationToken);
+
+        if (steps.Count == 0)
+        {
+            await _documentService.ChangeDocumentStatusAsync(document.DocumentId, DocumentStatus.Approved);
+            document.UserId = null;
+            await _documentService.UpdateDocumentAsync(document);
+            return DocumentStatus.Approved;
+        }
+
+        var currentStep = steps.FirstOrDefault(x => x.IsCurrent) ?? steps.FirstOrDefault(x => x.Status == "Pending");
+        if (currentStep is null)
+            throw new InvalidOperationException("Не найден текущий шаг согласования.");
+
+        if (currentStep.ApproverUserId is not null &&
+            actingUserId != currentStep.ApproverUserId &&
+            !AuthorizationPolicies.IsInAppRole(User, DocumentFlowApp.Core.Security.AppRoles.Admin))
+        {
+            throw new InvalidOperationException("Текущий шаг маршрута назначен другому согласующему.");
+        }
+
+        currentStep.Status = "Approved";
+        currentStep.IsCurrent = false;
+        currentStep.ActionDate = DateTime.UtcNow;
+        currentStep.ActionByUserId = actingUserId;
+
+        var nextStep = steps
+            .Where(x => x.DocumentApprovalStepId != currentStep.DocumentApprovalStepId && x.Status == "Pending")
+            .OrderBy(x => x.StepOrder)
+            .FirstOrDefault();
+
+        if (nextStep is not null)
+        {
+            nextStep.IsCurrent = true;
+            document.UserId = nextStep.ApproverUserId;
+            document.Status = DocumentStatus.OnApproval.ToString();
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _documentService.UpdateDocumentAsync(document);
+            return DocumentStatus.OnApproval;
+        }
+
+        document.UserId = null;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await _documentService.ChangeDocumentStatusAsync(document.DocumentId, DocumentStatus.Approved);
+        return DocumentStatus.Approved;
+    }
+
+    private async Task CaptureApprovalReworkAsync(Document document, int? actingUserId, string? comment, CancellationToken cancellationToken)
+    {
+        var currentStep = await _dbContext.DocumentApprovalSteps
+            .Where(x => x.DocumentId == document.DocumentId && x.IsCurrent)
+            .OrderBy(x => x.StepOrder)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (currentStep is null)
+            return;
+
+        currentStep.Status = "Reworked";
+        currentStep.IsCurrent = false;
+        currentStep.Comment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
+        currentStep.ActionDate = DateTime.UtcNow;
+        currentStep.ActionByUserId = actingUserId;
+        document.UserId = null;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await _documentService.UpdateDocumentAsync(document);
+    }
+
+    private static string FormatDisplayName(User? user)
+    {
+        if (user is null)
+            return "Не назначен";
+
+        var fullName = string.Join(" ", new[] { user.LastName, user.FirstName }.Where(v => !string.IsNullOrWhiteSpace(v)));
+        return string.IsNullOrWhiteSpace(fullName) ? user.UserName : fullName;
+    }
+
+    private static DocumentType? ParseDocumentType(string? raw)
+    {
+        return TryParseEnum<DocumentType>(raw);
     }
 
     private async Task<string> BuildNomenclatureAuditDetailsAsync(
@@ -1367,6 +1884,7 @@ public class DocumentsController : Controller
         model.CanStartWork = isAssignedToCurrentUser && status == DocumentStatus.Approved;
         model.CanComplete = isAssignedToCurrentUser && status == DocumentStatus.InWork;
         model.CanSaveExecutionProgress = isAssignedToCurrentUser && status == DocumentStatus.InWork;
+        model.CanConfigureApprovalRoute = isManagerOrAdmin && status == DocumentStatus.Draft;
     }
 
     private async Task<IActionResult> ExecuteEmployeeActionAsync(
@@ -2029,6 +2547,11 @@ public class DocumentsController : Controller
             return;
 
         model.Status = doc.Status ?? model.Status;
+        model.RouteTemplateId = doc.RouteTemplateId;
+        model.RouteTemplateName = await GetRouteTemplateNameAsync(doc.RouteTemplateId, CancellationToken.None);
+        model.RouteTemplateOptions = await LoadRouteTemplateOptionsAsync(CancellationToken.None, ParseDocumentType(doc.DocumentType));
+        model.ApprovalRouteSteps = await BuildApprovalRouteStepsAsync(doc, CancellationToken.None);
+        model.RouteApproverOptions = await LoadRouteApproverOptionsAsync(CancellationToken.None);
         model.NomenclatureCaseId = doc.NomenclatureCaseId;
         model.NomenclatureCaseLabel = await BuildNomenclatureCaseLabelAsync(doc.NomenclatureCaseId, CancellationToken.None);
         model.NomenclatureCaseOptions = await LoadNomenclatureCaseOptionsAsync(CancellationToken.None);

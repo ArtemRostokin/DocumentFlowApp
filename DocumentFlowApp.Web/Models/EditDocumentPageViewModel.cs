@@ -26,6 +26,11 @@ public sealed class EditDocumentPageViewModel
     public string? Tags { get; set; }
 
     public string Status { get; set; } = string.Empty;
+    public int? RouteTemplateId { get; set; }
+    public string? RouteTemplateName { get; set; }
+    public IReadOnlyList<RouteTemplateOptionViewModel> RouteTemplateOptions { get; set; } = [];
+    public IReadOnlyList<ApprovalRouteStepViewModel> ApprovalRouteSteps { get; set; } = [];
+    public IReadOnlyList<RouteApproverOptionViewModel> RouteApproverOptions { get; set; } = [];
     public int? NomenclatureCaseId { get; set; }
     public string? NomenclatureCaseLabel { get; set; }
     public IReadOnlyList<NomenclatureCaseOptionViewModel> NomenclatureCaseOptions { get; set; } = [];
@@ -52,6 +57,7 @@ public sealed class EditDocumentPageViewModel
     public bool CanStartWork { get; set; }
     public bool CanComplete { get; set; }
     public bool CanSaveExecutionProgress { get; set; }
+    public bool CanConfigureApprovalRoute { get; set; }
 
     public IReadOnlyList<AiSuggestionViewModel> AiSuggestions { get; set; } = [];
     public AssignmentPanelViewModel Assignment { get; set; } = new();

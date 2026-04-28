@@ -45,6 +45,67 @@ public class DocumentsControllerTests
     }
 
     [Fact]
+    public async Task ReviewDocument_Blocks_SelfApproval_For_MakerChecker_Type()
+    {
+        await using var dbContext = CreateDbContext();
+        SeedDocumentCreatedActivity(dbContext, 12, 10);
+
+        var repository = CreateRepository(
+            new Document
+            {
+                DocumentId = 12,
+                UserId = 10,
+                Title = "Self approval blocked",
+                Status = DocumentStatus.OnApproval.ToString(),
+                DocumentType = DocumentType.Contract.ToString(),
+                CreatedDate = DateTime.UtcNow
+            });
+        var audit = new FakeAuditService();
+        var controller = CreateController(repository, audit, CreatePrincipal(("df_role", "Employee"), (ClaimTypes.NameIdentifier, "10")), dbContext);
+
+        var result = await controller.ReviewDocument(
+            12,
+            new ApprovalActionInputModel { Decision = "approve" },
+            CancellationToken.None);
+
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(nameof(DocumentsController.Edit), redirect.ActionName);
+        Assert.Equal(DocumentStatus.OnApproval.ToString(), repository.StoredDocument!.Status);
+        Assert.Equal("Для критичных документов действует maker-checker: автор не может самостоятельно утвердить документ.", controller.TempData["ErrorMessage"]);
+        Assert.DoesNotContain(audit.Entries, x => x.ActivityType == AuditActivityTypes.ApprovalApproved && x.DocumentId == 12);
+    }
+
+    [Fact]
+    public async Task ReviewDocument_Allows_SelfApproval_For_NonCritical_Type()
+    {
+        await using var dbContext = CreateDbContext();
+        SeedDocumentCreatedActivity(dbContext, 15, 10);
+
+        var repository = CreateRepository(
+            new Document
+            {
+                DocumentId = 15,
+                UserId = 10,
+                Title = "Non critical self approval",
+                Status = DocumentStatus.OnApproval.ToString(),
+                DocumentType = DocumentType.Report.ToString(),
+                CreatedDate = DateTime.UtcNow
+            });
+        var audit = new FakeAuditService();
+        var controller = CreateController(repository, audit, CreatePrincipal(("df_role", "Employee"), (ClaimTypes.NameIdentifier, "10")), dbContext);
+
+        var result = await controller.ReviewDocument(
+            15,
+            new ApprovalActionInputModel { Decision = "approve" },
+            CancellationToken.None);
+
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(nameof(DocumentsController.Edit), redirect.ActionName);
+        Assert.Equal(DocumentStatus.Approved.ToString(), repository.StoredDocument!.Status);
+        Assert.Contains(audit.Entries, x => x.ActivityType == AuditActivityTypes.ApprovalApproved && x.DocumentId == 15);
+    }
+
+    [Fact]
     public async Task ReviewDocument_Rework_Without_Comment_Sets_Error_And_Does_Not_Change_Status()
     {
         var repository = CreateRepository(
@@ -146,6 +207,10 @@ public class DocumentsControllerTests
     [Fact]
     public async Task ChangeStatus_Allows_Manager_And_Writes_Audit()
     {
+        await using var dbContext = CreateDbContext();
+        SeedExecutor(dbContext, 55, "approver-manager", "Manager");
+        SeedRouteTemplate(dbContext, 20, "Other", 55, "Manager");
+
         var repository = CreateRepository(
             new Document
             {
@@ -154,10 +219,11 @@ public class DocumentsControllerTests
                 Title = "Manager doc",
                 Status = DocumentStatus.Draft.ToString(),
                 DocumentType = DocumentType.Other.ToString(),
+                RouteTemplateId = 20,
                 CreatedDate = DateTime.UtcNow
             });
         var audit = new FakeAuditService();
-        var controller = CreateController(repository, audit, CreatePrincipal(("df_role", "Manager"), (ClaimTypes.NameIdentifier, "99")));
+        var controller = CreateController(repository, audit, CreatePrincipal(("df_role", "Manager"), (ClaimTypes.NameIdentifier, "99")), dbContext);
 
         var result = await controller.ChangeStatus(
             6,
@@ -168,6 +234,34 @@ public class DocumentsControllerTests
         Assert.Equal(200, ok.StatusCode);
         Assert.Equal(DocumentStatus.OnApproval.ToString(), repository.StoredDocument!.Status);
         Assert.Contains(audit.Entries, x => x.ActivityType == AuditActivityTypes.StatusChanged && x.DocumentId == 6);
+    }
+
+    [Fact]
+    public async Task ChangeStatus_Blocks_SelfApproval_For_MakerChecker_Type()
+    {
+        await using var dbContext = CreateDbContext();
+        SeedDocumentCreatedActivity(dbContext, 13, 10);
+
+        var repository = CreateRepository(
+            new Document
+            {
+                DocumentId = 13,
+                UserId = 10,
+                Title = "Change status blocked",
+                Status = DocumentStatus.OnApproval.ToString(),
+                DocumentType = DocumentType.Order.ToString(),
+                CreatedDate = DateTime.UtcNow
+            });
+        var controller = CreateController(repository, new FakeAuditService(), CreatePrincipal(("df_role", "Employee"), (ClaimTypes.NameIdentifier, "10")), dbContext);
+
+        var result = await controller.ChangeStatus(
+            13,
+            new DocumentsController.ChangeDocumentStatusRequest { NewStatus = DocumentStatus.Approved.ToString() },
+            CancellationToken.None);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(400, badRequest.StatusCode);
+        Assert.Equal(DocumentStatus.OnApproval.ToString(), repository.StoredDocument!.Status);
     }
 
     [Fact]
@@ -304,6 +398,143 @@ public class DocumentsControllerTests
         Assert.Equal("Перед архивированием документ должен быть привязан к делу номенклатуры.", controller.TempData["ErrorMessage"]);
     }
 
+    [Fact]
+    public async Task NextStage_Blocks_SelfApproval_For_MakerChecker_Type()
+    {
+        await using var dbContext = CreateDbContext();
+        SeedDocumentCreatedActivity(dbContext, 14, 99);
+
+        var repository = CreateRepository(
+            new Document
+            {
+                DocumentId = 14,
+                UserId = 10,
+                Title = "Queue approval blocked",
+                Status = DocumentStatus.OnApproval.ToString(),
+                DocumentType = DocumentType.Act.ToString(),
+                CreatedDate = DateTime.UtcNow
+            });
+        var controller = CreateController(repository, new FakeAuditService(), CreatePrincipal(("df_role", "Manager"), (ClaimTypes.NameIdentifier, "99")), dbContext);
+
+        var result = await controller.NextStage(14, CancellationToken.None);
+
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(nameof(DocumentsController.Edit), redirect.ActionName);
+        Assert.Equal(DocumentStatus.OnApproval.ToString(), repository.StoredDocument!.Status);
+        Assert.Equal("Для критичных документов действует maker-checker: автор не может самостоятельно утвердить документ.", controller.TempData["ErrorMessage"]);
+    }
+
+    [Fact]
+    public async Task ApprovalAction_Blocks_Manager_SelfApproval_For_MakerChecker_Type()
+    {
+        await using var dbContext = CreateDbContext();
+        SeedDocumentCreatedActivity(dbContext, 16, 99);
+
+        var repository = CreateRepository(
+            new Document
+            {
+                DocumentId = 16,
+                UserId = 10,
+                Title = "Approval queue blocked",
+                Status = DocumentStatus.OnApproval.ToString(),
+                DocumentType = DocumentType.Invoice.ToString(),
+                CreatedDate = DateTime.UtcNow
+            });
+        var controller = CreateController(repository, new FakeAuditService(), CreatePrincipal(("df_role", "Manager"), (ClaimTypes.NameIdentifier, "99")), dbContext);
+
+        var result = await controller.ApprovalAction(
+            16,
+            new ApprovalActionInputModel { Decision = "approve" },
+            CancellationToken.None);
+
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(nameof(DocumentsController.ApprovalQueue), redirect.ActionName);
+        Assert.Equal(DocumentStatus.OnApproval.ToString(), repository.StoredDocument!.Status);
+        Assert.Equal("Для критичных документов действует maker-checker: автор не может самостоятельно утвердить документ.", controller.TempData["ErrorMessage"]);
+    }
+
+    [Fact]
+    public async Task NextStage_FromDraft_Activates_PreparedApprovalRoute()
+    {
+        await using var dbContext = CreateDbContext();
+        SeedExecutor(dbContext, 55, "approver", "Manager");
+        SeedRouteTemplate(dbContext, 21, "Contract", 55, "Manager");
+
+        var repository = CreateRepository(
+            new Document
+            {
+                DocumentId = 17,
+                Title = "Route draft",
+                Status = DocumentStatus.Draft.ToString(),
+                DocumentType = DocumentType.Contract.ToString(),
+                RouteTemplateId = 21,
+                CreatedDate = DateTime.UtcNow
+            });
+        var controller = CreateController(repository, new FakeAuditService(), CreatePrincipal(("df_role", "Manager"), (ClaimTypes.NameIdentifier, "99")), dbContext);
+
+        var result = await controller.NextStage(17, CancellationToken.None);
+
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal("Index", redirect.ActionName);
+        Assert.Equal(DocumentStatus.OnApproval.ToString(), repository.StoredDocument!.Status);
+        Assert.Equal(55, repository.StoredDocument.UserId);
+        Assert.Equal(1, dbContext.DocumentApprovalSteps.Count(x => x.DocumentId == 17 && x.IsCurrent));
+    }
+
+    [Fact]
+    public async Task ReviewDocument_Approve_Advances_To_NextRouteStep_When_Not_Last()
+    {
+        await using var dbContext = CreateDbContext();
+        SeedExecutor(dbContext, 55, "approver2", "Manager");
+        dbContext.DocumentApprovalSteps.AddRange(
+            new DocumentApprovalStep
+            {
+                DocumentApprovalStepId = 1001,
+                DocumentId = 18,
+                StepOrder = 1,
+                Title = "Первичное согласование",
+                ApproverRole = "Manager",
+                ApproverUserId = 10,
+                Status = "Pending",
+                IsCurrent = true
+            },
+            new DocumentApprovalStep
+            {
+                DocumentApprovalStepId = 1002,
+                DocumentId = 18,
+                StepOrder = 2,
+                Title = "Финальное согласование",
+                ApproverRole = "Manager",
+                ApproverUserId = 55,
+                Status = "Pending",
+                IsCurrent = false
+            });
+        dbContext.SaveChanges();
+
+        var repository = CreateRepository(
+            new Document
+            {
+                DocumentId = 18,
+                UserId = 10,
+                Title = "Two-step approval",
+                Status = DocumentStatus.OnApproval.ToString(),
+                DocumentType = DocumentType.Contract.ToString(),
+                CreatedDate = DateTime.UtcNow
+            });
+        var controller = CreateController(repository, new FakeAuditService(), CreatePrincipal(("df_role", "Employee"), (ClaimTypes.NameIdentifier, "10")), dbContext);
+
+        var result = await controller.ReviewDocument(
+            18,
+            new ApprovalActionInputModel { Decision = "approve" },
+            CancellationToken.None);
+
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(nameof(DocumentsController.Edit), redirect.ActionName);
+        Assert.Equal(DocumentStatus.OnApproval.ToString(), repository.StoredDocument!.Status);
+        Assert.Equal(55, repository.StoredDocument.UserId);
+        Assert.True(dbContext.DocumentApprovalSteps.Single(x => x.DocumentApprovalStepId == 1002).IsCurrent);
+    }
+
     private static DocumentsController CreateController(
         InMemoryDocumentRepository repository,
         FakeAuditService audit,
@@ -366,6 +597,43 @@ public class DocumentsControllerTests
             IsActive = true,
             CreatedDate = DateTime.UtcNow,
             RoleId = role.RoleId
+        });
+        dbContext.SaveChanges();
+    }
+
+    private static void SeedDocumentCreatedActivity(ApplicationDbContext dbContext, int documentId, int creatorUserId)
+    {
+        dbContext.DocumentActivity.Add(new DocumentActivity
+        {
+            DocumentId = documentId,
+            UserId = creatorUserId,
+            ActivityType = AuditActivityTypes.DocumentCreated,
+            ActivityDate = DateTime.UtcNow
+        });
+        dbContext.SaveChanges();
+    }
+
+    private static void SeedRouteTemplate(ApplicationDbContext dbContext, int routeTemplateId, string documentType, int approverUserId, string approverRole)
+    {
+        dbContext.RouteTemplates.Add(new RouteTemplate
+        {
+            RouteTemplateId = routeTemplateId,
+            Name = $"Route {routeTemplateId}",
+            DocumentType = documentType,
+            IsActive = true,
+            IsDefault = true,
+            CreatedDate = DateTime.UtcNow
+        });
+        dbContext.SaveChanges();
+
+        dbContext.RouteSteps.Add(new RouteStep
+        {
+            RouteTemplateId = routeTemplateId,
+            StepOrder = 1,
+            Title = "Согласование",
+            ApproverUserId = approverUserId,
+            ApproverRole = approverRole,
+            IsRequired = true
         });
         dbContext.SaveChanges();
     }

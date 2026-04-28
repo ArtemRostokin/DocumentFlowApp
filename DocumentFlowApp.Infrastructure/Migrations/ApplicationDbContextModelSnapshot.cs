@@ -17,7 +17,7 @@ namespace DocumentFlowApp.Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.0")
+                .HasAnnotation("ProductVersion", "9.0.2")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -118,9 +118,6 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                     b.Property<string>("FileHash")
                         .HasColumnType("text");
 
-                    b.Property<int?>("NomenclatureCaseId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("FilePath")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
@@ -132,7 +129,13 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                     b.Property<bool>("IsArchived")
                         .HasColumnType("boolean");
 
+                    b.Property<int?>("NomenclatureCaseId")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("RouteTemplateId")
                         .HasColumnType("integer");
 
                     b.Property<string>("Status")
@@ -163,11 +166,14 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                     b.HasIndex("CreatedDate")
                         .HasDatabaseName("IX_Documents_CreatedDate");
 
+                    b.HasIndex("DocumentType")
+                        .HasDatabaseName("IX_Documents_Type");
+
                     b.HasIndex("NomenclatureCaseId")
                         .HasDatabaseName("IX_Documents_NomenclatureCaseId");
 
-                    b.HasIndex("DocumentType")
-                        .HasDatabaseName("IX_Documents_Type");
+                    b.HasIndex("RouteTemplateId")
+                        .HasDatabaseName("IX_Documents_RouteTemplateId");
 
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_Documents_Status");
@@ -252,6 +258,151 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                     b.ToTable("DocumentAiMetadata");
                 });
 
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.DocumentApprovalStep", b =>
+                {
+                    b.Property<int>("DocumentApprovalStepId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("DocumentApprovalStepId"));
+
+                    b.Property<int?>("ActionByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ActionDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ApproverRole")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int?>("ApproverUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("RouteStepId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("RouteTemplateId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int>("StepOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("DocumentApprovalStepId");
+
+                    b.HasIndex("ActionByUserId");
+
+                    b.HasIndex("ApproverUserId");
+
+                    b.HasIndex("RouteStepId");
+
+                    b.HasIndex("RouteTemplateId");
+
+                    b.HasIndex("DocumentId", "IsCurrent");
+
+                    b.HasIndex("DocumentId", "StepOrder")
+                        .IsUnique();
+
+                    b.ToTable("DocumentApprovalSteps", t =>
+                        {
+                            t.HasComment("Шаги согласования, привязанные к конкретному документу");
+                        });
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.DocumentRelation", b =>
+                {
+                    b.Property<int>("RelationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("RelationId"));
+
+                    b.Property<decimal?>("AiConfidenceScore")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime?>("CreatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RelationType")
+                        .HasColumnType("text");
+
+                    b.Property<int>("SourceDocumentId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TargetDocumentId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("RelationId");
+
+                    b.HasIndex("SourceDocumentId");
+
+                    b.HasIndex("TargetDocumentId");
+
+                    b.ToTable("DocumentRelations");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.DocumentStatistic", b =>
+                {
+                    b.Property<int>("StatId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("StatId"));
+
+                    b.Property<double?>("AvgProcessingTime")
+                        .HasColumnType("double precision");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("EditCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("LastAccessed")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("SearchRankScore")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("UserEngagementScore")
+                        .HasColumnType("numeric");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ViewCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("StatId");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("DocumentStatistics");
+                });
+
             modelBuilder.Entity("DocumentFlowApp.Core.Entities.NomenclatureCase", b =>
                 {
                     b.Property<int>("NomenclatureCaseId")
@@ -333,79 +484,6 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                         });
                 });
 
-            modelBuilder.Entity("DocumentFlowApp.Core.Entities.DocumentRelation", b =>
-                {
-                    b.Property<int>("RelationId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("RelationId"));
-
-                    b.Property<decimal?>("AiConfidenceScore")
-                        .HasColumnType("numeric");
-
-                    b.Property<DateTime?>("CreatedDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("RelationType")
-                        .HasColumnType("text");
-
-                    b.Property<int>("SourceDocumentId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("TargetDocumentId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("RelationId");
-
-                    b.HasIndex("SourceDocumentId");
-
-                    b.HasIndex("TargetDocumentId");
-
-                    b.ToTable("DocumentRelations");
-                });
-
-            modelBuilder.Entity("DocumentFlowApp.Core.Entities.DocumentStatistic", b =>
-                {
-                    b.Property<int>("StatId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("StatId"));
-
-                    b.Property<double?>("AvgProcessingTime")
-                        .HasColumnType("double precision");
-
-                    b.Property<int>("DocumentId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("EditCount")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("LastAccessed")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<decimal?>("SearchRankScore")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal?>("UserEngagementScore")
-                        .HasColumnType("numeric");
-
-                    b.Property<int?>("UserId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("ViewCount")
-                        .HasColumnType("integer");
-
-                    b.HasKey("StatId");
-
-                    b.HasIndex("DocumentId");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("DocumentStatistics");
-                });
-
             modelBuilder.Entity("DocumentFlowApp.Core.Entities.Permission", b =>
                 {
                     b.Property<int>("PermissionId")
@@ -461,6 +539,93 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                     b.HasIndex("PermissionId");
 
                     b.ToTable("RolePermissions");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.RouteStep", b =>
+                {
+                    b.Property<int>("RouteStepId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("RouteStepId"));
+
+                    b.Property<string>("ApproverRole")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int?>("ApproverUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsRequired")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("RouteTemplateId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("StepOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("RouteStepId");
+
+                    b.HasIndex("ApproverUserId");
+
+                    b.HasIndex("RouteTemplateId", "StepOrder")
+                        .IsUnique();
+
+                    b.ToTable("RouteSteps", t =>
+                        {
+                            t.HasComment("Шаги шаблона маршрута согласования");
+                        });
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.RouteTemplate", b =>
+                {
+                    b.Property<int>("RouteTemplateId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("RouteTemplateId"));
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("Department")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("DocumentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("RouteTemplateId");
+
+                    b.ToTable("RouteTemplates", t =>
+                        {
+                            t.HasComment("Шаблоны маршрутов согласования");
+                        });
                 });
 
             modelBuilder.Entity("DocumentFlowApp.Core.Entities.SearchHistory", b =>
@@ -640,6 +805,11 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                         .HasForeignKey("NomenclatureCaseId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("DocumentFlowApp.Core.Entities.RouteTemplate", "RouteTemplate")
+                        .WithMany("Documents")
+                        .HasForeignKey("RouteTemplateId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("DocumentFlowApp.Core.Entities.Template", "Template")
                         .WithMany("Documents")
                         .HasForeignKey("TemplateId");
@@ -649,6 +819,8 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                         .HasForeignKey("UserId");
 
                     b.Navigation("NomenclatureCase");
+
+                    b.Navigation("RouteTemplate");
 
                     b.Navigation("Template");
 
@@ -690,6 +862,45 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                     b.Navigation("Model");
                 });
 
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.DocumentApprovalStep", b =>
+                {
+                    b.HasOne("DocumentFlowApp.Core.Entities.User", "ActionByUser")
+                        .WithMany("ApprovalStepsAsActor")
+                        .HasForeignKey("ActionByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("DocumentFlowApp.Core.Entities.User", "ApproverUser")
+                        .WithMany("ApprovalStepsAsApprover")
+                        .HasForeignKey("ApproverUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("DocumentFlowApp.Core.Entities.Document", "Document")
+                        .WithMany("ApprovalSteps")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DocumentFlowApp.Core.Entities.RouteStep", "RouteStep")
+                        .WithMany("DocumentApprovalSteps")
+                        .HasForeignKey("RouteStepId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("DocumentFlowApp.Core.Entities.RouteTemplate", "RouteTemplate")
+                        .WithMany("DocumentApprovalSteps")
+                        .HasForeignKey("RouteTemplateId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("ActionByUser");
+
+                    b.Navigation("ApproverUser");
+
+                    b.Navigation("Document");
+
+                    b.Navigation("RouteStep");
+
+                    b.Navigation("RouteTemplate");
+                });
+
             modelBuilder.Entity("DocumentFlowApp.Core.Entities.DocumentRelation", b =>
                 {
                     b.HasOne("DocumentFlowApp.Core.Entities.Document", "SourceDocument")
@@ -727,6 +938,17 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.NomenclatureRule", b =>
+                {
+                    b.HasOne("DocumentFlowApp.Core.Entities.NomenclatureCase", "NomenclatureCase")
+                        .WithMany("Rules")
+                        .HasForeignKey("NomenclatureCaseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("NomenclatureCase");
+                });
+
             modelBuilder.Entity("DocumentFlowApp.Core.Entities.RolePermission", b =>
                 {
                     b.HasOne("DocumentFlowApp.Core.Entities.Permission", "Permission")
@@ -746,6 +968,24 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                     b.Navigation("Role");
                 });
 
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.RouteStep", b =>
+                {
+                    b.HasOne("DocumentFlowApp.Core.Entities.User", "ApproverUser")
+                        .WithMany("RouteStepsAsApprover")
+                        .HasForeignKey("ApproverUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("DocumentFlowApp.Core.Entities.RouteTemplate", "RouteTemplate")
+                        .WithMany("Steps")
+                        .HasForeignKey("RouteTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ApproverUser");
+
+                    b.Navigation("RouteTemplate");
+                });
+
             modelBuilder.Entity("DocumentFlowApp.Core.Entities.SearchHistory", b =>
                 {
                     b.HasOne("DocumentFlowApp.Core.Entities.User", "User")
@@ -754,17 +994,6 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("DocumentFlowApp.Core.Entities.NomenclatureRule", b =>
-                {
-                    b.HasOne("DocumentFlowApp.Core.Entities.NomenclatureCase", "NomenclatureCase")
-                        .WithMany("Rules")
-                        .HasForeignKey("NomenclatureCaseId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("NomenclatureCase");
                 });
 
             modelBuilder.Entity("DocumentFlowApp.Core.Entities.User", b =>
@@ -793,7 +1022,7 @@ namespace DocumentFlowApp.Infrastructure.Migrations
 
                     b.Navigation("AiMetadata");
 
-                    b.Navigation("NomenclatureCase");
+                    b.Navigation("ApprovalSteps");
 
                     b.Navigation("SourceRelations");
 
@@ -821,6 +1050,20 @@ namespace DocumentFlowApp.Infrastructure.Migrations
                     b.Navigation("Users");
                 });
 
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.RouteStep", b =>
+                {
+                    b.Navigation("DocumentApprovalSteps");
+                });
+
+            modelBuilder.Entity("DocumentFlowApp.Core.Entities.RouteTemplate", b =>
+                {
+                    b.Navigation("DocumentApprovalSteps");
+
+                    b.Navigation("Documents");
+
+                    b.Navigation("Steps");
+                });
+
             modelBuilder.Entity("DocumentFlowApp.Core.Entities.Template", b =>
                 {
                     b.Navigation("Documents");
@@ -828,11 +1071,17 @@ namespace DocumentFlowApp.Infrastructure.Migrations
 
             modelBuilder.Entity("DocumentFlowApp.Core.Entities.User", b =>
                 {
+                    b.Navigation("ApprovalStepsAsActor");
+
+                    b.Navigation("ApprovalStepsAsApprover");
+
                     b.Navigation("DocumentActivities");
 
                     b.Navigation("DocumentStatistics");
 
                     b.Navigation("Documents");
+
+                    b.Navigation("RouteStepsAsApprover");
 
                     b.Navigation("SearchHistories");
 

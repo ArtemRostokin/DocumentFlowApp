@@ -70,6 +70,7 @@ namespace DocumentFlowApp.Services
                 DocumentType = request.Type.ToString(),
                 Status = DocumentStatus.Draft.ToString(),
                 TemplateId = request.TemplateId,
+                RouteTemplateId = request.RouteTemplateId,
                 CreatedDate = DateTime.UtcNow,
                 IsArchived = false,
                 DueDate = NormalizeToUtc(request.DueDate),

@@ -407,6 +407,74 @@
 
                     <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                         <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+                            <div class="text-sm font-semibold text-slate-700">Маршрут согласования</div>
+                        </div>
+                        <div class="p-4 space-y-4">
+                            <div class="rounded-xl bg-slate-50 px-4 py-3">
+                                <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Текущий шаблон</div>
+                                <div class="mt-1 font-medium text-slate-900">@(string.IsNullOrWhiteSpace(Model.RouteTemplateName) ? "Не выбран" : Model.RouteTemplateName)</div>
+                            </div>
+
+                            @if (Model.CanConfigureApprovalRoute)
+                            {
+                                <form method="post" action="/Documents/@Model.Id/approval-route" class="space-y-3">
+                                    @Html.AntiForgeryToken()
+                                    <label class="block text-xs uppercase tracking-wider font-bold text-slate-500">Шаблон маршрута</label>
+                                    <select name="routeTemplateId" class="w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5">
+                                        <option value="">Выберите шаблон</option>
+                                        @foreach (var routeTemplate in Model.RouteTemplateOptions)
+                                        {
+                                            <option value="@routeTemplate.Id" selected="@(Model.RouteTemplateId == routeTemplate.Id)">
+                                                @routeTemplate.Name
+                                            </option>
+                                        }
+                                    </select>
+                                    <div class="text-xs text-slate-500">Подготовьте маршрут перед отправкой документа на согласование. После отправки шаги блокируются.</div>
+                                    <button type="submit" class="w-full rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900">Подготовить маршрут</button>
+                                </form>
+                            }
+
+                            <div class="space-y-3">
+                                @if (Model.ApprovalRouteSteps.Count == 0)
+                                {
+                                    <div class="text-sm text-slate-500">Шаги маршрута ещё не подготовлены.</div>
+                                }
+                                else
+                                {
+                                    @foreach (var step in Model.ApprovalRouteSteps.OrderBy(x => x.Order))
+                                    {
+                                        <div class="rounded-xl border border-slate-200 p-3">
+                                            <div class="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Шаг @step.Order</div>
+                                                    <div class="mt-1 font-medium text-slate-900">@step.Title</div>
+                                                    <div class="mt-1 text-sm text-slate-500">@step.ApproverRole · @step.ApproverDisplayName</div>
+                                                    <div class="mt-1 text-xs text-slate-500">Статус: @(string.IsNullOrWhiteSpace(step.Status) ? "Не подготовлен" : step.Status)</div>
+                                                </div>
+                                                @if (Model.CanConfigureApprovalRoute && step.DocumentApprovalStepId.HasValue)
+                                                {
+                                                    <form method="post" action="/Documents/@Model.Id/approval-route/step" class="min-w-[220px] space-y-2">
+                                                        @Html.AntiForgeryToken()
+                                                        <input type="hidden" name="documentApprovalStepId" value="@step.DocumentApprovalStepId" />
+                                                        <select name="approverUserId" class="w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-3 py-2">
+                                                            @foreach (var approver in Model.RouteApproverOptions)
+                                                            {
+                                                                <option value="@approver.UserId" selected="@(step.ApproverUserId == approver.UserId)">@approver.DisplayName (@approver.RoleName)</option>
+                                                            }
+                                                        </select>
+                                                        <button type="submit" class="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">Сохранить согласующего</button>
+                                                    </form>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
                             <div class="text-sm font-semibold text-slate-700">Назначение исполнителя</div>
                         </div>
                         <div class="p-4 space-y-4">

@@ -23,6 +23,7 @@ public class CreateDocumentPageViewModel
     public string? Tags { get; set; }
 
     public IFormFile? File { get; set; }
+    public int? RouteTemplateId { get; set; }
 
     public string? SelectedTemplateName { get; set; }
     public string? SelectedTemplateDescription { get; set; }
@@ -30,4 +31,5 @@ public class CreateDocumentPageViewModel
     public IReadOnlyList<DocumentTemplateViewModel> Templates { get; set; } = [];
     public IReadOnlyList<DocumentTemplateFieldViewModel> SelectedTemplateFields { get; set; } = [];
     public Dictionary<string, string> TemplateFieldValues { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public IReadOnlyList<RouteTemplateOptionViewModel> RouteTemplateOptions { get; set; } = [];
 }

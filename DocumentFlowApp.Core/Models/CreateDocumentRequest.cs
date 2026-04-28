@@ -8,6 +8,7 @@ public class CreateDocumentRequest
     public string Description { get; init; } = string.Empty;
     public DocumentType Type { get; init; }
     public int? TemplateId { get; init; }
+    public int? RouteTemplateId { get; init; }
     public DateTime? DueDate { get; init; }
     public int? Priority { get; init; }
     public string? Tags { get; init; }

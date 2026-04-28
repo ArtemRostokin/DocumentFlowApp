@@ -1,3 +1,4 @@
+@using DocumentFlowApp.Core.Enums
 @model DocumentFlowApp.Web.Models.RoutesAdminPageViewModel
 @{
     ViewData["Title"] = "Маршруты согласования";
@@ -6,82 +7,72 @@
 <div class="container py-4">
     <div class="mb-4">
         <h1 class="h3 mb-2">Маршруты согласования</h1>
-        <p class="text-muted mb-0">В текущем MVP используется базовый маршрут жизненного цикла документа. Ниже показаны его этапы, роли и текущая нагрузка по статусам.</p>
+        <p class="text-muted mb-0">Здесь администратор настраивает шаблоны маршрутов и шаги согласования, которые затем назначаются документам.</p>
     </div>
 
     <div class="row g-3 mb-4">
         <div class="col-lg-3 col-md-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small mb-1">На согласовании</div>
-                    <div class="display-6 mb-0">@Model.PendingApprovalDocuments</div>
-                </div>
-            </div>
+            <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small mb-1">На согласовании</div><div class="display-6 mb-0">@Model.PendingApprovalDocuments</div></div></div>
         </div>
         <div class="col-lg-3 col-md-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small mb-1">Утверждено</div>
-                    <div class="display-6 mb-0">@Model.ApprovedDocuments</div>
-                </div>
-            </div>
+            <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small mb-1">Утверждено</div><div class="display-6 mb-0">@Model.ApprovedDocuments</div></div></div>
         </div>
         <div class="col-lg-3 col-md-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small mb-1">В работе</div>
-                    <div class="display-6 mb-0">@Model.InWorkDocuments</div>
-                </div>
-            </div>
+            <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small mb-1">В работе</div><div class="display-6 mb-0">@Model.InWorkDocuments</div></div></div>
         </div>
         <div class="col-lg-3 col-md-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small mb-1">Завершено</div>
-                    <div class="display-6 mb-0">@Model.CompletedDocuments</div>
-                </div>
-            </div>
+            <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small mb-1">Завершено</div><div class="display-6 mb-0">@Model.CompletedDocuments</div></div></div>
         </div>
     </div>
 
-    <div class="row g-4">
-        <div class="col-xl-8">
-            <div class="card shadow-sm">
+    <div class="row g-4 mb-4">
+        <div class="col-xl-5">
+            <div class="card shadow-sm h-100">
                 <div class="card-body">
-                    <h2 class="h5 mb-3">Текущий маршрут документа</h2>
-                    <div class="table-responsive">
-                        <table class="table align-middle">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>Этап</th>
-                                    <th>Код статуса</th>
-                                    <th>Ответственная роль</th>
-                                    <th>Описание</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                            @foreach (var item in Model.Stages.OrderBy(x => x.Order))
-                            {
-                                <tr>
-                                    <td>@item.Order</td>
-                                    <td>@item.Title</td>
-                                    <td><code>@item.StatusCode</code></td>
-                                    <td>@item.ResponsibleRole</td>
-                                    <td class="small">@item.Description</td>
-                                </tr>
-                            }
-                            </tbody>
-                        </table>
-                    </div>
+                    <h2 class="h5 mb-3">Новый шаблон маршрута</h2>
+                    <form method="post" asp-action="CreateRouteTemplate" class="row g-3">
+                        @Html.AntiForgeryToken()
+                        <div class="col-12">
+                            <label class="form-label">Название</label>
+                            <input asp-for="NewTemplate.Name" class="form-control" placeholder="Например: Базовый маршрут договоров" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Тип документа</label>
+                            <select asp-for="NewTemplate.DocumentType" class="form-select" asp-items="Html.GetEnumSelectList<DocumentType>()">
+                                <option value="">Любой тип</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Подразделение</label>
+                            <input asp-for="NewTemplate.Department" class="form-control" placeholder="Опционально" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Описание</label>
+                            <textarea asp-for="NewTemplate.Description" class="form-control" rows="3" placeholder="Когда используется этот маршрут"></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input asp-for="NewTemplate.IsActive" class="form-check-input" />
+                                <label asp-for="NewTemplate.IsActive" class="form-check-label">Активный шаблон</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input asp-for="NewTemplate.IsDefault" class="form-check-input" />
+                                <label asp-for="NewTemplate.IsDefault" class="form-check-label">Шаблон по умолчанию</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-primary">Создать шаблон</button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
-
-        <div class="col-xl-4">
-            <div class="card shadow-sm mb-4">
+        <div class="col-xl-7">
+            <div class="card shadow-sm h-100">
                 <div class="card-body">
-                    <h2 class="h5 mb-3">Ответственность ролей</h2>
+                    <h2 class="h5 mb-3">Роли в процессе</h2>
                     <div class="d-flex flex-column gap-3">
                         @foreach (var item in Model.Roles)
                         {
@@ -91,19 +82,151 @@
                             </div>
                         }
                     </div>
-                </div>
-            </div>
-
-            <div class="card shadow-sm">
-                <div class="card-body">
-                    <h2 class="h5 mb-3">Примечание</h2>
-                    <p class="small text-muted mb-0">
-                        В этой версии проекта маршрут пока фиксированный. Страница уже показывает фактический жизненный цикл и состояние очереди,
-                        а следующим этапом можно будет вынести шаги согласования в настраиваемые шаблоны маршрутов.
-                    </p>
+                    <hr class="my-4" />
+                    <h2 class="h5 mb-3">Фиксированный жизненный цикл</h2>
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Этап</th>
+                                    <th>Код статуса</th>
+                                    <th>Роль</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in Model.Stages.OrderBy(x => x.Order))
+                                {
+                                    <tr>
+                                        <td>@item.Order</td>
+                                        <td>@item.Title</td>
+                                        <td><code>@item.StatusCode</code></td>
+                                        <td>@item.ResponsibleRole</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
+    </div>
+
+    <div class="d-flex flex-column gap-4">
+        @foreach (var template in Model.Templates)
+        {
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+                        <div>
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                <h2 class="h5 mb-0">@template.Name</h2>
+                                @if (template.IsDefault)
+                                {
+                                    <span class="badge text-bg-primary">По умолчанию</span>
+                                }
+                                @if (!template.IsActive)
+                                {
+                                    <span class="badge text-bg-secondary">Неактивен</span>
+                                }
+                            </div>
+                            <div class="small text-muted mt-1">
+                                Тип: @(template.DocumentType?.ToString() ?? "Любой")
+                                @if (!string.IsNullOrWhiteSpace(template.Department))
+                                {
+                                    <span> · Подразделение: @template.Department</span>
+                                }
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(template.Description))
+                            {
+                                <div class="small mt-2">@template.Description</div>
+                            }
+                        </div>
+
+                        <form method="post" asp-action="UpdateRouteTemplate" class="d-flex flex-column gap-2">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="RouteTemplateId" value="@template.Id" />
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="IsActive" value="true" checked="@template.IsActive" />
+                                <label class="form-check-label">Активен</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="IsDefault" value="true" checked="@template.IsDefault" />
+                                <label class="form-check-label">По умолчанию</label>
+                            </div>
+                            <button type="submit" class="btn btn-outline-primary btn-sm">Сохранить параметры</button>
+                        </form>
+                    </div>
+
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Шаг</th>
+                                    <th>Название</th>
+                                    <th>Роль</th>
+                                    <th>Согласующий</th>
+                                    <th>Обязательный</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (template.Steps.Count == 0)
+                                {
+                                    <tr>
+                                        <td colspan="5" class="text-muted">Шаги ещё не настроены.</td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var step in template.Steps.OrderBy(x => x.StepOrder))
+                                    {
+                                        <tr>
+                                            <td>@step.StepOrder</td>
+                                            <td>@step.Title</td>
+                                            <td>@step.ApproverRole</td>
+                                            <td>@step.ApproverDisplayName</td>
+                                            <td>@(step.IsRequired ? "Да" : "Нет")</td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <form method="post" asp-action="AddRouteStep" class="row g-3">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="NewStep.RouteTemplateId" value="@template.Id" />
+                        <div class="col-md-2">
+                            <label class="form-label">Шаг</label>
+                            <input class="form-control" type="number" name="NewStep.StepOrder" value="@(template.Steps.Count + 1)" min="1" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Название шага</label>
+                            <input class="form-control" type="text" name="NewStep.Title" placeholder="Например: Согласование руководителем" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Согласующий</label>
+                            <select class="form-select" name="NewStep.ApproverUserId">
+                                <option value="">Выберите пользователя</option>
+                                @foreach (var approver in Model.Approvers)
+                                {
+                                    <option value="@approver.UserId">@approver.DisplayName (@approver.RoleName)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" name="NewStep.IsRequired" value="true" checked />
+                                <label class="form-check-label">Обязательный</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-outline-secondary btn-sm">Добавить шаг</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        }
     </div>
 
     <div class="mt-4">
