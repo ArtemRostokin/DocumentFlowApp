@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("DocumentFlowApp.Infrastructure")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e31697dc18ff86136208d0cc9e11726130bfe3fe")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e9a95193f91a840bc8d98fae4ee743fa6789e1fd")]
 [assembly: System.Reflection.AssemblyProductAttribute("DocumentFlowApp.Infrastructure")]
 [assembly: System.Reflection.AssemblyTitleAttribute("DocumentFlowApp.Infrastructure")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

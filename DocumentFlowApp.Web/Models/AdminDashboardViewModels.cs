@@ -33,6 +33,7 @@ public sealed class RoutesAdminPageViewModel
     public IReadOnlyList<RouteRoleResponsibilityViewModel> Roles { get; init; } = [];
     public IReadOnlyList<RouteTemplateAdminListItemViewModel> Templates { get; init; } = [];
     public IReadOnlyList<RouteApproverOptionViewModel> Approvers { get; init; } = [];
+    public IReadOnlyList<ApprovalSpecializationOptionViewModel> ApprovalSpecializations { get; init; } = [];
     public CreateRouteTemplateAdminInputModel NewTemplate { get; init; } = new();
     public AddRouteStepAdminInputModel NewStep { get; init; } = new();
 }

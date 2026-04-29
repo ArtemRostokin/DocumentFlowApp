@@ -448,7 +448,13 @@
                                                 <div>
                                                     <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Шаг @step.Order</div>
                                                     <div class="mt-1 font-medium text-slate-900">@step.Title</div>
-                                                    <div class="mt-1 text-sm text-slate-500">@step.ApproverRole · @step.ApproverDisplayName</div>
+                                                    <div class="mt-1 text-sm text-slate-500">
+                                                        @step.ApproverRole · @step.ApproverSpecializationLabel
+                                                        @if (!string.IsNullOrWhiteSpace(step.ApproverDisplayName) && !string.Equals(step.ApproverDisplayName, "Не назначен", StringComparison.OrdinalIgnoreCase))
+                                                        {
+                                                            <span> · @step.ApproverDisplayName</span>
+                                                        }
+                                                    </div>
                                                     <div class="mt-1 text-xs text-slate-500">Статус: @(string.IsNullOrWhiteSpace(step.Status) ? "Не подготовлен" : step.Status)</div>
                                                 </div>
                                                 @if (Model.CanConfigureApprovalRoute && step.DocumentApprovalStepId.HasValue)
@@ -457,9 +463,12 @@
                                                         @Html.AntiForgeryToken()
                                                         <input type="hidden" name="documentApprovalStepId" value="@step.DocumentApprovalStepId" />
                                                         <select name="approverUserId" class="w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-3 py-2">
-                                                            @foreach (var approver in Model.RouteApproverOptions)
+                                                            <option value="">Автоназначение по бизнес-роли</option>
+                                                            @foreach (var approver in Model.RouteApproverOptions.Where(option =>
+                                                            string.IsNullOrWhiteSpace(step.ApproverSpecialization) ||
+                                                            string.Equals(option.ApprovalSpecialization, step.ApproverSpecialization, StringComparison.OrdinalIgnoreCase)))
                                                             {
-                                                                <option value="@approver.UserId" selected="@(step.ApproverUserId == approver.UserId)">@approver.DisplayName (@approver.RoleName)</option>
+                                                                <option value="@approver.UserId" selected="@(step.ApproverUserId == approver.UserId)">@approver.DisplayName (@approver.RoleName, @approver.ApprovalSpecializationLabel)</option>
                                                             }
                                                         </select>
                                                         <button type="submit" class="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">Сохранить согласующего</button>

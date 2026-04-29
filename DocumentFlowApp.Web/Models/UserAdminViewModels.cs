@@ -9,6 +9,7 @@ public sealed class UsersAdminPageViewModel
     public CreateUserAdminInputModel NewUser { get; init; } = new();
     public IReadOnlyList<UserAdminItemViewModel> Users { get; init; } = [];
     public IReadOnlyList<RoleOptionViewModel> Roles { get; init; } = [];
+    public IReadOnlyList<ApprovalSpecializationOptionViewModel> ApprovalSpecializations { get; init; } = [];
 }
 
 public sealed class CreateUserAdminInputModel
@@ -37,6 +38,7 @@ public sealed class CreateUserAdminInputModel
     [Required(ErrorMessage = "Выберите роль.")]
     public int? RoleId { get; set; }
 
+    public string? ApprovalSpecialization { get; set; }
     public bool IsActive { get; set; } = true;
 }
 
@@ -65,6 +67,7 @@ public sealed class UpdateUserAdminInputModel
     [Required(ErrorMessage = "Выберите роль.")]
     public int? RoleId { get; set; }
 
+    public string? ApprovalSpecialization { get; set; }
     public bool IsActive { get; set; }
 }
 
@@ -87,6 +90,8 @@ public sealed class UserAdminItemViewModel
     public string LastName { get; init; } = string.Empty;
     public string FullName { get; init; } = string.Empty;
     public string RoleName { get; init; } = string.Empty;
+    public string ApprovalSpecialization { get; init; } = string.Empty;
+    public string ApprovalSpecializationLabel { get; init; } = string.Empty;
     public int? RoleId { get; init; }
     public bool IsActive { get; init; }
     public bool EmailConfirmed { get; init; }
@@ -97,5 +102,11 @@ public sealed class UserAdminItemViewModel
 public sealed class RoleOptionViewModel
 {
     public int Id { get; init; }
+    public string Label { get; init; } = string.Empty;
+}
+
+public sealed class ApprovalSpecializationOptionViewModel
+{
+    public string Value { get; init; } = string.Empty;
     public string Label { get; init; } = string.Empty;
 }

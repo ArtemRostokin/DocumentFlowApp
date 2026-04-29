@@ -1,8 +1,9 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using DocumentFlowApp.Core.Audit;
 using DocumentFlowApp.Core.Entities;
 using DocumentFlowApp.Core.Enums;
 using DocumentFlowApp.Core.Interfaces;
+using DocumentFlowApp.Core.Security;
 using DocumentFlowApp.Infrastructure.Data;
 using DocumentFlowApp.Web.Models;
 using DocumentFlowApp.Web.Security;
@@ -100,8 +101,9 @@ public class AdminController : Controller
         if (string.IsNullOrWhiteSpace(input.Title))
             ModelState.AddModelError(nameof(input.Title), "Введите название шага.");
 
-        if (input.ApproverUserId is null)
-            ModelState.AddModelError(nameof(input.ApproverUserId), "Выберите согласующего.");
+        var approvalSpecialization = ApprovalSpecializations.Normalize(input.ApproverSpecialization);
+        if (approvalSpecialization is null)
+            ModelState.AddModelError(nameof(input.ApproverSpecialization), "Выберите бизнес-роль согласования.");
 
         var template = await _dbContext.RouteTemplates.FirstOrDefaultAsync(x => x.RouteTemplateId == input.RouteTemplateId, cancellationToken);
         if (template is null)
@@ -116,6 +118,13 @@ public class AdminController : Controller
         if (input.ApproverUserId is not null && approver is null)
             ModelState.AddModelError(nameof(input.ApproverUserId), "Выберите активного согласующего.");
 
+        if (approver is not null && approvalSpecialization is not null)
+        {
+            var approverSpecialization = ApprovalSpecializations.Normalize(approver.ApprovalSpecialization);
+            if (!string.Equals(approverSpecialization, approvalSpecialization, StringComparison.OrdinalIgnoreCase))
+                ModelState.AddModelError(nameof(input.ApproverUserId), "Выбранный пользователь не соответствует указанной бизнес-роли согласования.");
+        }
+
         if (!ModelState.IsValid)
             return View("Routes", await BuildRoutesPageAsync(cancellationToken, newStep: input));
 
@@ -126,8 +135,9 @@ public class AdminController : Controller
                 RouteTemplateId = input.RouteTemplateId,
                 StepOrder = input.StepOrder,
                 Title = input.Title.Trim(),
+                ApproverSpecialization = approvalSpecialization,
                 ApproverUserId = input.ApproverUserId,
-                ApproverRole = approver?.Role?.RoleName ?? "User",
+                ApproverRole = approver?.Role?.RoleName ?? "Employee",
                 IsRequired = input.IsRequired
             };
 
@@ -215,6 +225,10 @@ public class AdminController : Controller
         if (role is null)
             ModelState.AddModelError(nameof(input.RoleId), "Выберите существующую роль.");
 
+        var approvalSpecialization = ApprovalSpecializations.Normalize(input.ApprovalSpecialization);
+        if (input.ApprovalSpecialization is not null && approvalSpecialization is null)
+            ModelState.AddModelError(nameof(input.ApprovalSpecialization), "Выберите корректную бизнес-роль согласования.");
+
         if (!ModelState.IsValid)
             return View("Users", await BuildUsersPageAsync(cancellationToken, input));
 
@@ -228,6 +242,7 @@ public class AdminController : Controller
                 FirstName = input.FirstName.Trim(),
                 LastName = input.LastName.Trim(),
                 RoleId = input.RoleId,
+                ApprovalSpecialization = approvalSpecialization,
                 IsActive = isActive,
                 EmailConfirmed = true,
                 CreatedDate = DateTime.UtcNow
@@ -241,7 +256,7 @@ public class AdminController : Controller
             await _auditService.LogSystemActivityAsync(
                 GetCurrentUserId(),
                 AuditActivityTypes.UserCreated,
-                $"Создан пользователь {user.UserName} ({user.Email}) с ролью {role!.RoleName}.",
+                $"Создан пользователь {user.UserName} ({user.Email}) с ролью {role!.RoleName} и профилем согласования {ApprovalSpecializations.GetLabel(user.ApprovalSpecialization)}.",
                 cancellationToken);
 
             TempData["SuccessMessage"] = "Пользователь создан.";
@@ -300,6 +315,13 @@ public class AdminController : Controller
             return RedirectToAction(nameof(Users));
         }
 
+        var approvalSpecialization = ApprovalSpecializations.Normalize(input.ApprovalSpecialization);
+        if (input.ApprovalSpecialization is not null && approvalSpecialization is null)
+        {
+            TempData["ErrorMessage"] = "Выберите корректную бизнес-роль согласования.";
+            return RedirectToAction(nameof(Users));
+        }
+
         try
         {
             var previousRole = user.Role?.RoleName ?? "без роли";
@@ -307,6 +329,7 @@ public class AdminController : Controller
             var previousUserName = user.UserName;
             var previousEmail = user.Email;
             var previousFullName = string.Join(" ", new[] { user.FirstName, user.LastName }.Where(v => !string.IsNullOrWhiteSpace(v)));
+            var previousApprovalSpecialization = ApprovalSpecializations.GetLabel(user.ApprovalSpecialization);
             var isActive = ReadPostedBoolean("IsActive", input.IsActive);
 
             user.UserName = normalizedUserName;
@@ -314,6 +337,7 @@ public class AdminController : Controller
             user.FirstName = input.FirstName.Trim();
             user.LastName = input.LastName.Trim();
             user.RoleId = input.RoleId;
+            user.ApprovalSpecialization = approvalSpecialization;
             user.IsActive = isActive;
 
             await _dbContext.SaveChangesAsync(cancellationToken);
@@ -324,7 +348,7 @@ public class AdminController : Controller
             await _auditService.LogSystemActivityAsync(
                 GetCurrentUserId(),
                 AuditActivityTypes.UserUpdated,
-                $"Обновлен пользователь {previousUserName}: логин {previousUserName} -> {user.UserName}, email {previousEmail} -> {user.Email}, ФИО {previousFullName} -> {currentFullName}, роль {previousRole} -> {role.RoleName}, состояние {previousState} -> {currentState}.",
+                $"Обновлен пользователь {previousUserName}: логин {previousUserName} -> {user.UserName}, email {previousEmail} -> {user.Email}, ФИО {previousFullName} -> {currentFullName}, роль {previousRole} -> {role.RoleName}, бизнес-роль {previousApprovalSpecialization} -> {ApprovalSpecializations.GetLabel(user.ApprovalSpecialization)}, состояние {previousState} -> {currentState}.",
                 cancellationToken);
 
             TempData["SuccessMessage"] = "Данные пользователя обновлены.";
@@ -581,6 +605,8 @@ public class AdminController : Controller
                         StepOrder = step.StepOrder,
                         Title = step.Title,
                         ApproverRole = step.ApproverRole,
+                        ApproverSpecialization = step.ApproverSpecialization,
+                        ApproverSpecializationLabel = ApprovalSpecializations.GetLabel(step.ApproverSpecialization),
                         ApproverUserId = step.ApproverUserId,
                         ApproverDisplayName = FormatUserDisplayName(step.ApproverUser?.FirstName, step.ApproverUser?.LastName, step.ApproverUser?.UserName),
                         IsRequired = step.IsRequired
@@ -588,6 +614,7 @@ public class AdminController : Controller
                     .ToList(),
             }).ToList(),
             Approvers = await BuildRouteApproverOptionsAsync(cancellationToken),
+            ApprovalSpecializations = BuildApprovalSpecializationOptions(),
             NewTemplate = newTemplate ?? new CreateRouteTemplateAdminInputModel(),
             NewStep = newStep ?? new AddRouteStepAdminInputModel(),
             Stages =
@@ -677,6 +704,7 @@ public class AdminController : Controller
                 x.UserName,
                 x.FirstName,
                 x.LastName,
+                x.ApprovalSpecialization,
                 RoleName = x.Role != null ? x.Role.RoleName : "User"
             })
             .ToListAsync(cancellationToken);
@@ -686,7 +714,9 @@ public class AdminController : Controller
             {
                 UserId = x.UserId,
                 DisplayName = FormatUserDisplayName(x.FirstName, x.LastName, x.UserName),
-                RoleName = x.RoleName
+                RoleName = x.RoleName,
+                ApprovalSpecialization = x.ApprovalSpecialization,
+                ApprovalSpecializationLabel = ApprovalSpecializations.GetLabel(x.ApprovalSpecialization)
             })
             .ToList();
     }
@@ -732,6 +762,7 @@ public class AdminController : Controller
                 x.Email,
                 x.FirstName,
                 x.LastName,
+                x.ApprovalSpecialization,
                 RoleName = x.Role != null ? x.Role.RoleName : null,
                 x.RoleId,
                 x.IsActive,
@@ -751,6 +782,8 @@ public class AdminController : Controller
                 LastName = x.LastName ?? string.Empty,
                 FullName = string.Join(" ", new[] { x.LastName, x.FirstName }.Where(v => !string.IsNullOrWhiteSpace(v))),
                 RoleName = string.IsNullOrWhiteSpace(x.RoleName) ? "Без роли" : x.RoleName,
+                ApprovalSpecialization = x.ApprovalSpecialization ?? string.Empty,
+                ApprovalSpecializationLabel = ApprovalSpecializations.GetLabel(x.ApprovalSpecialization),
                 RoleId = x.RoleId,
                 IsActive = x.IsActive,
                 EmailConfirmed = x.EmailConfirmed,
@@ -765,8 +798,20 @@ public class AdminController : Controller
             ErrorMessage = TempData["ErrorMessage"] as string,
             NewUser = createInput ?? new CreateUserAdminInputModel(),
             Roles = roles,
+            ApprovalSpecializations = BuildApprovalSpecializationOptions(),
             Users = users
         };
+    }
+
+    private static IReadOnlyList<ApprovalSpecializationOptionViewModel> BuildApprovalSpecializationOptions()
+    {
+        return ApprovalSpecializations.All
+            .Select(value => new ApprovalSpecializationOptionViewModel
+            {
+                Value = value,
+                Label = ApprovalSpecializations.GetLabel(value)
+            })
+            .ToList();
     }
 
     private async Task<NomenclatureAdminPageViewModel> BuildNomenclaturePageAsync(

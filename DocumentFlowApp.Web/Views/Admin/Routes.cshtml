@@ -165,6 +165,7 @@
                                     <th>Шаг</th>
                                     <th>Название</th>
                                     <th>Роль</th>
+                                    <th>Бизнес-роль</th>
                                     <th>Согласующий</th>
                                     <th>Обязательный</th>
                                 </tr>
@@ -173,7 +174,7 @@
                                 @if (template.Steps.Count == 0)
                                 {
                                     <tr>
-                                        <td colspan="5" class="text-muted">Шаги ещё не настроены.</td>
+                                        <td colspan="6" class="text-muted">Шаги ещё не настроены.</td>
                                     </tr>
                                 }
                                 else
@@ -184,6 +185,7 @@
                                             <td>@step.StepOrder</td>
                                             <td>@step.Title</td>
                                             <td>@step.ApproverRole</td>
+                                            <td>@step.ApproverSpecializationLabel</td>
                                             <td>@step.ApproverDisplayName</td>
                                             <td>@(step.IsRequired ? "Да" : "Нет")</td>
                                         </tr>
@@ -205,12 +207,22 @@
                             <input class="form-control" type="text" name="NewStep.Title" placeholder="Например: Согласование руководителем" />
                         </div>
                         <div class="col-md-4">
+                            <label class="form-label">Бизнес-роль</label>
+                            <select class="form-select" name="NewStep.ApproverSpecialization">
+                                <option value="">Выберите бизнес-роль</option>
+                                @foreach (var specialization in Model.ApprovalSpecializations)
+                                {
+                                    <option value="@specialization.Value">@specialization.Label</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
                             <label class="form-label">Согласующий</label>
                             <select class="form-select" name="NewStep.ApproverUserId">
-                                <option value="">Выберите пользователя</option>
+                                <option value="">Опционально: конкретный пользователь</option>
                                 @foreach (var approver in Model.Approvers)
                                 {
-                                    <option value="@approver.UserId">@approver.DisplayName (@approver.RoleName)</option>
+                                    <option value="@approver.UserId">@approver.DisplayName (@approver.RoleName, @approver.ApprovalSpecializationLabel)</option>
                                 }
                             </select>
                         </div>

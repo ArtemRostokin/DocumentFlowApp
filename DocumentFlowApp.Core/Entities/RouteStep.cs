@@ -13,6 +13,7 @@ public class RouteStep
     public int StepOrder { get; set; }
     public string Title { get; set; } = null!;
     public string ApproverRole { get; set; } = null!;
+    public string? ApproverSpecialization { get; set; }
     public int? ApproverUserId { get; set; }
     public User? ApproverUser { get; set; }
     public bool IsRequired { get; set; }

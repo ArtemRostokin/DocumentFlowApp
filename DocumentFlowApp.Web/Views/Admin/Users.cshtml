@@ -64,6 +64,17 @@
                             </select>
                             <span asp-validation-for="NewUser.RoleId" class="text-danger small"></span>
                         </div>
+                        <div class="col-md-6">
+                            <label asp-for="NewUser.ApprovalSpecialization" class="form-label">Бизнес-роль согласования</label>
+                            <select asp-for="NewUser.ApprovalSpecialization" class="form-select">
+                                <option value="">Без специализации</option>
+                                @foreach (var specialization in Model.ApprovalSpecializations)
+                                {
+                                    <option value="@specialization.Value">@specialization.Label</option>
+                                }
+                            </select>
+                            <span asp-validation-for="NewUser.ApprovalSpecialization" class="text-danger small"></span>
+                        </div>
                         <div class="col-12">
                             <div class="form-check">
                                 <input asp-for="NewUser.IsActive" class="form-check-input" />
@@ -120,13 +131,21 @@
                                     <td style="min-width: 160px;">
                                         <input form="@updateFormId" type="text" name="LastName" value="@item.LastName" class="form-control form-control-sm" placeholder="Фамилия" />
                                     </td>
-                                    <td style="min-width: 170px;">
+                                    <td style="min-width: 220px;">
                                         <select form="@updateFormId" name="RoleId" class="form-select form-select-sm">
                                             @foreach (var role in Model.Roles)
                                             {
                                                 <option value="@role.Id" selected="@(item.RoleId == role.Id ? "selected" : null)">@role.Label</option>
                                             }
                                         </select>
+                                        <select form="@updateFormId" name="ApprovalSpecialization" class="form-select form-select-sm mt-2">
+                                            <option value="">Без специализации</option>
+                                            @foreach (var specialization in Model.ApprovalSpecializations)
+                                            {
+                                                <option value="@specialization.Value" selected="@(item.ApprovalSpecialization == specialization.Value ? "selected" : null)">@specialization.Label</option>
+                                            }
+                                        </select>
+                                        <div class="small text-muted mt-1">@item.ApprovalSpecializationLabel</div>
                                     </td>
                                     <td style="min-width: 160px;">
                                         <div class="form-check mb-1">

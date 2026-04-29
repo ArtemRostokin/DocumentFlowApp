@@ -31,10 +31,13 @@ public static class ApplicationDbSeeder
 
         await context.SaveChangesAsync(cancellationToken);
 
-        var adminUser = await EnsureUserAsync(context, adminRole.RoleId, "admin", "admin@docflow.local", "Admin123!", "Системный", "Администратор", cancellationToken);
-        var managerUser = await EnsureUserAsync(context, managerRole.RoleId, "manager", "manager@docflow.local", "Manager123!", "Ирина", "Менеджер", cancellationToken);
-        var secondManagerUser = await EnsureUserAsync(context, managerRole.RoleId, "manager2", "manager2@docflow.local", "Manager123!", "Олег", "Согласующий", cancellationToken);
-        var employeeUser = await EnsureUserAsync(context, employeeRole.RoleId, "employee", "employee@docflow.local", "Employee123!", "Алексей", "Исполнитель", cancellationToken);
+        var adminUser = await EnsureUserAsync(context, adminRole.RoleId, "admin", "admin@docflow.local", "Admin123!", "Системный", "Администратор", null, cancellationToken);
+        var managerUser = await EnsureUserAsync(context, managerRole.RoleId, "manager", "manager@docflow.local", "Manager123!", "Ирина", "Менеджер", null, cancellationToken);
+        var secondManagerUser = await EnsureUserAsync(context, managerRole.RoleId, "manager2", "manager2@docflow.local", "Manager123!", "Олег", "Согласующий", ApprovalSpecializations.Manager, cancellationToken);
+        var employeeUser = await EnsureUserAsync(context, employeeRole.RoleId, "employee", "employee@docflow.local", "Employee123!", "Алексей", "Исполнитель", null, cancellationToken);
+        var lawyerUser = await EnsureUserAsync(context, employeeRole.RoleId, "lawyer", "lawyer@docflow.local", "Employee123!", "Мария", "Юрист", ApprovalSpecializations.Lawyer, cancellationToken);
+        var accountantUser = await EnsureUserAsync(context, employeeRole.RoleId, "accountant", "accountant@docflow.local", "Employee123!", "Светлана", "Бухгалтер", ApprovalSpecializations.Accountant, cancellationToken);
+        var hrUser = await EnsureUserAsync(context, employeeRole.RoleId, "hr", "hr@docflow.local", "Employee123!", "Елена", "Кадры", ApprovalSpecializations.Hr, cancellationToken);
 
         await EnsureTemplateAsync(
             context,
@@ -115,27 +118,30 @@ public static class ApplicationDbSeeder
             context,
             "Базовый маршрут договоров",
             "Contract",
-            "Согласование договоров вторым менеджером.",
-            secondManagerUser.UserId,
-            secondManagerUser.Role?.RoleName ?? AppRoles.Manager,
+            "Согласование договоров юристом.",
+            ApprovalSpecializations.Lawyer,
+            lawyerUser.UserId,
+            lawyerUser.Role?.RoleName ?? AppRoles.Employee,
             cancellationToken);
 
         await EnsureRouteTemplateAsync(
             context,
             "Базовый маршрут счетов",
             "Invoice",
-            "Согласование счетов вторым менеджером.",
-            secondManagerUser.UserId,
-            secondManagerUser.Role?.RoleName ?? AppRoles.Manager,
+            "Согласование счетов бухгалтером.",
+            ApprovalSpecializations.Accountant,
+            accountantUser.UserId,
+            accountantUser.Role?.RoleName ?? AppRoles.Employee,
             cancellationToken);
 
         await EnsureRouteTemplateAsync(
             context,
             "Базовый маршрут заявлений",
             "Application",
-            "Согласование заявлений вторым менеджером.",
-            secondManagerUser.UserId,
-            secondManagerUser.Role?.RoleName ?? AppRoles.Manager,
+            "Согласование заявлений кадровой службой.",
+            ApprovalSpecializations.Hr,
+            hrUser.UserId,
+            hrUser.Role?.RoleName ?? AppRoles.Employee,
             cancellationToken);
 
         await EnsureRouteTemplateAsync(
@@ -143,6 +149,7 @@ public static class ApplicationDbSeeder
             "Общий маршрут по умолчанию",
             null,
             "Используется для типов документов без отдельного шаблона маршрута.",
+            ApprovalSpecializations.Manager,
             secondManagerUser.UserId,
             secondManagerUser.Role?.RoleName ?? AppRoles.Manager,
             cancellationToken);
@@ -174,11 +181,16 @@ public static class ApplicationDbSeeder
         string password,
         string firstName,
         string lastName,
+        string? approvalSpecialization,
         CancellationToken cancellationToken)
     {
         var existingUser = await context.Users.FirstOrDefaultAsync(u => u.Email == email, cancellationToken);
         if (existingUser is not null)
+        {
+            existingUser.ApprovalSpecialization = ApprovalSpecializations.Normalize(approvalSpecialization);
+            await context.SaveChangesAsync(cancellationToken);
             return existingUser;
+        }
 
         var user = new User
         {
@@ -187,6 +199,7 @@ public static class ApplicationDbSeeder
             Email = email,
             FirstName = firstName,
             LastName = lastName,
+            ApprovalSpecialization = ApprovalSpecializations.Normalize(approvalSpecialization),
             CreatedDate = DateTime.UtcNow,
             IsActive = true,
             EmailConfirmed = true
@@ -302,6 +315,7 @@ public static class ApplicationDbSeeder
         string name,
         string? documentType,
         string description,
+        string approvalSpecialization,
         int approverUserId,
         string approverRole,
         CancellationToken cancellationToken)
@@ -342,6 +356,7 @@ public static class ApplicationDbSeeder
                 StepOrder = 1,
                 Title = "Согласование",
                 ApproverRole = approverRole,
+                ApproverSpecialization = approvalSpecialization,
                 ApproverUserId = approverUserId,
                 IsRequired = true
             });
@@ -350,6 +365,7 @@ public static class ApplicationDbSeeder
 
         existingStep.Title = "Согласование";
         existingStep.ApproverRole = approverRole;
+        existingStep.ApproverSpecialization = approvalSpecialization;
         existingStep.ApproverUserId = approverUserId;
         existingStep.IsRequired = true;
     }

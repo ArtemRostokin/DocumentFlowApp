@@ -17,6 +17,7 @@ public class User
     public string PasswordHash { get; set; } = null!;
     public string? FirstName { get; set; }
     public string? LastName { get; set; }
+    public string? ApprovalSpecialization { get; set; }
     public DateTime CreatedDate { get; set; }
     public DateTime? LastLogin { get; set; }
     public bool IsActive { get; set; }

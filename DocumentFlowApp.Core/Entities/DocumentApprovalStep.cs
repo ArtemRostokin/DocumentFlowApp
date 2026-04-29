@@ -19,6 +19,7 @@ public class DocumentApprovalStep
     public int StepOrder { get; set; }
     public string Title { get; set; } = null!;
     public string ApproverRole { get; set; } = null!;
+    public string? ApproverSpecialization { get; set; }
     public int? ApproverUserId { get; set; }
     public User? ApproverUser { get; set; }
 

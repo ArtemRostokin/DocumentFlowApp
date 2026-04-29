@@ -154,6 +154,7 @@ namespace DocumentFlowApp.Infrastructure.Data
                 entity.Property(s => s.RouteStepId).ValueGeneratedOnAdd();
                 entity.Property(s => s.Title).IsRequired().HasMaxLength(200);
                 entity.Property(s => s.ApproverRole).IsRequired().HasMaxLength(100);
+                entity.Property(s => s.ApproverSpecialization).HasMaxLength(100);
                 entity.HasOne(s => s.RouteTemplate)
                     .WithMany(t => t.Steps)
                     .HasForeignKey(s => s.RouteTemplateId)
@@ -171,6 +172,7 @@ namespace DocumentFlowApp.Infrastructure.Data
                 entity.Property(s => s.DocumentApprovalStepId).ValueGeneratedOnAdd();
                 entity.Property(s => s.Title).IsRequired().HasMaxLength(200);
                 entity.Property(s => s.ApproverRole).IsRequired().HasMaxLength(100);
+                entity.Property(s => s.ApproverSpecialization).HasMaxLength(100);
                 entity.Property(s => s.Status).IsRequired().HasMaxLength(50);
                 entity.Property(s => s.Comment).HasMaxLength(1000);
 
@@ -231,6 +233,7 @@ namespace DocumentFlowApp.Infrastructure.Data
                 entity.Property(u => u.UserId).ValueGeneratedOnAdd();
                 entity.Property(u => u.UserName).IsRequired().HasMaxLength(100);
                 entity.Property(u => u.Email).IsRequired().HasMaxLength(200);
+                entity.Property(u => u.ApprovalSpecialization).HasMaxLength(100);
                 entity.HasIndex(u => u.Email).IsUnique().HasDatabaseName("IX_Users_Email");
             });
 

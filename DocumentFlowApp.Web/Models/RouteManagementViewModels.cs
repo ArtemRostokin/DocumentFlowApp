@@ -17,6 +17,8 @@ public sealed class ApprovalRouteStepViewModel
     public int Order { get; init; }
     public string Title { get; init; } = string.Empty;
     public string ApproverRole { get; init; } = string.Empty;
+    public string? ApproverSpecialization { get; init; }
+    public string ApproverSpecializationLabel { get; init; } = string.Empty;
     public int? ApproverUserId { get; init; }
     public string ApproverDisplayName { get; init; } = string.Empty;
     public string Status { get; init; } = string.Empty;
@@ -42,6 +44,8 @@ public sealed class RouteTemplateStepAdminViewModel
     public int StepOrder { get; init; }
     public string Title { get; init; } = string.Empty;
     public string ApproverRole { get; init; } = string.Empty;
+    public string? ApproverSpecialization { get; init; }
+    public string ApproverSpecializationLabel { get; init; } = string.Empty;
     public int? ApproverUserId { get; init; }
     public string ApproverDisplayName { get; init; } = string.Empty;
     public bool IsRequired { get; init; }
@@ -52,6 +56,8 @@ public sealed class RouteApproverOptionViewModel
     public int UserId { get; init; }
     public string DisplayName { get; init; } = string.Empty;
     public string RoleName { get; init; } = string.Empty;
+    public string? ApprovalSpecialization { get; init; }
+    public string ApprovalSpecializationLabel { get; init; } = string.Empty;
 }
 
 public sealed class CreateRouteTemplateAdminInputModel
@@ -69,6 +75,7 @@ public sealed class AddRouteStepAdminInputModel
     public int RouteTemplateId { get; set; }
     public int StepOrder { get; set; } = 1;
     public string Title { get; set; } = string.Empty;
+    public string? ApproverSpecialization { get; set; }
     public int? ApproverUserId { get; set; }
     public bool IsRequired { get; set; } = true;
 }
