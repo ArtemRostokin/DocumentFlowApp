@@ -127,7 +127,7 @@ public class HomeController : Controller
         {
             Id = document.DocumentId,
             Title = string.IsNullOrWhiteSpace(document.Title) ? "Без названия" : document.Title,
-            Subtitle = string.IsNullOrWhiteSpace(document.ExtractedText) ? "Без описания" : document.ExtractedText,
+            Subtitle = string.IsNullOrWhiteSpace(document.ExtractedText) ? "Описание не заполнено" : document.ExtractedText,
             Author = string.IsNullOrWhiteSpace(author) ? "Система" : author,
             TypeLabel = GetTypeLabel(docType),
             TypeClass = GetTypeClass(docType),
@@ -136,6 +136,7 @@ public class HomeController : Controller
             StatusIcon = GetStatusIcon(docStatus),
             Progress = GetProgress(docStatus),
             ProgressLabel = GetProgressLabel(docStatus),
+            StageHint = GetStageHint(docStatus),
             DueLabel = FormatDueLabel(document),
             DueClass = GetDueClass(docStatus)
         };
@@ -252,6 +253,17 @@ public class HomeController : Controller
         _ => "Статус"
     };
 
+    private static string GetStageHint(DocumentStatus status) => status switch
+    {
+        DocumentStatus.Draft => "Проверьте карточку и подготовьте маршрут согласования.",
+        DocumentStatus.OnApproval => "Документ ожидает решение согласующего.",
+        DocumentStatus.Approved => "Документ утвержден и готов к началу работы.",
+        DocumentStatus.InWork => "Исполнитель ведет работу и фиксирует результат.",
+        DocumentStatus.Completed => "Результат готов к проверке и архивированию.",
+        DocumentStatus.Archived => "Жизненный цикл завершен, документ хранится в архиве.",
+        _ => "Следующее действие зависит от статуса документа."
+    };
+
     private static string GetDueClass(DocumentStatus status) => status switch
     {
         DocumentStatus.OnApproval => "due-danger",
@@ -349,7 +361,11 @@ public class HomeController : Controller
         ];
     }
 
-    private async Task<KanbanBoardPageViewModel> BuildPageModelAsync(string? q, DocumentType? type, string normalizedRole, int? currentUserId)
+    private async Task<KanbanBoardPageViewModel> BuildPageModelAsync(
+        string? q,
+        DocumentType? type,
+        string normalizedRole,
+        int? currentUserId)
     {
         var isEmployeeBoard = normalizedRole == AppRoles.Employee;
         var documents = new List<Document>();
@@ -363,7 +379,7 @@ public class HomeController : Controller
         {
             _logger.LogWarning(ex, "Failed to load documents from backend. Using fallback preview data.");
             documents = GetFallbackDocuments();
-            notice = "Backend is unavailable, showing fallback preview data.";
+            notice = "Сервер временно недоступен, поэтому показаны демонстрационные данные.";
         }
 
         if (isEmployeeBoard && currentUserId.HasValue)
@@ -406,6 +422,13 @@ public class HomeController : Controller
             TotalLabel = isEmployeeBoard ? "Всего задач" : "Всего документов",
             Notice = notice,
             SuccessMessage = TempData["SuccessMessage"] as string,
+            ViewModeLabel = isEmployeeBoard ? "Рабочая доска исполнителя" : "Управленческая доска",
+            ViewModeDescription = isEmployeeBoard
+                ? "Здесь видны только документы, по которым вы должны согласовать, начать или завершить работу."
+                : "Здесь менеджер и администратор контролируют движение документов по этапам жизненного цикла.",
+            ApprovalCount = documents.Count(d => ParseDocumentStatus(d.Status) == DocumentStatus.OnApproval),
+            InWorkCount = documents.Count(d => ParseDocumentStatus(d.Status) == DocumentStatus.InWork),
+            CompletedCount = documents.Count(d => ParseDocumentStatus(d.Status) == DocumentStatus.Completed),
             Columns = BuildColumns(documents, isEmployeeBoard)
         };
     }

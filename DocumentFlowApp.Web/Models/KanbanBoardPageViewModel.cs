@@ -12,6 +12,11 @@ public sealed class KanbanBoardPageViewModel
     public string TotalLabel { get; init; } = "Всего документов";
     public string? Notice { get; init; }
     public string? SuccessMessage { get; init; }
+    public string ViewModeLabel { get; init; } = string.Empty;
+    public string ViewModeDescription { get; init; } = string.Empty;
+    public int ApprovalCount { get; init; }
+    public int InWorkCount { get; init; }
+    public int CompletedCount { get; init; }
     public IReadOnlyList<KanbanColumnViewModel> Columns { get; init; } = [];
 }
 
@@ -37,6 +42,7 @@ public sealed class KanbanCardViewModel
     public required string StatusIcon { get; init; }
     public int Progress { get; init; }
     public required string ProgressLabel { get; init; }
+    public required string StageHint { get; init; }
     public required string DueLabel { get; init; }
     public required string DueClass { get; init; }
 }

@@ -89,21 +89,21 @@ public class DocumentsController : Controller
         var decision = (input.Decision ?? string.Empty).Trim().ToLowerInvariant();
         if (decision is not ("approve" or "rework"))
         {
-            TempData["ErrorMessage"] = "РќРµРёР·РІРµСЃС‚РЅРѕРµ РґРµР№СЃС‚РІРёРµ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ.";
+            TempData["ErrorMessage"] = "Неизвестное действие согласования.";
             return RedirectToAction(nameof(ApprovalQueue));
         }
 
         var document = await _documentService.GetDocumentByIdAsync(id);
         if (document is null)
         {
-            TempData["ErrorMessage"] = "Р”РѕРєСѓРјРµРЅС‚ РЅРµ РЅР°Р№РґРµРЅ.";
+            TempData["ErrorMessage"] = "Документ не найден.";
             return RedirectToAction(nameof(ApprovalQueue));
         }
 
         var currentStatus = ParseDocumentStatus(document.Status);
         if (currentStatus != DocumentStatus.OnApproval)
         {
-            TempData["ErrorMessage"] = "Р”РѕРєСѓРјРµРЅС‚ СѓР¶Рµ РЅРµ РЅР°С…РѕРґРёС‚СЃСЏ РЅР° СЃРѕРіР»Р°СЃРѕРІР°РЅРёРё.";
+            TempData["ErrorMessage"] = "Документ уже не находится на согласовании.";
             return RedirectToAction(nameof(ApprovalQueue));
         }
 
@@ -127,9 +127,9 @@ public class DocumentsController : Controller
                 await LogDocumentActivityAsync(
                     id,
                     AuditActivityTypes.ApprovalApproved,
-                    "РњРµРЅРµРґР¶РµСЂ СѓС‚РІРµСЂРґРёР» РґРѕРєСѓРјРµРЅС‚ РёР· РѕС‡РµСЂРµРґРё СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ.",
+                    "Менеджер утвердил документ из очереди согласования.",
                     cancellationToken);
-                TempData["SuccessMessage"] = $"Р”РѕРєСѓРјРµРЅС‚ #{id} СѓС‚РІРµСЂР¶РґРµРЅ.";
+                TempData["SuccessMessage"] = $"Документ #{id} утвержден.";
             }
             else
             {
@@ -139,9 +139,9 @@ public class DocumentsController : Controller
                 await LogDocumentActivityAsync(
                     id,
                     AuditActivityTypes.ApprovalRework,
-                    BuildReworkAuditDetails(input.Comment, "РњРµРЅРµРґР¶РµСЂ РІРµСЂРЅСѓР» РґРѕРєСѓРјРµРЅС‚ РЅР° РґРѕСЂР°Р±РѕС‚РєСѓ."),
+                    BuildReworkAuditDetails(input.Comment, "Менеджер вернул документ на доработку."),
                     cancellationToken);
-                TempData["SuccessMessage"] = $"Р”РѕРєСѓРјРµРЅС‚ #{id} РІРѕР·РІСЂР°С‰РµРЅ РЅР° РґРѕСЂР°Р±РѕС‚РєСѓ.";
+                TempData["SuccessMessage"] = $"Документ #{id} возвращен на доработку.";
             }
         }
         catch (InvalidOperationException ex)
@@ -150,8 +150,8 @@ public class DocumentsController : Controller
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "РќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РїРѕР»РЅРёС‚СЊ РґРµР№СЃС‚РІРёРµ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ РґР»СЏ РґРѕРєСѓРјРµРЅС‚Р° {DocumentId}", id);
-            TempData["ErrorMessage"] = "РќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РїРѕР»РЅРёС‚СЊ РґРµР№СЃС‚РІРёРµ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ. РџРѕРІС‚РѕСЂРёС‚Рµ РїРѕРїС‹С‚РєСѓ РїРѕР·Р¶Рµ.";
+            _logger.LogWarning(ex, "Не удалось выполнить действие согласования для документа {DocumentId}", id);
+            TempData["ErrorMessage"] = "Не удалось выполнить действие согласования. Повторите попытку позже.";
         }
 
         return RedirectToAction(nameof(ApprovalQueue));
@@ -175,7 +175,7 @@ public class DocumentsController : Controller
     [Route("Documents/{id:int}/start-work")]
     public async Task<IActionResult> StartWork(int id, bool returnToEdit, CancellationToken cancellationToken)
     {
-        return await ExecuteEmployeeActionAsync(id, DocumentStatus.Approved, DocumentStatus.InWork, $"Р”РѕРєСѓРјРµРЅС‚ #{id} РїРµСЂРµРІРµРґРµРЅ РІ СЂР°Р±РѕС‚Сѓ.", returnToEdit, cancellationToken);
+        return await ExecuteEmployeeActionAsync(id, DocumentStatus.Approved, DocumentStatus.InWork, $"Документ #{id} переведен в работу.", returnToEdit, cancellationToken);
     }
 
     [HttpPost]
@@ -184,7 +184,7 @@ public class DocumentsController : Controller
     [Route("Documents/{id:int}/complete-work")]
     public async Task<IActionResult> CompleteWork(int id, bool returnToEdit, CancellationToken cancellationToken)
     {
-        return await ExecuteEmployeeActionAsync(id, DocumentStatus.InWork, DocumentStatus.Completed, $"Р”РѕРєСѓРјРµРЅС‚ #{id} РѕС‚РјРµС‡РµРЅ РєР°Рє Р·Р°РІРµСЂС€РµРЅРЅС‹Р№.", returnToEdit, cancellationToken);
+        return await ExecuteEmployeeActionAsync(id, DocumentStatus.InWork, DocumentStatus.Completed, $"Документ #{id} отмечен как завершенный.", returnToEdit, cancellationToken);
     }
 
     [HttpGet]
@@ -338,16 +338,16 @@ public class DocumentsController : Controller
             await LogDocumentActivityAsync(
                 doc.DocumentId,
                 AuditActivityTypes.DocumentUpdated,
-                $"РљР°СЂС‚РѕС‡РєР° РѕР±РЅРѕРІР»РµРЅР°. РўРёРї: {GetDocumentTypeLabel(model.Type ?? DocumentType.Other)}.",
+                $"Карточка обновлена. Тип: {GetDocumentTypeLabel(model.Type ?? DocumentType.Other)}.",
                 cancellationToken);
 
-            TempData["SuccessMessage"] = "РР·РјРµРЅРµРЅРёСЏ СЃРѕС…СЂР°РЅРµРЅС‹.";
+            TempData["SuccessMessage"] = "Изменения сохранены.";
             return RedirectToAction("Index", "Home");
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ РёР·РјРµРЅРµРЅРёСЏ РґРѕРєСѓРјРµРЅС‚Р° {DocumentId}", model.Id);
-            ModelState.AddModelError(string.Empty, "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ РёР·РјРµРЅРµРЅРёСЏ. РџРѕРІС‚РѕСЂРёС‚Рµ РїРѕРїС‹С‚РєСѓ РїРѕР·Р¶Рµ.");
+            _logger.LogWarning(ex, "Не удалось сохранить изменения документа {DocumentId}", model.Id);
+            ModelState.AddModelError(string.Empty, "Не удалось сохранить изменения. Повторите попытку позже.");
             await EnrichEditModelAsync(model);
             return View(model);
         }
@@ -373,7 +373,7 @@ public class DocumentsController : Controller
         var currentStatus = ParseDocumentStatus(document.Status);
         if (currentStatus != DocumentStatus.InWork)
         {
-            TempData["ErrorMessage"] = "РЎРѕС…СЂР°РЅСЏС‚СЊ С…РѕРґ РёСЃРїРѕР»РЅРµРЅРёСЏ РјРѕР¶РЅРѕ С‚РѕР»СЊРєРѕ РґР»СЏ РґРѕРєСѓРјРµРЅС‚РѕРІ РІ СЂР°Р±РѕС‚Рµ.";
+            TempData["ErrorMessage"] = "Сохранять ход исполнения можно только для документов в работе.";
             return RedirectToAction(nameof(Edit), new { id });
         }
 
@@ -391,12 +391,12 @@ public class DocumentsController : Controller
                 AuditActivityTypes.ExecutionSaved,
                 BuildExecutionAuditDetails(document),
                 cancellationToken);
-            TempData["SuccessMessage"] = "РҐРѕРґ РёСЃРїРѕР»РЅРµРЅРёСЏ СЃРѕС…СЂР°РЅРµРЅ.";
+            TempData["SuccessMessage"] = "Ход исполнения сохранен.";
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ С…РѕРґ РёСЃРїРѕР»РЅРµРЅРёСЏ РґРѕРєСѓРјРµРЅС‚Р° {DocumentId}", id);
-            TempData["ErrorMessage"] = "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ С…РѕРґ РёСЃРїРѕР»РЅРµРЅРёСЏ. РџРѕРІС‚РѕСЂРёС‚Рµ РїРѕРїС‹С‚РєСѓ РїРѕР·Р¶Рµ.";
+            _logger.LogWarning(ex, "Не удалось сохранить ход исполнения документа {DocumentId}", id);
+            TempData["ErrorMessage"] = "Не удалось сохранить ход исполнения. Повторите попытку позже.";
         }
 
         return RedirectToAction(nameof(Edit), new { id });
@@ -422,7 +422,7 @@ public class DocumentsController : Controller
         var currentStatus = ParseDocumentStatus(document.Status);
         if (currentStatus != DocumentStatus.InWork)
         {
-            TempData["ErrorMessage"] = "РџРµС‡Р°С‚РЅСѓСЋ С„РѕСЂРјСѓ СЂРµР·СѓР»СЊС‚Р°С‚Р° РјРѕР¶РЅРѕ СЃС„РѕСЂРјРёСЂРѕРІР°С‚СЊ С‚РѕР»СЊРєРѕ РґР»СЏ РґРѕРєСѓРјРµРЅС‚Р° РІ СЂР°Р±РѕС‚Рµ.";
+            TempData["ErrorMessage"] = "Печатную форму результата можно сформировать только для документа в работе.";
             return RedirectToAction(nameof(Edit), new { id });
         }
 
@@ -437,14 +437,14 @@ public class DocumentsController : Controller
             await LogDocumentActivityAsync(
                 document.DocumentId,
                 AuditActivityTypes.ExecutionFileGenerated,
-                $"РЎС„РѕСЂРјРёСЂРѕРІР°РЅ РёС‚РѕРіРѕРІС‹Р№ С„Р°Р№Р» РёСЃРїРѕР»РЅРµРЅРёСЏ: {document.ExecutionFileName}.",
+                $"Сформирован итоговый файл исполнения: {document.ExecutionFileName}.",
                 cancellationToken);
-            TempData["SuccessMessage"] = "РџРµС‡Р°С‚РЅР°СЏ С„РѕСЂРјР° СЃРѕС…СЂР°РЅРµРЅР° РєР°Рє РёС‚РѕРіРѕРІС‹Р№ С„Р°Р№Р» РёСЃРїРѕР»РЅРµРЅРёСЏ.";
+            TempData["SuccessMessage"] = "Печатная форма сохранена как итоговый файл исполнения.";
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "РќРµ СѓРґР°Р»РѕСЃСЊ СЃС„РѕСЂРјРёСЂРѕРІР°С‚СЊ РёС‚РѕРіРѕРІС‹Р№ С„Р°Р№Р» РёСЃРїРѕР»РЅРµРЅРёСЏ РґР»СЏ РґРѕРєСѓРјРµРЅС‚Р° {DocumentId}", id);
-            TempData["ErrorMessage"] = "РќРµ СѓРґР°Р»РѕСЃСЊ СЃС„РѕСЂРјРёСЂРѕРІР°С‚СЊ РїРµС‡Р°С‚РЅСѓСЋ С„РѕСЂРјСѓ. РџРѕРІС‚РѕСЂРёС‚Рµ РїРѕРїС‹С‚РєСѓ РїРѕР·Р¶Рµ.";
+            _logger.LogWarning(ex, "Не удалось сформировать итоговый файл исполнения для документа {DocumentId}", id);
+            TempData["ErrorMessage"] = "Не удалось сформировать печатную форму. Повторите попытку позже.";
         }
 
         return RedirectToAction(nameof(Edit), new { id });
@@ -471,31 +471,31 @@ public class DocumentsController : Controller
         var currentStatus = ParseDocumentStatus(document.Status);
         if (currentStatus != DocumentStatus.InWork)
         {
-            TempData["ErrorMessage"] = "РС‚РѕРіРѕРІС‹Р№ С„Р°Р№Р» РјРѕР¶РЅРѕ Р·Р°РіСЂСѓР¶Р°С‚СЊ С‚РѕР»СЊРєРѕ РґР»СЏ РґРѕРєСѓРјРµРЅС‚РѕРІ РІ СЂР°Р±РѕС‚Рµ.";
+            TempData["ErrorMessage"] = "Итоговый файл можно загружать только для документов в работе.";
             return RedirectToAction(nameof(Edit), new { id });
         }
 
         if (executionFile is null || executionFile.Length <= 0)
         {
-            TempData["ErrorMessage"] = "Р’С‹Р±РµСЂРёС‚Рµ РёС‚РѕРіРѕРІС‹Р№ С„Р°Р№Р».";
+            TempData["ErrorMessage"] = "Выберите итоговый файл.";
             return RedirectToAction(nameof(Edit), new { id });
         }
 
         if (executionFile.Length > 25 * 1024 * 1024)
         {
-            TempData["ErrorMessage"] = "РС‚РѕРіРѕРІС‹Р№ С„Р°Р№Р» РЅРµ РґРѕР»Р¶РµРЅ РїСЂРµРІС‹С€Р°С‚СЊ 25MB.";
+            TempData["ErrorMessage"] = "Итоговый файл не должен превышать 25 MB.";
             return RedirectToAction(nameof(Edit), new { id });
         }
 
         if (!IsAllowedExecutionAttachment(executionFile))
         {
-            TempData["ErrorMessage"] = "РџРѕРґРґРµСЂР¶РёРІР°СЋС‚СЃСЏ PDF, DOCX, XLSX, PNG Рё JPEG.";
+            TempData["ErrorMessage"] = "Поддерживаются PDF, DOCX, XLSX, PNG и JPEG.";
             return RedirectToAction(nameof(Edit), new { id });
         }
 
         try
         {
-            _logger.LogInformation("Р—Р°РіСЂСѓР·РєР° РёС‚РѕРіРѕРІРѕРіРѕ С„Р°Р№Р»Р° РґР»СЏ РґРѕРєСѓРјРµРЅС‚Р° {DocumentId}: {FileName}, {Length} bytes", id, executionFile.FileName, executionFile.Length);
+            _logger.LogInformation("Загрузка итогового файла для документа {DocumentId}: {FileName}, {Length} bytes", id, executionFile.FileName, executionFile.Length);
             var stored = await SaveUploadedDocumentFileAsync(executionFile, cancellationToken);
             document.ExecutionFilePath = stored.FilePath;
             document.ExecutionFileName = Path.GetFileName(executionFile.FileName);
@@ -505,15 +505,15 @@ public class DocumentsController : Controller
             await LogDocumentActivityAsync(
                 document.DocumentId,
                 AuditActivityTypes.ExecutionFileUploaded,
-                $"Р—Р°РіСЂСѓР¶РµРЅ РёС‚РѕРіРѕРІС‹Р№ С„Р°Р№Р» РёСЃРїРѕР»РЅРµРЅРёСЏ: {document.ExecutionFileName}.",
+                $"Загружен итоговый файл исполнения: {document.ExecutionFileName}.",
                 cancellationToken);
-            _logger.LogInformation("РС‚РѕРіРѕРІС‹Р№ С„Р°Р№Р» СЃРѕС…СЂР°РЅРµРЅ РґР»СЏ РґРѕРєСѓРјРµРЅС‚Р° {DocumentId}: {FilePath}", id, document.ExecutionFilePath);
-            TempData["SuccessMessage"] = "РС‚РѕРіРѕРІС‹Р№ С„Р°Р№Р» Р·Р°РіСЂСѓР¶РµРЅ.";
+            _logger.LogInformation("Итоговый файл сохранен для документа {DocumentId}: {FilePath}", id, document.ExecutionFilePath);
+            TempData["SuccessMessage"] = "Итоговый файл загружен.";
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РёС‚РѕРіРѕРІС‹Р№ С„Р°Р№Р» РґР»СЏ РґРѕРєСѓРјРµРЅС‚Р° {DocumentId}", id);
-            TempData["ErrorMessage"] = "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РёС‚РѕРіРѕРІС‹Р№ С„Р°Р№Р». РџРѕРІС‚РѕСЂРёС‚Рµ РїРѕРїС‹С‚РєСѓ РїРѕР·Р¶Рµ.";
+            _logger.LogWarning(ex, "Не удалось загрузить итоговый файл для документа {DocumentId}", id);
+            TempData["ErrorMessage"] = "Не удалось загрузить итоговый файл. Повторите попытку позже.";
         }
 
         return RedirectToAction(nameof(Edit), new { id });
@@ -552,13 +552,13 @@ public class DocumentsController : Controller
                 await BuildNomenclatureAuditDetailsAsync(nomenclatureCaseId, cancellationToken),
                 cancellationToken);
             TempData["SuccessMessage"] = nomenclatureCaseId is null
-                ? "РџСЂРёРІСЏР·РєР° Рє РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРµ СЃРЅСЏС‚Р°."
-                : "РќРѕРјРµРЅРєР»Р°С‚СѓСЂР° РґРѕРєСѓРјРµРЅС‚Р° РѕР±РЅРѕРІР»РµРЅР°.";
+                ? "Привязка к номенклатуре снята."
+                : "Номенклатура документа обновлена.";
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂСѓ РґР»СЏ РґРѕРєСѓРјРµРЅС‚Р° {DocumentId}", id);
-            TempData["ErrorMessage"] = "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂСѓ РґРѕРєСѓРјРµРЅС‚Р°.";
+            _logger.LogWarning(ex, "Не удалось обновить номенклатуру для документа {DocumentId}", id);
+            TempData["ErrorMessage"] = "Не удалось сохранить номенклатуру документа.";
         }
 
         return RedirectToAction(nameof(Edit), new { id });
@@ -585,7 +585,7 @@ public class DocumentsController : Controller
         var executor = executors.FirstOrDefault(x => x.UserId == assignedUserId);
         if (executor is null)
         {
-            TempData["ErrorMessage"] = "РСЃРїРѕР»РЅРёС‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ.";
+            TempData["ErrorMessage"] = "Исполнитель не найден.";
             return RedirectToAction(nameof(Edit), new { id });
         }
 
@@ -596,14 +596,14 @@ public class DocumentsController : Controller
             await LogDocumentActivityAsync(
                 doc.DocumentId,
                 AuditActivityTypes.ExecutorAssigned,
-                $"РќР°Р·РЅР°С‡РµРЅ РёСЃРїРѕР»РЅРёС‚РµР»СЊ: {executor.DisplayName}.",
+                $"Назначен исполнитель: {executor.DisplayName}.",
                 cancellationToken);
-            TempData["SuccessMessage"] = $"РСЃРїРѕР»РЅРёС‚РµР»СЊ РЅР°Р·РЅР°С‡РµРЅ: {executor.DisplayName}.";
+            TempData["SuccessMessage"] = $"Исполнитель назначен: {executor.DisplayName}.";
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "РќРµ СѓРґР°Р»РѕСЃСЊ РЅР°Р·РЅР°С‡РёС‚СЊ РёСЃРїРѕР»РЅРёС‚РµР»СЏ {ExecutorId} РґР»СЏ РґРѕРєСѓРјРµРЅС‚Р° {DocumentId}", assignedUserId, id);
-            TempData["ErrorMessage"] = "РќРµ СѓРґР°Р»РѕСЃСЊ РЅР°Р·РЅР°С‡РёС‚СЊ РёСЃРїРѕР»РЅРёС‚РµР»СЏ. РџРѕРІС‚РѕСЂРёС‚Рµ РїРѕРїС‹С‚РєСѓ РїРѕР·Р¶Рµ.";
+            _logger.LogWarning(ex, "Не удалось назначить исполнителя {ExecutorId} для документа {DocumentId}", assignedUserId, id);
+            TempData["ErrorMessage"] = "Не удалось назначить исполнителя. Повторите попытку позже.";
         }
 
         return RedirectToAction(nameof(Edit), new { id });
@@ -622,7 +622,7 @@ public class DocumentsController : Controller
         var status = ParseDocumentStatus(document.Status);
         if (status != DocumentStatus.Draft)
         {
-            TempData["ErrorMessage"] = "РњР°СЂС€СЂСѓС‚ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ РјРѕР¶РЅРѕ РЅР°СЃС‚СЂР°РёРІР°С‚СЊ С‚РѕР»СЊРєРѕ РґР»СЏ С‡РµСЂРЅРѕРІРёРєР°.";
+            TempData["ErrorMessage"] = "Маршрут согласования можно настраивать только для черновика.";
             return RedirectToAction(nameof(Edit), new { id });
         }
 
@@ -632,11 +632,11 @@ public class DocumentsController : Controller
         var prepared = await EnsureApprovalRoutePreparedAsync(document, regenerate: true, cancellationToken);
         if (!prepared)
         {
-            TempData["ErrorMessage"] = "РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґРіРѕС‚РѕРІРёС‚СЊ РјР°СЂС€СЂСѓС‚: РІС‹Р±РµСЂРёС‚Рµ С€Р°Р±Р»РѕРЅ СЃ С…РѕС‚СЏ Р±С‹ РѕРґРЅРёРј С€Р°РіРѕРј СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ.";
+            TempData["ErrorMessage"] = "Не удалось подготовить маршрут: выберите шаблон хотя бы с одним шагом согласования.";
             return RedirectToAction(nameof(Edit), new { id });
         }
 
-        TempData["SuccessMessage"] = "РњР°СЂС€СЂСѓС‚ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ РїРѕРґРіРѕС‚РѕРІР»РµРЅ.";
+        TempData["SuccessMessage"] = "Маршрут согласования подготовлен.";
         return RedirectToAction(nameof(Edit), new { id });
     }
 
@@ -652,7 +652,7 @@ public class DocumentsController : Controller
 
         if (ParseDocumentStatus(document.Status) != DocumentStatus.Draft)
         {
-            TempData["ErrorMessage"] = "РЁР°РіРё РјР°СЂС€СЂСѓС‚Р° РјРѕР¶РЅРѕ РјРµРЅСЏС‚СЊ С‚РѕР»СЊРєРѕ РґРѕ РѕС‚РїСЂР°РІРєРё РЅР° СЃРѕРіР»Р°СЃРѕРІР°РЅРёРµ.";
+            TempData["ErrorMessage"] = "Шаги маршрута можно менять только до отправки на согласование.";
             return RedirectToAction(nameof(Edit), new { id });
         }
 
@@ -660,7 +660,7 @@ public class DocumentsController : Controller
             .FirstOrDefaultAsync(x => x.DocumentApprovalStepId == documentApprovalStepId && x.DocumentId == id, cancellationToken);
         if (step is null)
         {
-            TempData["ErrorMessage"] = "РЁР°Рі РјР°СЂС€СЂСѓС‚Р° РЅРµ РЅР°Р№РґРµРЅ.";
+            TempData["ErrorMessage"] = "Шаг маршрута не найден.";
             return RedirectToAction(nameof(Edit), new { id });
         }
 
@@ -672,7 +672,7 @@ public class DocumentsController : Controller
                 .FirstOrDefaultAsync(x => x.UserId == approverUserId.Value && x.IsActive, cancellationToken);
             if (approver is null)
             {
-                TempData["ErrorMessage"] = "Р’С‹Р±РµСЂРёС‚Рµ Р°РєС‚РёРІРЅРѕРіРѕ СЃРѕРіР»Р°СЃСѓСЋС‰РµРіРѕ.";
+                TempData["ErrorMessage"] = "Выберите активного согласующего.";
                 return RedirectToAction(nameof(Edit), new { id });
             }
 
@@ -693,7 +693,7 @@ public class DocumentsController : Controller
 
         TempData["SuccessMessage"] = approver is null
             ? "Для шага включено автоматическое назначение по бизнес-роли."
-            : "РЎРѕРіР»Р°СЃСѓСЋС‰РёР№ С€Р°РіР° РѕР±РЅРѕРІР»РµРЅ.";
+            : "Согласующий шага обновлен.";
         return RedirectToAction(nameof(Edit), new { id });
     }
 
@@ -751,9 +751,9 @@ public class DocumentsController : Controller
             await LogDocumentActivityAsync(
                 id,
                 AuditActivityTypes.StatusChanged,
-                $"РњРµРЅРµРґР¶РµСЂ РїРµСЂРµРІРµР» РґРѕРєСѓРјРµРЅС‚ РёР· СЃС‚Р°С‚СѓСЃР° {GetDocumentStatusLabel(current)} РІ СЃС‚Р°С‚СѓСЃ {GetDocumentStatusLabel(next)}.",
+                $"Менеджер перевел документ из статуса {GetDocumentStatusLabel(current)} в статус {GetDocumentStatusLabel(next)}.",
                 cancellationToken);
-            TempData["SuccessMessage"] = $"РЎС‚Р°С‚СѓСЃ РёР·РјРµРЅРµРЅ: {current} -> {next}";
+            TempData["SuccessMessage"] = $"Статус изменен: {GetDocumentStatusLabel(current)} -> {GetDocumentStatusLabel(next)}";
             return RedirectToAction("Index", "Home");
         }
         catch (InvalidOperationException ex)
@@ -776,13 +776,13 @@ public class DocumentsController : Controller
 
         if (files.Count == 0)
         {
-            ModelState.AddModelError(nameof(model.Files), "Р’С‹Р±РµСЂРёС‚Рµ С…РѕС‚СЏ Р±С‹ РѕРґРёРЅ С„Р°Р№Р».");
+            ModelState.AddModelError(nameof(model.Files), "Выберите хотя бы один файл.");
             return View(model);
         }
 
         if (files.Count > 20)
         {
-            ModelState.AddModelError(nameof(model.Files), "Р—Р° РѕРґРЅСѓ Р·Р°РіСЂСѓР·РєСѓ РјРѕР¶РЅРѕ РѕР±СЂР°Р±РѕС‚Р°С‚СЊ РЅРµ Р±РѕР»СЊС€Рµ 20 С„Р°Р№Р»РѕРІ.");
+            ModelState.AddModelError(nameof(model.Files), "За одну загрузку можно обработать не больше 20 файлов.");
             return View(model);
         }
 
@@ -794,13 +794,13 @@ public class DocumentsController : Controller
             {
                 if (file.Length > 25 * 1024 * 1024)
                 {
-                    ModelState.AddModelError(nameof(model.Files), $"Р¤Р°Р№Р» {file.FileName} РїСЂРµРІС‹С€Р°РµС‚ 25MB.");
+                    ModelState.AddModelError(nameof(model.Files), $"Файл {file.FileName} превышает 25 MB.");
                     return View(model);
                 }
 
                 if (!IsAllowedIncomingFile(file))
                 {
-                    ModelState.AddModelError(nameof(model.Files), $"Р¤Р°Р№Р» {file.FileName} РёРјРµРµС‚ РЅРµРїРѕРґРґРµСЂР¶РёРІР°РµРјС‹Р№ С„РѕСЂРјР°С‚.");
+                    ModelState.AddModelError(nameof(model.Files), $"Файл {file.FileName} имеет неподдерживаемый формат.");
                     return View(model);
                 }
 
@@ -810,8 +810,8 @@ public class DocumentsController : Controller
 
                 var created = await _documentService.CreateDocumentAsync(new CreateDocumentRequest
                 {
-                    Title = string.IsNullOrWhiteSpace(title) ? $"Р’С…РѕРґСЏС‰РёР№ РґРѕРєСѓРјРµРЅС‚ {DateTime.UtcNow:yyyyMMdd-HHmmss}" : title,
-                    Description = $"Р—Р°РіСЂСѓР¶РµРЅРѕ РёР· РІРЅРµС€РЅРµРіРѕ РёСЃС‚РѕС‡РЅРёРєР°. РџСЂРµРґРІР°СЂРёС‚РµР»СЊРЅР°СЏ AI-РєР»Р°СЃСЃРёС„РёРєР°С†РёСЏ: {GetDocumentTypeLabel(classifiedType)}.",
+                    Title = string.IsNullOrWhiteSpace(title) ? $"Входящий документ {DateTime.UtcNow:yyyyMMdd-HHmmss}" : title,
+                    Description = $"Загружено из внешнего источника. Предварительная AI-классификация: {GetDocumentTypeLabel(classifiedType)}.",
                     Type = classifiedType,
                     Priority = 2,
                     Tags = "incoming,batch,ai-classified",
@@ -823,7 +823,7 @@ public class DocumentsController : Controller
                 await LogDocumentActivityAsync(
                     created.DocumentId,
                     AuditActivityTypes.IncomingUploaded,
-                    $"Р—Р°РіСЂСѓР¶РµРЅ РІС…РѕРґСЏС‰РёР№ С„Р°Р№Р» {Path.GetFileName(file.FileName)}.",
+                    $"Загружен входящий файл {Path.GetFileName(file.FileName)}.",
                     cancellationToken);
                 await TryAutoAssignRouteTemplateAsync(created, cancellationToken);
                 await TryAutoAssignNomenclatureAsync(created, cancellationToken);
@@ -831,13 +831,13 @@ public class DocumentsController : Controller
                 createdCount++;
             }
 
-            TempData["SuccessMessage"] = $"Р—Р°РіСЂСѓР¶РµРЅРѕ РІС…РѕРґСЏС‰РёС… РґРѕРєСѓРјРµРЅС‚РѕРІ: {createdCount}.";
+            TempData["SuccessMessage"] = $"Загружено входящих документов: {createdCount}.";
             return RedirectToAction("Index", "Home");
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РІС…РѕРґСЏС‰РёРµ РґРѕРєСѓРјРµРЅС‚С‹.");
-            ModelState.AddModelError(string.Empty, "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РґРѕРєСѓРјРµРЅС‚С‹. РџРѕРІС‚РѕСЂРёС‚Рµ РїРѕРїС‹С‚РєСѓ РїРѕР·Р¶Рµ.");
+            _logger.LogWarning(ex, "Не удалось загрузить входящие документы.");
+            ModelState.AddModelError(string.Empty, "Не удалось загрузить документы. Повторите попытку позже.");
             return View(model);
         }
     }
@@ -850,7 +850,7 @@ public class DocumentsController : Controller
     {
         var selectedTemplate = await GetTemplateViewModelAsync(model.TemplateId, cancellationToken);
         if (selectedTemplate is null)
-            ModelState.AddModelError(nameof(model.TemplateId), "Р’С‹Р±РµСЂРёС‚Рµ С€Р°Р±Р»РѕРЅ РґРѕРєСѓРјРµРЅС‚Р°.");
+            ModelState.AddModelError(nameof(model.TemplateId), "Выберите шаблон документа.");
 
         if (selectedTemplate is not null)
         {
@@ -859,7 +859,7 @@ public class DocumentsController : Controller
             foreach (var field in selectedTemplate.Fields.Where(f => f.Required))
             {
                 if (!model.TemplateFieldValues.TryGetValue(field.Key, out var value) || string.IsNullOrWhiteSpace(value))
-                    ModelState.AddModelError($"TemplateFieldValues[{field.Key}]", $"Р—Р°РїРѕР»РЅРёС‚Рµ РїРѕР»Рµ \"{field.Label}\".");
+                    ModelState.AddModelError($"TemplateFieldValues[{field.Key}]", $"Заполните поле \"{field.Label}\".");
             }
         }
 
@@ -881,14 +881,14 @@ public class DocumentsController : Controller
             {
                 if (model.File.Length > 25 * 1024 * 1024)
                 {
-                    ModelState.AddModelError(nameof(model.File), "Р Р°Р·РјРµСЂ С„Р°Р№Р»Р° РЅРµ РґРѕР»Р¶РµРЅ РїСЂРµРІС‹С€Р°С‚СЊ 25MB.");
+                    ModelState.AddModelError(nameof(model.File), "Размер файла не должен превышать 25 MB.");
                     await PopulateTemplateStateAsync(model, cancellationToken);
                     return View(model);
                 }
 
                 if (!IsAllowedPdf(model.File))
                 {
-                    ModelState.AddModelError(nameof(model.File), "РџРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ PDF-С„Р°Р№Р».");
+                    ModelState.AddModelError(nameof(model.File), "Поддерживается только PDF-файл.");
                     await PopulateTemplateStateAsync(model, cancellationToken);
                     return View(model);
                 }
@@ -917,18 +917,18 @@ public class DocumentsController : Controller
             await LogDocumentActivityAsync(
                 created.DocumentId,
                 AuditActivityTypes.DocumentCreated,
-                $"Р”РѕРєСѓРјРµРЅС‚ СЃРѕР·РґР°РЅ РїРѕ С€Р°Р±Р»РѕРЅСѓ{(selectedTemplate is null ? string.Empty : $": {selectedTemplate.Name}")}.",
+                $"Документ создан по шаблону{(selectedTemplate is null ? string.Empty : $": {selectedTemplate.Name}")}.",
                 cancellationToken);
             await TryAutoAssignRouteTemplateAsync(created, cancellationToken);
             await TryAutoAssignNomenclatureAsync(created, cancellationToken);
 
-            TempData["SuccessMessage"] = "Р”РѕРєСѓРјРµРЅС‚ СѓСЃРїРµС€РЅРѕ СЃРѕР·РґР°РЅ.";
+            TempData["SuccessMessage"] = "Документ успешно создан.";
             return RedirectToAction("Index", "Home");
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ РґРѕРєСѓРјРµРЅС‚.");
-            ModelState.AddModelError(string.Empty, "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ РґРѕРєСѓРјРµРЅС‚. РџРѕРІС‚РѕСЂРёС‚Рµ РїРѕРїС‹С‚РєСѓ РїРѕР·Р¶Рµ.");
+            _logger.LogWarning(ex, "Не удалось создать документ.");
+            ModelState.AddModelError(string.Empty, "Не удалось создать документ. Повторите попытку позже.");
             await PopulateTemplateStateAsync(model, cancellationToken);
             return View(model);
         }
@@ -960,14 +960,14 @@ public class DocumentsController : Controller
         var currentStatus = ParseDocumentStatus(document.Status);
         if (currentStatus != DocumentStatus.OnApproval)
         {
-            TempData["ErrorMessage"] = "Р”РµР№СЃС‚РІРёРµ РґРѕСЃС‚СѓРїРЅРѕ С‚РѕР»СЊРєРѕ РґР»СЏ РґРѕРєСѓРјРµРЅС‚РѕРІ РЅР° СЃРѕРіР»Р°СЃРѕРІР°РЅРёРё.";
+            TempData["ErrorMessage"] = "Действие доступно только для документов на согласовании.";
             return RedirectToAction(nameof(Edit), new { id });
         }
 
         var decision = (input.Decision ?? string.Empty).Trim().ToLowerInvariant();
         if (decision is not ("approve" or "rework"))
         {
-            TempData["ErrorMessage"] = "РќРµРёР·РІРµСЃС‚РЅРѕРµ РґРµР№СЃС‚РІРёРµ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ.";
+            TempData["ErrorMessage"] = "Неизвестное действие согласования.";
             return RedirectToAction(nameof(Edit), new { id });
         }
 
@@ -997,9 +997,9 @@ public class DocumentsController : Controller
                 await LogDocumentActivityAsync(
                     id,
                     AuditActivityTypes.ApprovalApproved,
-                    "РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ СѓС‚РІРµСЂРґРёР» РґРѕРєСѓРјРµРЅС‚ РЅР° СЌС‚Р°РїРµ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ.",
+                    "Пользователь утвердил документ на этапе согласования.",
                     cancellationToken);
-                TempData["SuccessMessage"] = $"Р”РѕРєСѓРјРµРЅС‚ #{id} СѓС‚РІРµСЂР¶РґРµРЅ.";
+                TempData["SuccessMessage"] = $"Документ #{id} утвержден.";
             }
             else
             {
@@ -1007,9 +1007,9 @@ public class DocumentsController : Controller
                 await LogDocumentActivityAsync(
                     id,
                     AuditActivityTypes.ApprovalRework,
-                    BuildReworkAuditDetails(input.Comment, "РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ РІРµСЂРЅСѓР» РґРѕРєСѓРјРµРЅС‚ РЅР° РґРѕСЂР°Р±РѕС‚РєСѓ."),
+                    BuildReworkAuditDetails(input.Comment, "Пользователь вернул документ на доработку."),
                     cancellationToken);
-                TempData["SuccessMessage"] = $"Р”РѕРєСѓРјРµРЅС‚ #{id} РІРѕР·РІСЂР°С‰РµРЅ РЅР° РґРѕСЂР°Р±РѕС‚РєСѓ.";
+                TempData["SuccessMessage"] = $"Документ #{id} возвращен на доработку.";
             }
         }
         catch (InvalidOperationException ex)
@@ -1018,8 +1018,8 @@ public class DocumentsController : Controller
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "РќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РїРѕР»РЅРёС‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЊСЃРєРѕРµ СЃРѕРіР»Р°СЃРѕРІР°РЅРёРµ РґР»СЏ РґРѕРєСѓРјРµРЅС‚Р° {DocumentId}", id);
-            TempData["ErrorMessage"] = "РќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РїРѕР»РЅРёС‚СЊ РґРµР№СЃС‚РІРёРµ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ. РџРѕРІС‚РѕСЂРёС‚Рµ РїРѕРїС‹С‚РєСѓ РїРѕР·Р¶Рµ.";
+            _logger.LogWarning(ex, "Не удалось выполнить пользовательское согласование для документа {DocumentId}", id);
+            TempData["ErrorMessage"] = "Не удалось выполнить действие согласования. Повторите попытку позже.";
         }
 
         return RedirectToAction(nameof(Edit), new { id });
@@ -1034,10 +1034,10 @@ public class DocumentsController : Controller
         _ = cancellationToken;
 
         if (request is null || string.IsNullOrWhiteSpace(request.NewStatus))
-            return BadRequest(new { message = "РќРµ СѓРєР°Р·Р°РЅ РЅРѕРІС‹Р№ СЃС‚Р°С‚СѓСЃ." });
+            return BadRequest(new { message = "Не указан новый статус." });
 
         if (!Enum.TryParse<DocumentStatus>(request.NewStatus, true, out var newStatus))
-            return BadRequest(new { message = "РќРµРІРµСЂРЅРѕРµ Р·РЅР°С‡РµРЅРёРµ СЃС‚Р°С‚СѓСЃР°." });
+            return BadRequest(new { message = "Некорректное значение статуса." });
 
         try
         {
@@ -1045,7 +1045,7 @@ public class DocumentsController : Controller
             var isManagerOrAdmin = IsManagerOrAdmin();
             var document = await _documentService.GetDocumentByIdAsync(id);
             if (document is null)
-                return NotFound(new { message = "Р”РѕРєСѓРјРµРЅС‚ РЅРµ РЅР°Р№РґРµРЅ." });
+                return NotFound(new { message = "Документ не найден." });
 
             if (!isManagerOrAdmin)
             {
@@ -1059,7 +1059,7 @@ public class DocumentsController : Controller
                     (currentStatus == DocumentStatus.InWork && newStatus == DocumentStatus.Completed);
 
                 if (!isAllowedEmployeeTransition)
-                    return BadRequest(new { message = "РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ РјРѕР¶РµС‚ РјРµРЅСЏС‚СЊ СЃС‚Р°С‚СѓСЃ С‚РѕР»СЊРєРѕ РІ СЃРІРѕРµР№ С†РµРїРѕС‡РєРµ: РќР° СЃРѕРіР»Р°СЃРѕРІР°РЅРёРё -> Рљ РёСЃРїРѕР»РЅРµРЅРёСЋ -> Р’ СЂР°Р±РѕС‚Рµ -> Р—Р°РІРµСЂС€РµРЅРѕ." });
+                    return BadRequest(new { message = "Пользователь может менять статус только по своей цепочке: На согласовании -> Утвержден -> В работе -> Завершен." });
             }
 
             var previousStatus = ParseDocumentStatus(document.Status);
@@ -1076,7 +1076,7 @@ public class DocumentsController : Controller
             {
                 var prepared = await EnsureApprovalRoutePreparedAsync(document, regenerate: false, cancellationToken);
                 if (!prepared)
-                    return BadRequest(new { message = "РџРµСЂРµРґ РѕС‚РїСЂР°РІРєРѕР№ РЅР° СЃРѕРіР»Р°СЃРѕРІР°РЅРёРµ РЅСѓР¶РЅРѕ РІС‹Р±СЂР°С‚СЊ С€Р°Р±Р»РѕРЅ РјР°СЂС€СЂСѓС‚Р° Рё РїРѕРґРіРѕС‚РѕРІРёС‚СЊ С…РѕС‚СЏ Р±С‹ РѕРґРёРЅ С€Р°Рі СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ." });
+                    return BadRequest(new { message = "Перед отправкой на согласование выберите шаблон маршрута и подготовьте хотя бы один шаг." });
             }
 
             if (previousStatus == DocumentStatus.OnApproval && newStatus == DocumentStatus.Approved)
@@ -1103,8 +1103,8 @@ public class DocumentsController : Controller
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "РќРµ СѓРґР°Р»РѕСЃСЊ РёР·РјРµРЅРёС‚СЊ СЃС‚Р°С‚СѓСЃ РґРѕРєСѓРјРµРЅС‚Р° {DocumentId} РЅР° {NewStatus}", id, newStatus);
-            return StatusCode(500, new { message = "РќРµ СѓРґР°Р»РѕСЃСЊ РёР·РјРµРЅРёС‚СЊ СЃС‚Р°С‚СѓСЃ. РџРѕРІС‚РѕСЂРёС‚Рµ РїРѕРїС‹С‚РєСѓ РїРѕР·Р¶Рµ." });
+            _logger.LogWarning(ex, "Не удалось изменить статус документа {DocumentId} на {NewStatus}", id, newStatus);
+            return StatusCode(500, new { message = "Не удалось изменить статус. Повторите попытку позже." });
         }
     }
 
@@ -1162,11 +1162,11 @@ public class DocumentsController : Controller
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РѕС‡РµСЂРµРґСЊ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ.");
+            _logger.LogWarning(ex, "Не удалось загрузить очередь согласования.");
             return new ApprovalQueuePageViewModel
             {
                 PendingCount = 0,
-                ErrorMessage = "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РѕС‡РµСЂРµРґСЊ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ. РџРѕРІС‚РѕСЂРёС‚Рµ РїРѕРїС‹С‚РєСѓ РїРѕР·Р¶Рµ.",
+                ErrorMessage = "Не удалось загрузить очередь согласования. Повторите попытку позже.",
                 Documents = []
             };
         }
@@ -1401,7 +1401,7 @@ public class DocumentsController : Controller
 
             var employee = await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == currentUserId, cancellationToken);
             var employeeName = employee is null
-                ? "РСЃРїРѕР»РЅРёС‚РµР»СЊ"
+                ? "Исполнитель"
                 : string.IsNullOrWhiteSpace($"{employee.FirstName} {employee.LastName}".Trim())
                     ? employee.UserName
                     : $"{employee.FirstName} {employee.LastName}".Trim();
@@ -1419,11 +1419,11 @@ public class DocumentsController : Controller
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ Р·Р°РґР°С‡Рё РёСЃРїРѕР»РЅРёС‚РµР»СЏ {UserId}", currentUserId);
+            _logger.LogWarning(ex, "Не удалось загрузить задачи исполнителя {UserId}", currentUserId);
             return new MyTasksPageViewModel
             {
-                EmployeeName = "РСЃРїРѕР»РЅРёС‚РµР»СЊ",
-                ErrorMessage = "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ СЃРїРёСЃРѕРє Р·Р°РґР°С‡. РџРѕРІС‚РѕСЂРёС‚Рµ РїРѕРїС‹С‚РєСѓ РїРѕР·Р¶Рµ.",
+                EmployeeName = "Исполнитель",
+                ErrorMessage = "Не удалось загрузить список задач. Повторите попытку позже.",
                 Tasks = []
             };
         }
@@ -1437,11 +1437,11 @@ public class DocumentsController : Controller
         return new MyTaskCardViewModel
         {
             Id = document.DocumentId,
-            Title = string.IsNullOrWhiteSpace(document.Title) ? "Р‘РµР· РЅР°Р·РІР°РЅРёСЏ" : document.Title,
-            Description = string.IsNullOrWhiteSpace(document.ExtractedText) ? "РћРїРёСЃР°РЅРёРµ РЅРµ Р·Р°РїРѕР»РЅРµРЅРѕ." : document.ExtractedText,
+            Title = string.IsNullOrWhiteSpace(document.Title) ? "Без названия" : document.Title,
+            Description = string.IsNullOrWhiteSpace(document.ExtractedText) ? "Описание не заполнено." : document.ExtractedText,
             TypeLabel = GetDocumentTypeLabel(type),
             StatusLabel = GetDocumentStatusLabel(status),
-            DueDateLabel = document.DueDate.HasValue ? document.DueDate.Value.ToLocalTime().ToString("dd.MM.yyyy") : "РЎСЂРѕРє РЅРµ СѓРєР°Р·Р°РЅ",
+            DueDateLabel = document.DueDate.HasValue ? document.DueDate.Value.ToLocalTime().ToString("dd.MM.yyyy") : "Срок не указан",
             CanStartWork = status == DocumentStatus.Approved,
             CanComplete = status == DocumentStatus.InWork
         };
@@ -1669,14 +1669,14 @@ public class DocumentsController : Controller
 
         var currentStep = steps.FirstOrDefault(x => x.IsCurrent) ?? steps.FirstOrDefault(x => x.Status == "Pending");
         if (currentStep is null)
-            throw new InvalidOperationException("РќРµ РЅР°Р№РґРµРЅ С‚РµРєСѓС‰РёР№ С€Р°Рі СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ.");
+            throw new InvalidOperationException("Не найден текущий шаг согласования.");
 
         var currentUserSpecialization = await GetCurrentUserApprovalSpecializationAsync();
         if (currentStep.ApproverUserId is not null &&
             actingUserId != currentStep.ApproverUserId &&
             !AuthorizationPolicies.IsInAppRole(User, DocumentFlowApp.Core.Security.AppRoles.Admin))
         {
-            throw new InvalidOperationException("РўРµРєСѓС‰РёР№ С€Р°Рі РјР°СЂС€СЂСѓС‚Р° РЅР°Р·РЅР°С‡РµРЅ РґСЂСѓРіРѕРјСѓ СЃРѕРіР»Р°СЃСѓСЋС‰РµРјСѓ.");
+            throw new InvalidOperationException("Текущий шаг маршрута назначен другому согласующему.");
         }
 
         if (currentStep.ApproverUserId is null &&
@@ -1793,7 +1793,7 @@ public class DocumentsController : Controller
     private static string FormatDisplayName(User? user)
     {
         if (user is null)
-            return "РќРµ РЅР°Р·РЅР°С‡РµРЅ";
+            return "Не назначен";
 
         var fullName = string.Join(" ", new[] { user.LastName, user.FirstName }.Where(v => !string.IsNullOrWhiteSpace(v)));
         return string.IsNullOrWhiteSpace(fullName) ? user.UserName : fullName;
@@ -1810,7 +1810,7 @@ public class DocumentsController : Controller
         bool autoAssigned = false)
     {
         if (nomenclatureCaseId is null)
-            return "РџСЂРёРІСЏР·РєР° Рє РґРµР»Сѓ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂС‹ СЃРЅСЏС‚Р°.";
+            return "Привязка к делу номенклатуры снята.";
 
         var targetCase = await _dbContext.NomenclatureCases
             .AsNoTracking()
@@ -1820,34 +1820,34 @@ public class DocumentsController : Controller
 
         if (string.IsNullOrWhiteSpace(targetCase))
             return autoAssigned
-                ? "Р”РѕРєСѓРјРµРЅС‚ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїСЂРёРІСЏР·Р°РЅ Рє РґРµР»Сѓ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂС‹."
-                : "РќРѕРјРµРЅРєР»Р°С‚СѓСЂР° РґРѕРєСѓРјРµРЅС‚Р° РѕР±РЅРѕРІР»РµРЅР°.";
+                ? "Документ автоматически привязан к делу номенклатуры."
+                : "Номенклатура документа обновлена.";
 
         return autoAssigned
-            ? $"Р”РѕРєСѓРјРµРЅС‚ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїСЂРёРІСЏР·Р°РЅ Рє РґРµР»Сѓ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂС‹: {targetCase}."
-            : $"РќРѕРјРµРЅРєР»Р°С‚СѓСЂР° РґРѕРєСѓРјРµРЅС‚Р° РѕР±РЅРѕРІР»РµРЅР°: {targetCase}.";
+            ? $"Документ автоматически привязан к делу номенклатуры: {targetCase}."
+            : $"Номенклатура документа обновлена: {targetCase}.";
     }
 
     private static string BuildReworkAuditDetails(string? comment, string prefix)
     {
         var normalizedComment = string.IsNullOrWhiteSpace(comment)
-            ? "РљРѕРјРјРµРЅС‚Р°СЂРёР№ РЅРµ СѓРєР°Р·Р°РЅ."
+            ? "Комментарий не указан."
             : comment.Trim();
 
-        return $"{prefix} РљРѕРјРјРµРЅС‚Р°СЂРёР№: {normalizedComment}";
+        return $"{prefix} Комментарий: {normalizedComment}";
     }
 
     private static string BuildExecutionAuditDetails(Document document)
     {
         var result = string.IsNullOrWhiteSpace(document.ExecutionResult)
-            ? "РЅРµ СѓРєР°Р·Р°РЅ"
+            ? "не указан"
             : document.ExecutionResult.Trim();
 
         var comment = string.IsNullOrWhiteSpace(document.ExecutionComment)
-            ? "Р±РµР· РєРѕРјРјРµРЅС‚Р°СЂРёСЏ"
+            ? "без комментария"
             : document.ExecutionComment.Trim();
 
-        return $"РСЃРїРѕР»РЅРёС‚РµР»СЊ СЃРѕС…СЂР°РЅРёР» С…РѕРґ СЂР°Р±РѕС‚С‹. Р РµР·СѓР»СЊС‚Р°С‚: {result}. РљРѕРјРјРµРЅС‚Р°СЂРёР№: {comment}";
+        return $"Исполнитель сохранил ход работы. Результат: {result}. Комментарий: {comment}";
     }
 
     private string BuildStatusChangeAuditDetails(
@@ -1856,11 +1856,11 @@ public class DocumentsController : Controller
         string? comment,
         bool isManagerOrAdmin)
     {
-        var actor = isManagerOrAdmin ? "РњРµРЅРµРґР¶РµСЂ РёР»Рё Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂ" : "РСЃРїРѕР»РЅРёС‚РµР»СЊ";
-        var details = $"{actor} РїРµСЂРµРІРµР» РґРѕРєСѓРјРµРЅС‚ РёР· СЃС‚Р°С‚СѓСЃР° {GetDocumentStatusLabel(fromStatus)} РІ СЃС‚Р°С‚СѓСЃ {GetDocumentStatusLabel(newStatus)}.";
+        var actor = isManagerOrAdmin ? "Менеджер или администратор" : "Исполнитель";
+        var details = $"{actor} перевел документ из статуса {GetDocumentStatusLabel(fromStatus)} в статус {GetDocumentStatusLabel(newStatus)}.";
 
         if (!string.IsNullOrWhiteSpace(comment))
-            details += $" РљРѕРјРјРµРЅС‚Р°СЂРёР№: {comment.Trim()}";
+            details += $" Комментарий: {comment.Trim()}";
 
         return details;
     }
@@ -1868,10 +1868,10 @@ public class DocumentsController : Controller
     private static string BuildWorkCompletedAuditDetails(Document document)
     {
         var result = string.IsNullOrWhiteSpace(document.ExecutionResult)
-            ? "РЅРµ СѓРєР°Р·Р°РЅ"
+            ? "не указан"
             : document.ExecutionResult.Trim();
 
-        return $"РСЃРїРѕР»РЅРёС‚РµР»СЊ Р·Р°РІРµСЂС€РёР» СЂР°Р±РѕС‚Сѓ РїРѕ РґРѕРєСѓРјРµРЅС‚Сѓ. Р РµР·СѓР»СЊС‚Р°С‚: {result}.";
+        return $"Исполнитель завершил работу по документу. Результат: {result}.";
     }
 
     private async Task<string?> GetTemplateNameAsync(int? templateId, CancellationToken cancellationToken)
@@ -1905,7 +1905,7 @@ public class DocumentsController : Controller
             .Select(field => new DocumentTemplateFieldDisplayViewModel
             {
                 Label = field.Label,
-                Value = GetTemplateFieldValue(document.ExtractedText, field.Label, "РќРµ Р·Р°РїРѕР»РЅРµРЅРѕ"),
+                Value = GetTemplateFieldValue(document.ExtractedText, field.Label, "Не заполнено"),
                 Required = field.Required
             })
             .ToList();
@@ -1916,51 +1916,51 @@ public class DocumentsController : Controller
         var type = model.Type ?? DocumentType.Other;
         model.ExecutionHintTitle = type switch
         {
-            DocumentType.Contract => "Р§С‚Рѕ РїСЂРѕРІРµСЂРёС‚СЊ РїРѕ РґРѕРіРѕРІРѕСЂСѓ",
-            DocumentType.Invoice => "Р§С‚Рѕ РїСЂРѕРІРµСЂРёС‚СЊ РїРѕ СЃС‡РµС‚Сѓ",
-            DocumentType.Application => "Р§С‚Рѕ РїСЂРѕРІРµСЂРёС‚СЊ РїРѕ Р·Р°СЏРІР»РµРЅРёСЋ",
-            DocumentType.Order => "Р§С‚Рѕ РїСЂРѕРІРµСЂРёС‚СЊ РїРѕ РїСЂРёРєР°Р·Сѓ",
-            DocumentType.Act => "Р§С‚Рѕ РїСЂРѕРІРµСЂРёС‚СЊ РїРѕ Р°РєС‚Сѓ",
-            _ => "Р§С‚Рѕ РїСЂРѕРІРµСЂРёС‚СЊ РїСЂРё РёСЃРїРѕР»РЅРµРЅРёРё"
+            DocumentType.Contract => "Что проверить по договору",
+            DocumentType.Invoice => "Что проверить по счету",
+            DocumentType.Application => "Что проверить по заявлению",
+            DocumentType.Order => "Что проверить по приказу",
+            DocumentType.Act => "Что проверить по акту",
+            _ => "Что проверить при исполнении"
         };
 
         model.ExecutionHintItems = type switch
         {
             DocumentType.Contract =>
             [
-                "РџСЂРѕРІРµСЂСЊС‚Рµ РєРѕРЅС‚СЂР°РіРµРЅС‚Р°, РїСЂРµРґРјРµС‚ РґРѕРіРѕРІРѕСЂР° Рё СЃСѓРјРјСѓ.",
-                "РЈР±РµРґРёС‚РµСЃСЊ, С‡С‚Рѕ СѓСЃР»РѕРІРёСЏ РґРѕРіРѕРІРѕСЂР° СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ Р·Р°РґР°С‡Рµ.",
-                "Р—Р°С„РёРєСЃРёСЂСѓР№С‚Рµ РёС‚РѕРі: СЃРѕРіР»Р°СЃРѕРІР°РЅРѕ, РЅСѓР¶РЅС‹ РїСЂР°РІРєРё РёР»Рё С‚СЂРµР±СѓСЋС‚СЃСЏ РјР°С‚РµСЂРёР°Р»С‹."
+                "Проверьте контрагента, предмет договора и сумму.",
+                "Убедитесь, что условия договора соответствуют задаче.",
+                "Зафиксируйте итог: согласовано, нужны правки или требуются материалы."
             ],
             DocumentType.Invoice =>
             [
-                "РџСЂРѕРІРµСЂСЊС‚Рµ РїРѕСЃС‚Р°РІС‰РёРєР°, СЃСѓРјРјСѓ Рё СЃСЂРѕРє РѕРїР»Р°С‚С‹.",
-                "РЎРІРµСЂСЊС‚Рµ СЃС‡РµС‚ СЃ РѕСЃРЅРѕРІР°РЅРёРµРј РґР»СЏ РѕРїР»Р°С‚С‹.",
-                "РџСЂРё РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё РїСЂРёР»РѕР¶РёС‚Рµ РїР»Р°С‚РµР¶РЅРѕРµ РїРѕСЂСѓС‡РµРЅРёРµ РёР»Рё РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ."
+                "Проверьте поставщика, сумму и срок оплаты.",
+                "Сверьте счет с основанием для оплаты.",
+                "При необходимости приложите платежное поручение или подтверждение."
             ],
             DocumentType.Application =>
             [
-                "РџСЂРѕРІРµСЂСЊС‚Рµ Р·Р°СЏРІРёС‚РµР»СЏ, РїРѕРґСЂР°Р·РґРµР»РµРЅРёРµ Рё С‚РµРјСѓ РѕР±СЂР°С‰РµРЅРёСЏ.",
-                "РџРѕРґРіРѕС‚РѕРІСЊС‚Рµ СЂРµС€РµРЅРёРµ РёР»Рё РєРѕРјРјРµРЅС‚Р°СЂРёР№ РїРѕ Р·Р°СЏРІР»РµРЅРёСЋ.",
-                "РџСЂРё РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё РїСЂРёР»РѕР¶РёС‚Рµ РѕС‚РІРµС‚ РёР»Рё РїРѕРґС‚РІРµСЂР¶РґР°СЋС‰РёР№ С„Р°Р№Р»."
+                "Проверьте заявителя, подразделение и тему обращения.",
+                "Подготовьте решение или комментарий по заявлению.",
+                "При необходимости приложите ответ или подтверждающий файл."
             ],
             DocumentType.Order =>
             [
-                "РџСЂРѕРІРµСЂСЊС‚Рµ РѕСЃРЅРѕРІР°РЅРёРµ РїСЂРёРєР°Р·Р° Рё РѕС‚РІРµС‚СЃС‚РІРµРЅРЅС‹С… Р»РёС†.",
-                "РЈР±РµРґРёС‚РµСЃСЊ, С‡С‚Рѕ РїРѕСЂСѓС‡РµРЅРёСЏ СЃС„РѕСЂРјСѓР»РёСЂРѕРІР°РЅС‹ РѕРґРЅРѕР·РЅР°С‡РЅРѕ.",
-                "Р—Р°С„РёРєСЃРёСЂСѓР№С‚Рµ СЂРµР·СѓР»СЊС‚Р°С‚ РѕР·РЅР°РєРѕРјР»РµРЅРёСЏ РёР»Рё РёСЃРїРѕР»РЅРµРЅРёСЏ."
+                "Проверьте основание приказа и ответственных лиц.",
+                "Убедитесь, что поручения сформулированы однозначно.",
+                "Зафиксируйте результат ознакомления или исполнения."
             ],
             DocumentType.Act =>
             [
-                "РџСЂРѕРІРµСЂСЊС‚Рµ РѕСЃРЅРѕРІР°РЅРёРµ Р°РєС‚Р° Рё РѕРїРёСЃР°РЅРЅСѓСЋ РІС‹РїРѕР»РЅРµРЅРЅСѓСЋ СЂР°Р±РѕС‚Сѓ.",
-                "РЈР±РµРґРёС‚РµСЃСЊ, С‡С‚Рѕ СЂРµР·СѓР»СЊС‚Р°С‚ РјРѕР¶РЅРѕ РїРѕРґС‚РІРµСЂРґРёС‚СЊ РґРѕРєСѓРјРµРЅС‚Р°Р»СЊРЅРѕ.",
-                "РџСЂРё РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё РїСЂРёР»РѕР¶РёС‚Рµ РїРѕРґРїРёСЃР°РЅРЅС‹Р№ Р°РєС‚ РёР»Рё СЃРєР°РЅ."
+                "Проверьте основание акта и описанную выполненную работу.",
+                "Убедитесь, что результат можно подтвердить документально.",
+                "При необходимости приложите подписанный акт или скан."
             ],
             _ =>
             [
-                "РћР·РЅР°РєРѕРјСЊС‚РµСЃСЊ СЃ РґР°РЅРЅС‹РјРё РґРѕРєСѓРјРµРЅС‚Р°.",
-                "Р’С‹РїРѕР»РЅРёС‚Рµ РїРѕСЂСѓС‡РµРЅРёРµ РїРѕ РґРѕРєСѓРјРµРЅС‚Сѓ.",
-                "Р—Р°РїРѕР»РЅРёС‚Рµ РєРѕРјРјРµРЅС‚Р°СЂРёР№ Рё СЂРµР·СѓР»СЊС‚Р°С‚ РёСЃРїРѕР»РЅРµРЅРёСЏ."
+                "Ознакомьтесь с данными документа.",
+                "Выполните поручение по документу.",
+                "Заполните комментарий и результат исполнения."
             ]
         };
     }
@@ -2043,7 +2043,7 @@ public class DocumentsController : Controller
         var currentStatus = ParseDocumentStatus(document.Status);
         if (currentStatus != expectedStatus)
         {
-            TempData["ErrorMessage"] = $"РћРїРµСЂР°С†РёСЏ РЅРµРґРѕСЃС‚СѓРїРЅР° РґР»СЏ СЃС‚Р°С‚СѓСЃР° {GetDocumentStatusLabel(currentStatus)}.";
+            TempData["ErrorMessage"] = $"Операция недоступна для статуса {GetDocumentStatusLabel(currentStatus)}.";
             return returnToEdit
                 ? RedirectToAction(nameof(Edit), new { id = documentId })
                 : RedirectToAction(nameof(MyTasks));
@@ -2088,15 +2088,15 @@ public class DocumentsController : Controller
                 documentId,
                 newStatus == DocumentStatus.InWork ? AuditActivityTypes.WorkStarted : AuditActivityTypes.WorkCompleted,
                 newStatus == DocumentStatus.InWork
-                    ? "РСЃРїРѕР»РЅРёС‚РµР»СЊ РЅР°С‡Р°Р» СЂР°Р±РѕС‚Сѓ РїРѕ РґРѕРєСѓРјРµРЅС‚Сѓ."
+                    ? "Исполнитель начал работу по документу."
                     : BuildWorkCompletedAuditDetails(updatedDocument ?? document),
                 cancellationToken);
             TempData["SuccessMessage"] = successMessage;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "РќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РїРѕР»РЅРёС‚СЊ РґРµР№СЃС‚РІРёРµ {NewStatus} РґР»СЏ РґРѕРєСѓРјРµРЅС‚Р° {DocumentId}", newStatus, documentId);
-            TempData["ErrorMessage"] = "РќРµ СѓРґР°Р»РѕСЃСЊ РёР·РјРµРЅРёС‚СЊ СЃС‚Р°С‚СѓСЃ РґРѕРєСѓРјРµРЅС‚Р°. РџРѕРІС‚РѕСЂРёС‚Рµ РїРѕРїС‹С‚РєСѓ РїРѕР·Р¶Рµ.";
+            _logger.LogWarning(ex, "Не удалось выполнить действие {NewStatus} для документа {DocumentId}", newStatus, documentId);
+            TempData["ErrorMessage"] = "Не удалось изменить статус документа. Повторите попытку позже.";
         }
 
         return returnToEdit
@@ -2111,7 +2111,7 @@ public class DocumentsController : Controller
         {
             Id = template.TemplateId,
             Name = template.Name,
-            Description = string.IsNullOrWhiteSpace(template.Content) ? "РЁР°Р±Р»РѕРЅ РґРѕРєСѓРјРµРЅС‚Р°" : template.Content,
+            Description = string.IsNullOrWhiteSpace(template.Content) ? "Шаблон документа" : template.Content,
             Category = template.Category ?? string.Empty,
             TypeLabel = GetDocumentTypeLabel(type),
             Fields = ParseTemplateFields(template.AiSuggestedFields)
@@ -2171,8 +2171,8 @@ public class DocumentsController : Controller
                 if (builder.Length > 0)
                     builder.AppendLine().AppendLine();
 
-                builder.AppendLine($"РЁР°Р±Р»РѕРЅ: {template.Name}");
-                builder.AppendLine("РџРѕР»СЏ С€Р°Р±Р»РѕРЅР°:");
+                builder.AppendLine($"Шаблон: {template.Name}");
+                builder.AppendLine("Поля шаблона:");
                 foreach (var field in filledFields)
                     builder.AppendLine($"- {field.Label}: {field.Value}");
             }
@@ -2201,12 +2201,12 @@ public class DocumentsController : Controller
         return new ApprovalQueueItemViewModel
         {
             Id = document.DocumentId,
-            Title = string.IsNullOrWhiteSpace(document.Title) ? "Р‘РµР· РЅР°Р·РІР°РЅРёСЏ" : document.Title,
+            Title = string.IsNullOrWhiteSpace(document.Title) ? "Без названия" : document.Title,
             TypeLabel = GetDocumentTypeLabel(type),
             StatusLabel = GetDocumentStatusLabel(status),
-            Description = string.IsNullOrWhiteSpace(document.ExtractedText) ? "РћРїРёСЃР°РЅРёРµ РЅРµ Р·Р°РїРѕР»РЅРµРЅРѕ." : document.ExtractedText,
+            Description = string.IsNullOrWhiteSpace(document.ExtractedText) ? "Описание не заполнено." : document.ExtractedText,
             CreatedAtLabel = document.CreatedDate.ToLocalTime().ToString("dd.MM.yyyy HH:mm"),
-            DueDateLabel = document.DueDate.HasValue ? document.DueDate.Value.ToLocalTime().ToString("dd.MM.yyyy") : "РќРµ СѓРєР°Р·Р°РЅ",
+            DueDateLabel = document.DueDate.HasValue ? document.DueDate.Value.ToLocalTime().ToString("dd.MM.yyyy") : "Не указан",
             AuthorLabel = GetAuthorLabel(document)
         };
     }
@@ -2214,13 +2214,13 @@ public class DocumentsController : Controller
     private static string GetAuthorLabel(Document document)
     {
         if (document.User is null)
-            return "РЎРёСЃС‚РµРјР°";
+            return "Система";
 
         var fullName = $"{document.User.FirstName} {document.User.LastName}".Trim();
         if (!string.IsNullOrWhiteSpace(fullName))
             return fullName;
 
-        return string.IsNullOrWhiteSpace(document.User.UserName) ? "РЎРёСЃС‚РµРјР°" : document.User.UserName;
+        return string.IsNullOrWhiteSpace(document.User.UserName) ? "Система" : document.User.UserName;
     }
 
     private static async Task<string> ComputeSha256Async(string filePath, CancellationToken cancellationToken)
@@ -2242,7 +2242,7 @@ public class DocumentsController : Controller
         var fileName = $"{Guid.NewGuid():N}{extension}";
         var physicalPath = Path.Combine(uploadsRoot, fileName);
 
-        // РЎРЅР°С‡Р°Р»Р° РїРѕР»РЅРѕСЃС‚СЊСЋ Р·Р°РєСЂС‹РІР°РµРј РїРѕС‚РѕРє Р·Р°РїРёСЃРё, Рё С‚РѕР»СЊРєРѕ РїРѕС‚РѕРј С‡РёС‚Р°РµРј С„Р°Р№Р» РґР»СЏ С…РµС€Р°.
+        // Сначала полностью закрываем поток записи, и только потом читаем файл для хеша.
         await using (var fileStream = System.IO.File.Create(physicalPath))
         {
             await file.CopyToAsync(fileStream, cancellationToken);
@@ -2264,7 +2264,7 @@ public class DocumentsController : Controller
         var html = await BuildGeneratedExecutionPrintHtmlAsync(document, cancellationToken);
 
         await System.IO.File.WriteAllTextAsync(physicalPath, html, Encoding.UTF8, cancellationToken);
-        return ($"/Documents/File/{fileName}", $"РџРµС‡Р°С‚РЅР°СЏ С„РѕСЂРјР° РґРѕРєСѓРјРµРЅС‚Р° #{document.DocumentId}.html");
+        return ($"/Documents/File/{fileName}", $"Печатная форма документа #{document.DocumentId}.html");
     }
 
     private async Task<string> BuildGeneratedExecutionPrintHtmlAsync(Document document, CancellationToken cancellationToken)
@@ -2275,15 +2275,15 @@ public class DocumentsController : Controller
             ? await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == document.UserId.Value, cancellationToken)
             : null;
         var executorName = executor is null
-            ? "РќРµ РЅР°Р·РЅР°С‡РµРЅ"
+            ? "Не назначен"
             : string.IsNullOrWhiteSpace($"{executor.FirstName} {executor.LastName}".Trim())
                 ? executor.UserName
                 : $"{executor.FirstName} {executor.LastName}".Trim();
 
-        string Enc(string? value) => System.Net.WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(value) ? "РќРµ СѓРєР°Р·Р°РЅРѕ" : value);
-        string Field(string label, string fallback = "РќРµ СѓРєР°Р·Р°РЅРѕ") => Enc(GetTemplateFieldValue(document.ExtractedText, label, fallback));
-        string DateOnly(DateTime? value) => value.HasValue ? value.Value.ToLocalTime().ToString("dd.MM.yyyy") : "РќРµ СѓРєР°Р·Р°РЅРѕ";
-        string DateTimeLabel(DateTime? value) => value.HasValue ? value.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm") : "РќРµ СѓРєР°Р·Р°РЅРѕ";
+        string Enc(string? value) => System.Net.WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(value) ? "Не указано" : value);
+        string Field(string label, string fallback = "Не указано") => Enc(GetTemplateFieldValue(document.ExtractedText, label, fallback));
+        string DateOnly(DateTime? value) => value.HasValue ? value.Value.ToLocalTime().ToString("dd.MM.yyyy") : "Не указано";
+        string DateTimeLabel(DateTime? value) => value.HasValue ? value.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm") : "Не указано";
 
         var title = Enc(document.Title);
         var description = Enc(document.ExtractedText);
@@ -2293,42 +2293,42 @@ public class DocumentsController : Controller
         var body = type switch
         {
             DocumentType.Contract => $"""
-                <div class="doc-title">Р”РѕРіРѕРІРѕСЂ в„– {Field("РќРѕРјРµСЂ РґРѕРіРѕРІРѕСЂР°", document.DocumentId.ToString())}</div>
-                <div class="doc-subtitle">{Field("РџСЂРµРґРјРµС‚ РґРѕРіРѕРІРѕСЂР°", document.Title ?? "РџСЂРµРґРјРµС‚ РґРѕРіРѕРІРѕСЂР°")}</div>
-                <div class="row"><span>Рі. РЎР°РЅРєС‚-РџРµС‚РµСЂР±СѓСЂРі</span><span>{Field("Р”Р°С‚Р° РґРѕРіРѕРІРѕСЂР°", DateOnly(document.DueDate))}</span></div>
-                <p>РћРћРћ В«Р”РѕРєСѓРјРµРЅС‚РѕРѕР±РѕСЂРѕС‚В», РёРјРµРЅСѓРµРјРѕРµ РІ РґР°Р»СЊРЅРµР№С€РµРј В«РЎС‚РѕСЂРѕРЅР° 1В», Рё {Field("РљРѕРЅС‚СЂР°РіРµРЅС‚", "РљРѕРЅС‚СЂР°РіРµРЅС‚ РЅРµ СѓРєР°Р·Р°РЅ")}, РёРјРµРЅСѓРµРјРѕРµ РІ РґР°Р»СЊРЅРµР№С€РµРј В«РЎС‚РѕСЂРѕРЅР° 2В», Р·Р°РєР»СЋС‡РёР»Рё РЅР°СЃС‚РѕСЏС‰РёР№ РґРѕРіРѕРІРѕСЂ.</p>
-                <h2>1. РџСЂРµРґРјРµС‚ РґРѕРіРѕРІРѕСЂР°</h2>
-                <p>{Field("РџСЂРµРґРјРµС‚ РґРѕРіРѕРІРѕСЂР°", document.Title ?? "РќРµ СѓРєР°Р·Р°РЅРѕ")}</p>
-                <h2>2. РћСЃРЅРѕРІРЅС‹Рµ СѓСЃР»РѕРІРёСЏ</h2>
-                <div class="grid"><div><b>РљРѕРЅС‚СЂР°РіРµРЅС‚</b><br>{Field("РљРѕРЅС‚СЂР°РіРµРЅС‚")}</div><div><b>РЎСѓРјРјР°</b><br>{Field("РЎСѓРјРјР° РґРѕРіРѕРІРѕСЂР°")}</div><div><b>РЎСЂРѕРє</b><br>{DateOnly(document.DueDate)}</div><div><b>РЎС‚Р°С‚СѓСЃ</b><br>{statusLabel}</div></div>
+                <div class="doc-title">Договор № {Field("Номер договора", document.DocumentId.ToString())}</div>
+                <div class="doc-subtitle">{Field("Предмет договора", document.Title ?? "Предмет договора")}</div>
+                <div class="row"><span>г. Санкт-Петербург</span><span>{Field("Дата договора", DateOnly(document.DueDate))}</span></div>
+                <p>ООО «Документооборот», именуемое в дальнейшем «Сторона 1», и {Field("Контрагент", "Контрагент не указан")}, именуемое в дальнейшем «Сторона 2», заключили настоящий договор.</p>
+                <h2>1. Предмет договора</h2>
+                <p>{Field("Предмет договора", document.Title ?? "Не указано")}</p>
+                <h2>2. Основные условия</h2>
+                <div class="grid"><div><b>Контрагент</b><br>{Field("Контрагент")}</div><div><b>Сумма</b><br>{Field("Сумма договора")}</div><div><b>Срок</b><br>{DateOnly(document.DueDate)}</div><div><b>Статус</b><br>{statusLabel}</div></div>
                 """,
             DocumentType.Invoice => $"""
-                <div class="doc-title">РЎС‡РµС‚ РЅР° РѕРїР»Р°С‚Сѓ в„– {Field("РќРѕРјРµСЂ СЃС‡РµС‚Р°", document.DocumentId.ToString())}</div>
-                <div class="row"><span>РџРѕСЃС‚Р°РІС‰РёРє: {Field("РџРѕСЃС‚Р°РІС‰РёРє", "РћРћРћ В«Р”РѕРєСѓРјРµРЅС‚РѕРѕР±РѕСЂРѕС‚В»")}</span><span>{Field("Р”Р°С‚Р° СЃС‡РµС‚Р°", DateOnly(document.DueDate))}</span></div>
-                <table><thead><tr><th>в„–</th><th>РќР°РёРјРµРЅРѕРІР°РЅРёРµ</th><th>РљРѕР»-РІРѕ</th><th>РЎСѓРјРјР°</th></tr></thead><tbody><tr><td>1</td><td>{title}</td><td>1</td><td>{Field("РЎСѓРјРјР°")}</td></tr></tbody><tfoot><tr><th colspan="3">РС‚РѕРіРѕ</th><th>{Field("РЎСѓРјРјР°")}</th></tr></tfoot></table>
+                <div class="doc-title">Счет на оплату № {Field("Номер счета", document.DocumentId.ToString())}</div>
+                <div class="row"><span>Поставщик: {Field("Поставщик", "ООО «Документооборот»")}</span><span>{Field("Дата счета", DateOnly(document.DueDate))}</span></div>
+                <table><thead><tr><th>№</th><th>Наименование</th><th>Кол-во</th><th>Сумма</th></tr></thead><tbody><tr><td>1</td><td>{title}</td><td>1</td><td>{Field("Сумма")}</td></tr></tbody><tfoot><tr><th colspan="3">Итого</th><th>{Field("Сумма")}</th></tr></tfoot></table>
                 """,
             DocumentType.Application => $"""
-                <div class="recipient">Р СѓРєРѕРІРѕРґРёС‚РµР»СЋ РѕСЂРіР°РЅРёР·Р°С†РёРё<br>РѕС‚ {Field("Р¤РРћ СЃРѕС‚СЂСѓРґРЅРёРєР°", "СЃРѕС‚СЂСѓРґРЅРёРєР°")}</div>
-                <div class="doc-title">Р—Р°СЏРІР»РµРЅРёРµ</div>
-                <div class="doc-subtitle">{Field("РўРµРјР° РѕР±СЂР°С‰РµРЅРёСЏ", document.Title ?? "РўРµРјР° РѕР±СЂР°С‰РµРЅРёСЏ")}</div>
-                <p>{Field("РўРµРєСЃС‚ Р·Р°СЏРІР»РµРЅРёСЏ", document.ExtractedText ?? "РўРµРєСЃС‚ Р·Р°СЏРІР»РµРЅРёСЏ РЅРµ Р·Р°РїРѕР»РЅРµРЅ.")}</p>
+                <div class="recipient">Руководителю организации<br>от {Field("ФИО сотрудника", "сотрудника")}</div>
+                <div class="doc-title">Заявление</div>
+                <div class="doc-subtitle">{Field("Тема обращения", document.Title ?? "Тема обращения")}</div>
+                <p>{Field("Текст заявления", document.ExtractedText ?? "Текст заявления не заполнен.")}</p>
                 """,
             DocumentType.Order => $"""
-                <div class="doc-title">РџСЂРёРєР°Р· в„– {document.DocumentId}</div>
+                <div class="doc-title">Приказ № {document.DocumentId}</div>
                 <div class="doc-subtitle">{title}</div>
-                <div class="row"><span>Рі. РЎР°РЅРєС‚-РџРµС‚РµСЂР±СѓСЂРі</span><span>{DateOnly(document.DueDate)}</span></div>
-                <h2>РџСЂРёРєР°Р·С‹РІР°СЋ</h2>
+                <div class="row"><span>г. Санкт-Петербург</span><span>{DateOnly(document.DueDate)}</span></div>
+                <h2>Приказываю</h2>
                 <p>{description}</p>
                 """,
             DocumentType.Act => $"""
-                <div class="doc-title">РђРєС‚ в„– {document.DocumentId}</div>
+                <div class="doc-title">Акт № {document.DocumentId}</div>
                 <div class="doc-subtitle">{title}</div>
-                <div class="row"><span>Рі. РЎР°РЅРєС‚-РџРµС‚РµСЂР±СѓСЂРі</span><span>{DateOnly(document.DueDate)}</span></div>
-                <h2>РЎРѕРґРµСЂР¶Р°РЅРёРµ Р°РєС‚Р°</h2>
+                <div class="row"><span>г. Санкт-Петербург</span><span>{DateOnly(document.DueDate)}</span></div>
+                <h2>Содержание акта</h2>
                 <p>{description}</p>
                 """,
             _ => $"""
-                <div class="doc-title">{typeLabel} в„– {document.DocumentId}</div>
+                <div class="doc-title">{typeLabel} № {document.DocumentId}</div>
                 <div class="doc-subtitle">{title}</div>
                 <p>{description}</p>
                 """
@@ -2364,42 +2364,42 @@ public class DocumentsController : Controller
             <html lang="ru">
             <head>
                 <meta charset="utf-8">
-                <title>РС‚РѕРіРѕРІС‹Р№ С„Р°Р№Р» РёСЃРїРѕР»РЅРµРЅРёСЏ #{document.DocumentId}</title>
+                <title>Итоговый файл исполнения #{document.DocumentId}</title>
                 <style>{style}</style>
             </head>
             <body>
                 <main class="page">
                     <header class="org">
                         <div>
-                            <div class="org-name">РћРћРћ В«Р”РѕРєСѓРјРµРЅС‚РѕРѕР±РѕСЂРѕС‚В»</div>
-                            <div class="org-meta">190000, Рі. РЎР°РЅРєС‚-РџРµС‚РµСЂР±СѓСЂРі, РќРµРІСЃРєРёР№ РїСЂРѕСЃРїРµРєС‚, Рґ. 1<br>РРќРќ 7800000000 / РљРџРџ 780001001<br>Р­Р»РµРєС‚СЂРѕРЅРЅР°СЏ СЃРёСЃС‚РµРјР° РґРѕРєСѓРјРµРЅС‚Р°С†РёРѕРЅРЅРѕРіРѕ РѕР±РµСЃРїРµС‡РµРЅРёСЏ СѓРїСЂР°РІР»РµРЅРёСЏ</div>
+                            <div class="org-name">ООО «Документооборот»</div>
+                            <div class="org-meta">190000, г. Санкт-Петербург, Невский проспект, д. 1<br>ИНН 7800000000 / КПП 780001001<br>Электронная система документационного обеспечения управления</div>
                         </div>
-                        <div class="stamp">РњРµСЃС‚Рѕ<br>РїРµС‡Р°С‚Рё</div>
+                        <div class="stamp">Место<br>печати</div>
                     </header>
                     {body}
-                    <h2>РЎР»СѓР¶РµР±РЅР°СЏ РёРЅС„РѕСЂРјР°С†РёСЏ</h2>
+                    <h2>Служебная информация</h2>
                     <div class="grid">
-                        <div><b>РќРѕРјРµСЂ РєР°СЂС‚РѕС‡РєРё</b><br>{document.DocumentId}</div>
-                        <div><b>РЎС‚Р°С‚СѓСЃ</b><br>{statusLabel}</div>
-                        <div><b>РСЃРїРѕР»РЅРёС‚РµР»СЊ</b><br>{Enc(executorName)}</div>
-                        <div><b>Р РµР·СѓР»СЊС‚Р°С‚</b><br>{Enc(document.ExecutionResult)}</div>
-                        <div><b>РќР°С‡Р°Р»Рѕ РёСЃРїРѕР»РЅРµРЅРёСЏ</b><br>{DateTimeLabel(document.ExecutionStartedAt)}</div>
-                        <div><b>Р—Р°РІРµСЂС€РµРЅРёРµ РёСЃРїРѕР»РЅРµРЅРёСЏ</b><br>{DateTimeLabel(document.ExecutionCompletedAt)}</div>
+                        <div><b>Номер карточки</b><br>{document.DocumentId}</div>
+                        <div><b>Статус</b><br>{statusLabel}</div>
+                        <div><b>Исполнитель</b><br>{Enc(executorName)}</div>
+                        <div><b>Результат</b><br>{Enc(document.ExecutionResult)}</div>
+                        <div><b>Начало исполнения</b><br>{DateTimeLabel(document.ExecutionStartedAt)}</div>
+                        <div><b>Завершение исполнения</b><br>{DateTimeLabel(document.ExecutionCompletedAt)}</div>
                     </div>
-                    <h2>РљРѕРјРјРµРЅС‚Р°СЂРёР№ РёСЃРїРѕР»РЅРёС‚РµР»СЏ</h2>
+                    <h2>Комментарий исполнителя</h2>
                     <p>{Enc(document.ExecutionComment)}</p>
                     <section class="signatures">
-                        <div><strong>РћС‚РІРµС‚СЃС‚РІРµРЅРЅС‹Р№</strong><div class="line"></div><div class="hint">РїРѕРґРїРёСЃСЊ / СЂР°СЃС€РёС„СЂРѕРІРєР°</div></div>
-                        <div><strong>Р”Р°С‚Р°</strong><div class="line"></div><div class="hint">РґРґ.РјРј.РіРіРіРі</div></div>
+                        <div><strong>Ответственный</strong><div class="line"></div><div class="hint">подпись / расшифровка</div></div>
+                        <div><strong>Дата</strong><div class="line"></div><div class="hint">дд.мм.гггг</div></div>
                     </section>
-                    <div class="footer">Р¤Р°Р№Р» СЃС„РѕСЂРјРёСЂРѕРІР°РЅ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РёР· СЌР»РµРєС‚СЂРѕРЅРЅРѕР№ РєР°СЂС‚РѕС‡РєРё РґРѕРєСѓРјРµРЅС‚Р° #{document.DocumentId} РІ DocManager. Р”Р°С‚Р° С„РѕСЂРјРёСЂРѕРІР°РЅРёСЏ: {generatedAt}.</div>
+                    <div class="footer">Файл сформирован автоматически из электронной карточки документа #{document.DocumentId} в DocManager. Дата формирования: {generatedAt}.</div>
                 </main>
             </body>
             </html>
             """;
     }
 
-    private static string GetTemplateFieldValue(string? text, string label, string fallback = "РќРµ СѓРєР°Р·Р°РЅРѕ")
+    private static string GetTemplateFieldValue(string? text, string label, string fallback = "Не указано")
     {
         if (string.IsNullOrWhiteSpace(text))
             return fallback;
@@ -2426,7 +2426,7 @@ public class DocumentsController : Controller
 
         if (!string.Equals(file.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase))
         {
-            // РќРµРєРѕС‚РѕСЂС‹Рµ Р±СЂР°СѓР·РµСЂС‹ Рё РїСЂРѕРєСЃРё РѕС‚РґР°СЋС‚ octet-stream, РїРѕСЌС‚РѕРјСѓ СЂР°Р·СЂРµС€Р°РµРј С‚Р°РєРѕР№ РІР°СЂРёР°РЅС‚ РїРѕ СЂР°СЃС€РёСЂРµРЅРёСЋ.
+            // Некоторые браузеры и прокси отдают octet-stream, поэтому разрешаем такой вариант по расширению.
             if (!string.Equals(file.ContentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase))
                 return false;
         }
@@ -2486,22 +2486,22 @@ public class DocumentsController : Controller
     {
         var name = Path.GetFileNameWithoutExtension(fileName).ToLowerInvariant();
 
-        if (ContainsAny(name, "РґРѕРіРѕРІРѕСЂ", "contract", "agreement"))
+        if (ContainsAny(name, "договор", "contract", "agreement"))
             return DocumentType.Contract;
 
-        if (ContainsAny(name, "СЃС‡РµС‚", "СЃС‡С‘С‚", "invoice", "bill"))
+        if (ContainsAny(name, "счет", "счёт", "invoice", "bill"))
             return DocumentType.Invoice;
 
-        if (ContainsAny(name, "Р°РєС‚", "act"))
+        if (ContainsAny(name, "акт", "act"))
             return DocumentType.Act;
 
-        if (ContainsAny(name, "РїСЂРёРєР°Р·", "order"))
+        if (ContainsAny(name, "приказ", "order"))
             return DocumentType.Order;
 
-        if (ContainsAny(name, "Р·Р°СЏРІР»РµРЅРёРµ", "application", "request"))
+        if (ContainsAny(name, "заявление", "application", "request"))
             return DocumentType.Application;
 
-        if (ContainsAny(name, "РѕС‚С‡РµС‚", "РѕС‚С‡С‘С‚", "report"))
+        if (ContainsAny(name, "отчет", "отчёт", "report"))
             return DocumentType.Report;
 
         return DocumentType.Other;
@@ -2520,8 +2520,8 @@ public class DocumentsController : Controller
 
     private void ApplyQuickCreateDefaults(CreateDocumentPageViewModel model)
     {
-        // Р‘С‹СЃС‚СЂС‹Р№ СЃС†РµРЅР°СЂРёР№: РµСЃР»Рё Р·Р°РіСЂСѓР¶РµРЅ С„Р°Р№Р», РЅРѕ РїРѕР»СЏ РЅРµ Р·Р°РїРѕР»РЅРµРЅС‹,
-        // РїРѕРґСЃС‚Р°РІР»СЏРµРј Р±РµР·РѕРїР°СЃРЅС‹Рµ Р·РЅР°С‡РµРЅРёСЏ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ.
+        // Быстрый сценарий: если загружен файл, но поля не заполнены,
+        // подставляем безопасные значения по умолчанию.
         if (model.File is null || model.File.Length <= 0)
             return;
 
@@ -2529,7 +2529,7 @@ public class DocumentsController : Controller
         {
             var baseName = Path.GetFileNameWithoutExtension(model.File.FileName);
             model.Title = string.IsNullOrWhiteSpace(baseName)
-                ? $"Р”РѕРєСѓРјРµРЅС‚ {DateTime.UtcNow:yyyyMMdd-HHmmss}"
+                ? $"Документ {DateTime.UtcNow:yyyyMMdd-HHmmss}"
                 : baseName;
             ModelState.Remove(nameof(model.Title));
         }
@@ -2544,7 +2544,7 @@ public class DocumentsController : Controller
 
         if (string.IsNullOrWhiteSpace(model.Description))
         {
-            model.Description = "РЎРѕР·РґР°РЅРѕ С‡РµСЂРµР· Р±С‹СЃС‚СЂСѓСЋ Р·Р°РіСЂСѓР·РєСѓ С„Р°Р№Р»Р°.";
+            model.Description = "Создано через быструю загрузку файла.";
             ModelState.Remove(nameof(model.Description));
         }
 
@@ -2599,24 +2599,24 @@ public class DocumentsController : Controller
 
     private static string GetDocumentTypeLabel(DocumentType type) => type switch
     {
-        DocumentType.Contract => "Р”РѕРіРѕРІРѕСЂ",
-        DocumentType.Invoice => "РЎС‡РµС‚",
-        DocumentType.Report => "РћС‚С‡РµС‚",
-        DocumentType.Order => "РџСЂРёРєР°Р·",
-        DocumentType.Application => "Р—Р°СЏРІР»РµРЅРёРµ",
-        DocumentType.Act => "РђРєС‚",
-        _ => "РџСЂРѕС‡РµРµ"
+        DocumentType.Contract => "Договор",
+        DocumentType.Invoice => "Счет",
+        DocumentType.Report => "Отчет",
+        DocumentType.Order => "Приказ",
+        DocumentType.Application => "Заявление",
+        DocumentType.Act => "Акт",
+        _ => "Прочее"
     };
 
     private static string GetDocumentStatusLabel(DocumentStatus status) => status switch
     {
-        DocumentStatus.Draft => "Р§РµСЂРЅРѕРІРёРє",
-        DocumentStatus.OnApproval => "РќР° СЃРѕРіР»Р°СЃРѕРІР°РЅРёРё",
-        DocumentStatus.Approved => "РЈС‚РІРµСЂР¶РґРµРЅ",
-        DocumentStatus.InWork => "Р’ СЂР°Р±РѕС‚Рµ",
-        DocumentStatus.Completed => "Р—Р°РІРµСЂС€РµРЅ",
-        DocumentStatus.Archived => "РђСЂС…РёРІ",
-        _ => "РќРµРёР·РІРµСЃС‚РЅРѕ"
+        DocumentStatus.Draft => "Черновик",
+        DocumentStatus.OnApproval => "На согласовании",
+        DocumentStatus.Approved => "Утвержден",
+        DocumentStatus.InWork => "В работе",
+        DocumentStatus.Completed => "Завершен",
+        DocumentStatus.Archived => "Архив",
+        _ => "Неизвестно"
     };
 
     private static IReadOnlyList<AiSuggestionViewModel> BuildAiSuggestions(Document doc)
@@ -2646,15 +2646,15 @@ public class DocumentsController : Controller
             : currentDue;
 
         var title = doc.Title ?? string.Empty;
-        var suggestedTitle = string.IsNullOrWhiteSpace(title) ? $"Р”РѕРєСѓРјРµРЅС‚ #{doc.DocumentId}" : title;
+        var suggestedTitle = string.IsNullOrWhiteSpace(title) ? $"Документ #{doc.DocumentId}" : title;
 
         var description = doc.ExtractedText ?? string.Empty;
         var suggestedDescription = string.IsNullOrWhiteSpace(description)
-            ? "РР·РІР»РµС‡РµРЅРѕ РР: РєСЂР°С‚РєРѕРµ РѕРїРёСЃР°РЅРёРµ РґРѕРєСѓРјРµРЅС‚Р°."
+            ? "Извлечено ИИ: краткое описание документа."
             : description;
 
         var tags = doc.Tags ?? string.Empty;
-        var suggestedTags = string.IsNullOrWhiteSpace(tags) ? "pdf,РІС…РѕРґСЏС‰РёРµ" : tags;
+        var suggestedTags = string.IsNullOrWhiteSpace(tags) ? "pdf,входящие" : tags;
 
         var priority = doc.Priority?.ToString() ?? string.Empty;
         var suggestedPriority = string.IsNullOrWhiteSpace(priority) ? rng.Next(1, 4).ToString() : priority;
@@ -2665,12 +2665,12 @@ public class DocumentsController : Controller
 
         return
         [
-            new AiSuggestionViewModel { FieldKey = "type", Label = "РўРёРї", SuggestedValue = suggestedType.ToString(), Confidence = Conf(!lowKeys.Contains("type")) },
-            new AiSuggestionViewModel { FieldKey = "duedate", Label = "РЎСЂРѕРє РёСЃРїРѕР»РЅРµРЅРёСЏ", SuggestedValue = suggestedDue, Confidence = Conf(!lowKeys.Contains("duedate")) },
-            new AiSuggestionViewModel { FieldKey = "title", Label = "РќР°Р·РІР°РЅРёРµ", SuggestedValue = suggestedTitle, Confidence = Conf(!lowKeys.Contains("title")) },
-            new AiSuggestionViewModel { FieldKey = "description", Label = "РћРїРёСЃР°РЅРёРµ", SuggestedValue = suggestedDescription, Confidence = Conf(!lowKeys.Contains("description")) },
-            new AiSuggestionViewModel { FieldKey = "priority", Label = "РџСЂРёРѕСЂРёС‚РµС‚", SuggestedValue = suggestedPriority, Confidence = Conf(!lowKeys.Contains("priority")) },
-            new AiSuggestionViewModel { FieldKey = "tags", Label = "РўРµРіРё", SuggestedValue = suggestedTags, Confidence = Conf(!lowKeys.Contains("tags")) }
+            new AiSuggestionViewModel { FieldKey = "type", Label = "Тип", SuggestedValue = suggestedType.ToString(), Confidence = Conf(!lowKeys.Contains("type")) },
+            new AiSuggestionViewModel { FieldKey = "duedate", Label = "Срок исполнения", SuggestedValue = suggestedDue, Confidence = Conf(!lowKeys.Contains("duedate")) },
+            new AiSuggestionViewModel { FieldKey = "title", Label = "Название", SuggestedValue = suggestedTitle, Confidence = Conf(!lowKeys.Contains("title")) },
+            new AiSuggestionViewModel { FieldKey = "description", Label = "Описание", SuggestedValue = suggestedDescription, Confidence = Conf(!lowKeys.Contains("description")) },
+            new AiSuggestionViewModel { FieldKey = "priority", Label = "Приоритет", SuggestedValue = suggestedPriority, Confidence = Conf(!lowKeys.Contains("priority")) },
+            new AiSuggestionViewModel { FieldKey = "tags", Label = "Теги", SuggestedValue = suggestedTags, Confidence = Conf(!lowKeys.Contains("tags")) }
         ];
     }
 
