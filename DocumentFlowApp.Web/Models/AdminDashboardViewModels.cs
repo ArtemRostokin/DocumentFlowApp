@@ -11,7 +11,16 @@ public sealed class AdminDashboardPageViewModel
     public int AuditEventsToday { get; init; }
     public int ActiveNomenclatureCases { get; init; }
     public int ActiveNomenclatureRules { get; init; }
+    public IReadOnlyList<AdminAttentionItemViewModel> AttentionItems { get; init; } = [];
     public IReadOnlyList<AdminRecentActivityItemViewModel> RecentActivities { get; init; } = [];
+}
+
+public sealed class AdminAttentionItemViewModel
+{
+    public string Title { get; init; } = string.Empty;
+    public string Value { get; init; } = string.Empty;
+    public string Description { get; init; } = string.Empty;
+    public string BadgeClass { get; init; } = "text-bg-secondary";
 }
 
 public sealed class AdminRecentActivityItemViewModel

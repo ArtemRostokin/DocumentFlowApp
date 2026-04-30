@@ -1,4 +1,4 @@
-@model DocumentFlowApp.Web.Models.AdminDashboardPageViewModel
+﻿@model DocumentFlowApp.Web.Models.AdminDashboardPageViewModel
 @{
     ViewData["Title"] = "Администрирование";
 }
@@ -10,126 +10,43 @@
     </div>
 
     <div class="row g-3 mb-4">
-        <div class="col-lg-3 col-md-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small mb-1">Пользователи</div>
-                    <div class="display-6 mb-0">@Model.TotalUsers</div>
-                    <div class="small text-muted mt-2">Активных: @Model.ActiveUsers</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-3 col-md-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small mb-1">Документы</div>
-                    <div class="display-6 mb-0">@Model.TotalDocuments</div>
-                    <div class="small text-muted mt-2">На согласовании: @Model.PendingApprovalDocuments</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-3 col-md-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small mb-1">Исполнение</div>
-                    <div class="display-6 mb-0">@Model.InWorkDocuments</div>
-                    <div class="small text-muted mt-2">Завершено: @Model.CompletedDocuments</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-3 col-md-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small mb-1">Аудит за сегодня</div>
-                    <div class="display-6 mb-0">@Model.AuditEventsToday</div>
-                    <div class="small text-muted mt-2">Дел номенклатуры: @Model.ActiveNomenclatureCases</div>
-                </div>
-            </div>
-        </div>
+        <div class="col-lg-3 col-md-6"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small mb-1">Пользователи</div><div class="display-6 mb-0">@Model.TotalUsers</div><div class="small text-muted mt-2">Активных: @Model.ActiveUsers</div></div></div></div>
+        <div class="col-lg-3 col-md-6"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small mb-1">Документы</div><div class="display-6 mb-0">@Model.TotalDocuments</div><div class="small text-muted mt-2">На согласовании: @Model.PendingApprovalDocuments</div></div></div></div>
+        <div class="col-lg-3 col-md-6"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small mb-1">Исполнение</div><div class="display-6 mb-0">@Model.InWorkDocuments</div><div class="small text-muted mt-2">Завершено: @Model.CompletedDocuments</div></div></div></div>
+        <div class="col-lg-3 col-md-6"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small mb-1">Аудит за сегодня</div><div class="display-6 mb-0">@Model.AuditEventsToday</div><div class="small text-muted mt-2">Активных дел номенклатуры: @Model.ActiveNomenclatureCases</div></div></div></div>
     </div>
 
     <div class="row g-4 mb-4">
-        <div class="col-md-6 col-xl-3">
-            <div class="card h-100 shadow-sm">
-                <div class="card-body d-flex flex-column">
-                    <h2 class="h5">Пользователи</h2>
-                    <p class="text-muted flex-grow-1">Создание учетных записей, смена ролей, блокировка пользователей и сброс паролей.</p>
-                    <a class="btn btn-primary" asp-action="Users">Открыть</a>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6 col-xl-3">
-            <div class="card h-100 shadow-sm">
-                <div class="card-body d-flex flex-column">
-                    <h2 class="h5">Маршруты</h2>
-                    <p class="text-muted flex-grow-1">Обзор действующего жизненного цикла документа и распределение ответственности по ролям.</p>
-                    <a class="btn btn-primary" asp-action="Routes">Открыть</a>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6 col-xl-3">
-            <div class="card h-100 shadow-sm">
-                <div class="card-body d-flex flex-column">
-                    <h2 class="h5">Номенклатура</h2>
-                    <p class="text-muted flex-grow-1">Дела номенклатуры и правила автопривязки документов по типу и подразделению.</p>
-                    <a class="btn btn-primary" asp-action="Nomenclature">Открыть</a>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6 col-xl-3">
-            <div class="card h-100 shadow-sm">
-                <div class="card-body d-flex flex-column">
-                    <h2 class="h5">Аудит</h2>
-                    <p class="text-muted flex-grow-1">Журнал системных и документных действий с фильтрацией по типу события и документу.</p>
-                    <a class="btn btn-primary" asp-action="Audit">Открыть</a>
-                </div>
-            </div>
-        </div>
+        <div class="col-md-6 col-xl-3"><div class="card h-100 shadow-sm"><div class="card-body d-flex flex-column"><h2 class="h5">Пользователи</h2><p class="text-muted flex-grow-1">Создание учетных записей, смена ролей, управление доступом и сброс паролей.</p><a class="btn btn-primary" asp-action="Users">Открыть раздел</a></div></div></div>
+        <div class="col-md-6 col-xl-3"><div class="card h-100 shadow-sm"><div class="card-body d-flex flex-column"><h2 class="h5">Маршруты</h2><p class="text-muted flex-grow-1">Шаблоны согласования, бизнес-роли и настройка шагов для разных типов документов.</p><a class="btn btn-primary" asp-action="Routes">Открыть раздел</a></div></div></div>
+        <div class="col-md-6 col-xl-3"><div class="card h-100 shadow-sm"><div class="card-body d-flex flex-column"><h2 class="h5">Номенклатура</h2><p class="text-muted flex-grow-1">Дела номенклатуры и правила автопривязки документов по типу и подразделению.</p><a class="btn btn-primary" asp-action="Nomenclature">Открыть раздел</a></div></div></div>
+        <div class="col-md-6 col-xl-3"><div class="card h-100 shadow-sm"><div class="card-body d-flex flex-column"><h2 class="h5">Аудит</h2><p class="text-muted flex-grow-1">Журнал системных и документных действий с фильтрацией по событию и документу.</p><a class="btn btn-primary" asp-action="Audit">Открыть раздел</a></div></div></div>
     </div>
 
     <div class="card shadow-sm">
         <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h2 class="h5 mb-0">Последние события</h2>
-                <a asp-action="Audit" class="btn btn-outline-secondary btn-sm">Открыть полный журнал</a>
+            <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
+                <div>
+                    <h2 class="h5 mb-1">Требует внимания</h2>
+                    <div class="small text-muted">Здесь собраны точки, которые стоит проверить администратору в первую очередь.</div>
+                </div>
+                <a asp-action="Audit" class="btn btn-outline-secondary btn-sm">Открыть аудит</a>
             </div>
 
-            @if (Model.RecentActivities.Count == 0)
-            {
-                <div class="alert alert-light border mb-0">Событий пока нет.</div>
-            }
-            else
-            {
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle">
-                        <thead>
-                            <tr>
-                                <th>Дата</th>
-                                <th>Событие</th>
-                                <th>Пользователь</th>
-                                <th>Детали</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                        @foreach (var item in Model.RecentActivities)
-                        {
-                            <tr>
-                                <td class="text-nowrap">@(item.ActivityDateUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss") ?? "—")</td>
-                                <td>
-                                    <div>@item.ActivityTypeLabel</div>
-                                    @if (item.DocumentId is int documentId)
-                                    {
-                                        <div class="small text-muted">Документ #@documentId</div>
-                                    }
-                                </td>
-                                <td>@item.UserDisplayName</td>
-                                <td class="small">@item.Details</td>
-                            </tr>
-                        }
-                        </tbody>
-                    </table>
-                </div>
-            }
+            <div class="row g-3">
+                @foreach (var item in Model.AttentionItems)
+                {
+                    <div class="col-md-6 col-xl-4">
+                        <div class="border rounded-3 p-3 h-100">
+                            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                                <div class="fw-semibold">@item.Title</div>
+                                <span class="badge @item.BadgeClass">@item.Value</span>
+                            </div>
+                            <div class="small text-muted">@item.Description</div>
+                        </div>
+                    </div>
+                }
+            </div>
         </div>
     </div>
 </div>

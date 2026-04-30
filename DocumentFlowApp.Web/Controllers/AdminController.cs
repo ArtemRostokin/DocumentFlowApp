@@ -523,35 +523,88 @@ public class AdminController : Controller
         var auditEventsToday = await _dbContext.DocumentActivity.CountAsync(x => (x.ActivityDate ?? DateTime.MinValue) >= todayUtc, cancellationToken);
         var activeNomenclatureCases = await _dbContext.NomenclatureCases.CountAsync(x => x.IsActive, cancellationToken);
         var activeNomenclatureRules = await _dbContext.NomenclatureRules.CountAsync(x => x.IsActive, cancellationToken);
+        var documentsWithoutRoute = await _dbContext.Documents.CountAsync(
+            x => (x.Status == nameof(DocumentStatus.Draft) || x.Status == nameof(DocumentStatus.OnApproval)) && x.RouteTemplateId == null,
+            cancellationToken);
+        var documentsWithoutNomenclature = await _dbContext.Documents.CountAsync(
+            x => x.Status != nameof(DocumentStatus.Archived) && x.NomenclatureCaseId == null,
+            cancellationToken);
+        var routeTemplatesWithoutSteps = await _dbContext.RouteTemplates.CountAsync(
+            x => !x.Steps.Any(),
+            cancellationToken);
+        var staleApprovalDocuments = await _dbContext.Documents.CountAsync(
+            x => x.Status == nameof(DocumentStatus.OnApproval) &&
+                 ((x.UpdatedDate ?? x.CreatedDate) <= DateTime.UtcNow.AddDays(-3)),
+            cancellationToken);
+        var inactiveUsers = totalUsers - activeUsers;
 
-        var rawRecentActivities = await _dbContext.DocumentActivity
-            .AsNoTracking()
-            .Include(x => x.User)
-            .OrderByDescending(x => x.ActivityDate ?? DateTime.MinValue)
-            .ThenByDescending(x => x.ActivityId)
-            .Take(8)
-            .Select(x => new
-            {
-                x.ActivityDate,
-                x.ActivityType,
-                x.Details,
-                x.DocumentId,
-                UserFirstName = x.User != null ? x.User.FirstName : null,
-                UserLastName = x.User != null ? x.User.LastName : null,
-                UserName = x.User != null ? x.User.UserName : null
-            })
-            .ToListAsync(cancellationToken);
+        var attentionItems = new List<AdminAttentionItemViewModel>();
 
-        var recentActivities = rawRecentActivities
-            .Select(x => new AdminRecentActivityItemViewModel
+        if (documentsWithoutRoute > 0)
+        {
+            attentionItems.Add(new AdminAttentionItemViewModel
             {
-                ActivityDateUtc = x.ActivityDate,
-                ActivityTypeLabel = AuditActivityTypes.GetDisplayName(x.ActivityType),
-                UserDisplayName = BuildAuditUserDisplayName(x.UserLastName, x.UserFirstName, x.UserName),
-                Details = x.Details ?? string.Empty,
-                DocumentId = x.DocumentId
-            })
-            .ToList();
+                Title = "Документы без маршрута",
+                Value = documentsWithoutRoute.ToString(),
+                Description = "Черновики и согласования без шаблона маршрута стоит проверить в первую очередь.",
+                BadgeClass = "text-bg-danger"
+            });
+        }
+
+        if (documentsWithoutNomenclature > 0)
+        {
+            attentionItems.Add(new AdminAttentionItemViewModel
+            {
+                Title = "Документы без номенклатуры",
+                Value = documentsWithoutNomenclature.ToString(),
+                Description = "Без привязки к делу документы нельзя корректно довести до архива.",
+                BadgeClass = "text-bg-warning"
+            });
+        }
+
+        if (routeTemplatesWithoutSteps > 0)
+        {
+            attentionItems.Add(new AdminAttentionItemViewModel
+            {
+                Title = "Пустые шаблоны маршрутов",
+                Value = routeTemplatesWithoutSteps.ToString(),
+                Description = "У этих шаблонов пока нет шагов согласования, поэтому их стоит настроить.",
+                BadgeClass = "text-bg-warning"
+            });
+        }
+
+        if (staleApprovalDocuments > 0)
+        {
+            attentionItems.Add(new AdminAttentionItemViewModel
+            {
+                Title = "Зависли на согласовании",
+                Value = staleApprovalDocuments.ToString(),
+                Description = "Документы на согласовании дольше 3 дней могут требовать внимания менеджера.",
+                BadgeClass = "text-bg-primary"
+            });
+        }
+
+        if (inactiveUsers > 0)
+        {
+            attentionItems.Add(new AdminAttentionItemViewModel
+            {
+                Title = "Неактивные пользователи",
+                Value = inactiveUsers.ToString(),
+                Description = "Проверьте, все ли отключенные учетные записи действительно должны оставаться неактивными.",
+                BadgeClass = "text-bg-secondary"
+            });
+        }
+
+        if (attentionItems.Count == 0)
+        {
+            attentionItems.Add(new AdminAttentionItemViewModel
+            {
+                Title = "Система в порядке",
+                Value = "0 критичных пунктов",
+                Description = "Сейчас нет очевидных проблем, требующих внимания администратора.",
+                BadgeClass = "text-bg-success"
+            });
+        }
 
         return new AdminDashboardPageViewModel
         {
@@ -564,7 +617,7 @@ public class AdminController : Controller
             AuditEventsToday = auditEventsToday,
             ActiveNomenclatureCases = activeNomenclatureCases,
             ActiveNomenclatureRules = activeNomenclatureRules,
-            RecentActivities = recentActivities
+            AttentionItems = attentionItems
         };
     }
 

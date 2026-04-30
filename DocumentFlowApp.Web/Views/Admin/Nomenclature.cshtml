@@ -4,9 +4,12 @@
 }
 
 <div class="container py-4">
-    <div class="mb-4">
-        <h1 class="h3 mb-2">Номенклатура дел</h1>
-        <p class="text-muted mb-0">Справочник дел и правила автопривязки документов по типу и подразделению.</p>
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+        <div>
+            <h1 class="h3 mb-2">Номенклатура дел</h1>
+            <p class="text-muted mb-0">Справочник дел и правила автопривязки документов по типу и подразделению.</p>
+        </div>
+        <a class="btn btn-outline-secondary" asp-action="Index">Назад в администрирование</a>
     </div>
 
     @if (!string.IsNullOrWhiteSpace(Model.SuccessMessage))
@@ -107,7 +110,7 @@
                 <div class="card-body">
                     <h2 class="h5 mb-3">Дела номенклатуры</h2>
                     <div class="table-responsive">
-                        <table class="table table-sm align-middle">
+                        <table class="table table-sm align-middle mb-0">
                             <thead>
                                 <tr>
                                     <th>Индекс</th>
@@ -146,7 +149,7 @@
                 <div class="card-body">
                     <h2 class="h5 mb-3">Правила автопривязки</h2>
                     <div class="table-responsive">
-                        <table class="table table-sm align-middle">
+                        <table class="table table-sm align-middle mb-0">
                             <thead>
                                 <tr>
                                     <th>Дело</th>
@@ -166,7 +169,7 @@
                                         }
                                     </td>
                                     <td>@item.DocumentType</td>
-                                    <td>@item.Department</td>
+                                    <td>@(string.IsNullOrWhiteSpace(item.Department) ? "—" : item.Department)</td>
                                 </tr>
                             }
                             </tbody>
@@ -175,10 +178,6 @@
                 </div>
             </div>
         </div>
-    </div>
-
-    <div class="mt-4">
-        <a class="btn btn-outline-secondary" asp-action="Index">Назад в администрирование</a>
     </div>
 </div>
 

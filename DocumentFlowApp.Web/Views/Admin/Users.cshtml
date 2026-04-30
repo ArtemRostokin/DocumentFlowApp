@@ -1,12 +1,15 @@
-@model DocumentFlowApp.Web.Models.UsersAdminPageViewModel
+﻿@model DocumentFlowApp.Web.Models.UsersAdminPageViewModel
 @{
     ViewData["Title"] = "Пользователи";
 }
 
 <div class="container py-4">
-    <div class="mb-4">
-        <h1 class="h3 mb-2">Пользователи</h1>
-        <p class="text-muted mb-0">Управление учетными записями, ролями, доступом и паролями пользователей.</p>
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+        <div>
+            <h1 class="h3 mb-2">Пользователи</h1>
+            <p class="text-muted mb-0">Управление учетными записями, системными ролями и бизнес-ролями согласования.</p>
+        </div>
+        <a class="btn btn-outline-secondary" asp-action="Index">Назад в администрирование</a>
     </div>
 
     @if (!string.IsNullOrWhiteSpace(Model.SuccessMessage))
@@ -21,7 +24,7 @@
 
     <div class="row g-4">
         <div class="col-xl-4">
-            <div class="card shadow-sm">
+            <div class="card shadow-sm h-100">
                 <div class="card-body">
                     <h2 class="h5 mb-3">Создать пользователя</h2>
                     <form asp-action="CreateUser" method="post" class="row g-3">
@@ -54,7 +57,7 @@
                             <span asp-validation-for="NewUser.Password" class="text-danger small"></span>
                         </div>
                         <div class="col-md-6">
-                            <label asp-for="NewUser.RoleId" class="form-label">Роль</label>
+                            <label asp-for="NewUser.RoleId" class="form-label">Системная роль</label>
                             <select asp-for="NewUser.RoleId" class="form-select">
                                 <option value="">Выберите роль</option>
                                 @foreach (var role in Model.Roles)
@@ -64,7 +67,7 @@
                             </select>
                             <span asp-validation-for="NewUser.RoleId" class="text-danger small"></span>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-12">
                             <label asp-for="NewUser.ApprovalSpecialization" class="form-label">Бизнес-роль согласования</label>
                             <select asp-for="NewUser.ApprovalSpecialization" class="form-select">
                                 <option value="">Без специализации</option>
@@ -78,7 +81,7 @@
                         <div class="col-12">
                             <div class="form-check">
                                 <input asp-for="NewUser.IsActive" class="form-check-input" />
-                                <label asp-for="NewUser.IsActive" class="form-check-label">Активен сразу после создания</label>
+                                <label asp-for="NewUser.IsActive" class="form-check-label">Активировать пользователя сразу</label>
                             </div>
                         </div>
                         <div class="col-12">
@@ -92,23 +95,22 @@
         <div class="col-xl-8">
             <div class="card shadow-sm">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
                         <h2 class="h5 mb-0">Список пользователей</h2>
                         <span class="text-muted small">Всего: @Model.Users.Count</span>
                     </div>
 
-                    <div class="table-responsive">
+                    <div class="table-responsive border rounded-3" style="max-height: 68vh; overflow: auto;">
                         <table class="table table-sm align-middle">
                             <thead>
                                 <tr>
-                                    <th>Логин и email</th>
-                                    <th>Имя</th>
-                                    <th>Фамилия</th>
-                                    <th>Роль</th>
-                                    <th>Статус</th>
-                                    <th>Последний вход</th>
-                                    <th>Новый пароль</th>
-                                    <th></th>
+                                    <th style="min-width: 240px;">Учетная запись</th>
+                                    <th style="min-width: 180px;">Имя и фамилия</th>
+                                    <th style="min-width: 220px;">Роли</th>
+                                    <th style="min-width: 150px;">Статус</th>
+                                    <th style="min-width: 150px;">Последний вход</th>
+                                    <th style="min-width: 220px;">Сброс пароля</th>
+                                    <th style="min-width: 160px;"></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -117,7 +119,7 @@
                                 var updateFormId = $"user-update-{item.UserId}";
                                 var resetFormId = $"user-reset-{item.UserId}";
                                 <tr>
-                                    <td style="min-width: 220px;">
+                                    <td>
                                         <form id="@updateFormId" asp-action="UpdateUser" method="post">
                                             @Html.AntiForgeryToken()
                                             <input type="hidden" name="UserId" value="@item.UserId" />
@@ -125,52 +127,46 @@
                                         <input form="@updateFormId" type="text" name="UserName" value="@item.UserName" class="form-control form-control-sm mb-2" placeholder="Логин" />
                                         <input form="@updateFormId" type="email" name="Email" value="@item.Email" class="form-control form-control-sm" placeholder="Email" />
                                     </td>
-                                    <td style="min-width: 140px;">
-                                        <input form="@updateFormId" type="text" name="FirstName" value="@item.FirstName" class="form-control form-control-sm" placeholder="Имя" />
-                                    </td>
-                                    <td style="min-width: 160px;">
+                                    <td>
+                                        <input form="@updateFormId" type="text" name="FirstName" value="@item.FirstName" class="form-control form-control-sm mb-2" placeholder="Имя" />
                                         <input form="@updateFormId" type="text" name="LastName" value="@item.LastName" class="form-control form-control-sm" placeholder="Фамилия" />
                                     </td>
-                                    <td style="min-width: 220px;">
-                                        <select form="@updateFormId" name="RoleId" class="form-select form-select-sm">
+                                    <td>
+                                        <select form="@updateFormId" name="RoleId" class="form-select form-select-sm mb-2">
                                             @foreach (var role in Model.Roles)
                                             {
                                                 <option value="@role.Id" selected="@(item.RoleId == role.Id ? "selected" : null)">@role.Label</option>
                                             }
                                         </select>
-                                        <select form="@updateFormId" name="ApprovalSpecialization" class="form-select form-select-sm mt-2">
+                                        <select form="@updateFormId" name="ApprovalSpecialization" class="form-select form-select-sm">
                                             <option value="">Без специализации</option>
                                             @foreach (var specialization in Model.ApprovalSpecializations)
                                             {
                                                 <option value="@specialization.Value" selected="@(item.ApprovalSpecialization == specialization.Value ? "selected" : null)">@specialization.Label</option>
                                             }
                                         </select>
-                                        <div class="small text-muted mt-1">@item.ApprovalSpecializationLabel</div>
                                     </td>
-                                    <td style="min-width: 160px;">
-                                        <div class="form-check mb-1">
+                                    <td>
+                                        <div class="form-check mb-2">
                                             <input form="@updateFormId" type="hidden" name="IsActive" value="false" />
                                             <input form="@updateFormId" class="form-check-input" type="checkbox" name="IsActive" value="true" checked="@item.IsActive" />
                                             <label class="form-check-label small">Активен</label>
                                         </div>
-                                        <div class="small text-muted">
-                                            Email: @(item.EmailConfirmed ? "подтвержден" : "не подтвержден")
-                                        </div>
+                                        <div class="small text-muted">Email: @(item.EmailConfirmed ? "подтвержден" : "не подтвержден")</div>
+                                        <div class="small text-muted mt-1">Согласование: @item.ApprovalSpecializationLabel</div>
                                     </td>
-                                    <td class="small text-muted" style="min-width: 130px;">
-                                        @(item.LastLoginUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ?? "Еще не входил")
-                                    </td>
-                                    <td style="min-width: 190px;">
+                                    <td class="small text-muted">@(item.LastLoginUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ?? "Еще не входил")</td>
+                                    <td>
                                         <form id="@resetFormId" asp-action="ResetUserPassword" method="post" class="d-flex flex-column gap-2">
                                             @Html.AntiForgeryToken()
                                             <input type="hidden" name="UserId" value="@item.UserId" />
                                             <input type="password" name="NewPassword" class="form-control form-control-sm" placeholder="Новый пароль" />
-                                            <button type="submit" class="btn btn-outline-warning btn-sm">Сохранить новый пароль</button>
+                                            <button type="submit" class="btn btn-outline-secondary btn-sm">Сохранить новый пароль</button>
                                         </form>
                                     </td>
-                                    <td class="text-end">
-                                        <button form="@updateFormId" type="submit" class="btn btn-outline-primary btn-sm">Сохранить профиль</button>
-                                        <div class="small text-muted mt-2">Создан: @item.CreatedDateUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</div>
+                                    <td>
+                                        <button type="submit" form="@updateFormId" class="btn btn-primary btn-sm w-100">Сохранить профиль</button>
+                                        <div class="small text-muted mt-2">Создан: @item.CreatedDateUtc.ToLocalTime().ToString("dd.MM.yyyy")</div>
                                     </td>
                                 </tr>
                             }
@@ -180,10 +176,6 @@
                 </div>
             </div>
         </div>
-    </div>
-
-    <div class="mt-4">
-        <a class="btn btn-outline-secondary" asp-action="Index">Назад в администрирование</a>
     </div>
 </div>
 

@@ -32,6 +32,7 @@
         || !string.IsNullOrWhiteSpace(Model.ExecutionFileUrl);
     var hasSourceFile = !string.IsNullOrWhiteSpace(Model.FileUrl);
     var hasExecutionFile = !string.IsNullOrWhiteSpace(Model.ExecutionFileUrl);
+    var showDedicatedExecutionFileBlock = hasExecutionFile && hasSourceFile;
     var previewUrl = hasSourceFile ? Model.FileUrl : Model.ExecutionFileUrl;
     var previewKind = hasSourceFile ? Model.FileKind : Model.ExecutionFileKind;
     var previewTitle = hasSourceFile ? "Исходный файл документа" : hasExecutionFile ? "Итоговый файл исполнения" : "Превью документа";
@@ -41,6 +42,9 @@
     var currentApprovalStep = Model.ApprovalRouteSteps.FirstOrDefault(x => x.IsCurrent) ?? Model.ApprovalRouteSteps.OrderBy(x => x.Order).FirstOrDefault();
     var approvalStepsCount = Model.ApprovalRouteSteps.Count;
     var completedApprovalSteps = Model.ApprovalRouteSteps.Count(x => string.Equals((x.Status ?? string.Empty).Trim(), "Approved", StringComparison.OrdinalIgnoreCase));
+    var routeNeedsSetup = approvalStepsCount == 0;
+    var hasAssignedExecutor = !string.IsNullOrWhiteSpace(Model.Assignment.AssignedUserName);
+    var hasNomenclature = !string.IsNullOrWhiteSpace(Model.NomenclatureCaseLabel);
     var nextApprovalStep = currentApprovalStep is null
         ? null
         : Model.ApprovalRouteSteps
@@ -140,7 +144,10 @@
             </div>
             <div class="flex items-center gap-3">
                 <a href="@Url.Action("Index", "Home")" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900">Назад к доске</a>
-                <a href="/Documents/@Model.Id/print-form" target="_blank" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 ring-1 ring-slate-200 hover:text-slate-900 hover:bg-slate-50">Печатная форма</a>
+                @if (!isEmployeeRole)
+                {
+                    <a href="/Documents/@Model.Id/print-form" target="_blank" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 ring-1 ring-slate-200 hover:text-slate-900 hover:bg-slate-50">Печатная форма</a>
+                }
                 @if (Model.CanEditDocument)
                 {
                     <button type="submit" form="editDocumentForm" class="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-900">Сохранить</button>
@@ -385,7 +392,7 @@
                     }
                 </div>
 
-                <div class="lg:col-span-5 xl:col-span-4 space-y-6">
+                <div class="space-y-6 lg:col-span-5 xl:col-span-4 xl:sticky xl:top-[88px] xl:max-h-[calc(100vh-112px)] xl:overflow-y-auto xl:pr-1">
                     <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                         <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
                             <div class="text-sm font-semibold text-slate-700">Что происходит сейчас</div>
@@ -406,12 +413,16 @@
                                 <div class="rounded-xl bg-slate-50 px-4 py-3">
                                     <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Маршрут</div>
                                     <div class="mt-1 text-sm font-medium text-slate-900">@routeProgressText</div>
-                                    <div class="mt-2 text-xs text-slate-500">@(approvalStepsCount == 0 ? "Подготовьте маршрут перед отправкой на согласование." : $"Согласовано шагов: {completedApprovalSteps} из {approvalStepsCount}")</div>
+                                    <div class="mt-2 text-xs text-slate-500">@(routeNeedsSetup ? "Подготовьте маршрут перед отправкой на согласование." : $"Согласовано шагов: {completedApprovalSteps} из {approvalStepsCount}")</div>
                                 </div>
                                 <div class="rounded-xl bg-slate-50 px-4 py-3">
                                     <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Следующий участник</div>
                                     <div class="mt-1 text-sm font-medium text-slate-900">
-                                        @if (string.Equals(statusText, "OnApproval", StringComparison.OrdinalIgnoreCase))
+                                        @if (routeNeedsSetup && string.Equals(statusText, "Draft", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <span>Сначала подготовьте маршрут</span>
+                                        }
+                                        else if (string.Equals(statusText, "OnApproval", StringComparison.OrdinalIgnoreCase))
                                         {
                                             @currentApprovalActor
                                         }
@@ -526,6 +537,13 @@
                                     </div>
                                 }
 
+                                @if (isEmployeeRole)
+                                {
+                                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+                                        Здесь нужен только рабочий результат: комментарий, итог исполнения и при необходимости сформированный системой файл.
+                                    </div>
+                                }
+
                                 @if (Model.CanSaveExecutionProgress)
                                 {
                                     <form method="post" action="/Documents/@Model.Id/execution" class="space-y-4">
@@ -549,25 +567,28 @@
                                         </button>
                                     </form>
 
-                                    <form method="post" action="/Documents/@Model.Id/execution-file" enctype="multipart/form-data" class="space-y-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
-                                        @Html.AntiForgeryToken()
-                                        <div>
-                                            <label for="executionFile" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Итоговый файл</label>
-                                            <input id="executionFile" name="executionFile" type="file" accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5" />
-                                            <div class="mt-1 text-xs text-slate-500">Поддерживаются PDF, DOCX, XLSX, PNG и JPEG до 25MB.</div>
-                                        </div>
-                                        <button type="submit" class="w-full rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 ring-1 ring-slate-300 hover:bg-slate-100">
-                                            Загрузить итоговый файл
-                                        </button>
-                                    </form>
+                                    @if (!isEmployeeRole)
+                                    {
+                                        <form method="post" action="/Documents/@Model.Id/execution-file" enctype="multipart/form-data" class="space-y-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+                                            @Html.AntiForgeryToken()
+                                            <div>
+                                                <label for="executionFile" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Итоговый файл</label>
+                                                <input id="executionFile" name="executionFile" type="file" accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5" />
+                                                <div class="mt-1 text-xs text-slate-500">Поддерживаются PDF, DOCX, XLSX, PNG и JPEG до 25MB.</div>
+                                            </div>
+                                            <button type="submit" class="w-full rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 ring-1 ring-slate-300 hover:bg-slate-100">
+                                                Загрузить итоговый файл
+                                            </button>
+                                        </form>
+                                    }
 
                                     <form method="post" action="/Documents/@Model.Id/execution-print-file" class="space-y-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-4">
                                         @Html.AntiForgeryToken()
                                         <div class="text-sm text-blue-900">
-                                            Можно не загружать файл вручную: система сформирует официальную печатную форму из карточки и сохранит ее как итоговый файл исполнения.
+                                            Система сформирует официальный итоговый файл исполнения из карточки документа и сохранит его автоматически.
                                         </div>
                                         <button type="submit" class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
-                                            Сформировать печатную форму как итоговый файл
+                                            Сформировать итоговый файл
                                         </button>
                                     </form>
                                 }
@@ -588,7 +609,7 @@
                                     <div class="mt-1 text-sm leading-6 text-slate-700">@(string.IsNullOrWhiteSpace(Model.ExecutionComment) ? "Комментарий пока не добавлен." : Model.ExecutionComment)</div>
                                 </div>
 
-                                @if (!string.IsNullOrWhiteSpace(Model.ExecutionFileUrl))
+                                @if (showDedicatedExecutionFileBlock)
                                 {
                                     <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
                                         <div class="text-xs font-bold uppercase tracking-wider text-blue-700">Итоговый файл</div>
@@ -617,6 +638,12 @@
                                         }
                                     </div>
                                 }
+                                else if (hasExecutionFile)
+                                {
+                                    <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                                        Итоговый файл уже доступен в блоке просмотра ниже.
+                                    </div>
+                                }
                             </div>
                         </section>
                     }
@@ -637,6 +664,13 @@
                                     <div class="mt-2 text-xs text-slate-500">@(approvalStepsCount == 0 ? "Шаги ещё не подготовлены." : $"Согласовано шагов: {completedApprovalSteps} из {approvalStepsCount}")</div>
                                 </div>
                             </div>
+
+                            @if (routeNeedsSetup)
+                            {
+                                <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                                    Маршрут ещё не подготовлен. Выберите шаблон и сформируйте шаги, чтобы документ можно было отправить на согласование.
+                                </div>
+                            }
 
                             @if (Model.CanConfigureApprovalRoute)
                             {
@@ -660,7 +694,9 @@
                             <div class="space-y-3">
                                 @if (Model.ApprovalRouteSteps.Count == 0)
                                 {
-                                    <div class="text-sm text-slate-500">Шаги маршрута ещё не подготовлены.</div>
+                                    <div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600">
+                                        После подготовки маршрута здесь появятся шаги согласования, роли и текущий ответственный.
+                                    </div>
                                 }
                                 else
                                 {
@@ -749,74 +785,101 @@
                         </div>
                     </section>
 
-                    @if (showAssignmentSection)
+                    @if (isEmployeeRole)
                     {
                         <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                             <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
-                                <div class="text-sm font-semibold text-slate-700">Назначение исполнителя</div>
+                                <div class="text-sm font-semibold text-slate-700">Служебная информация</div>
                             </div>
                             <div class="p-4 space-y-4">
-                                <div class="rounded-xl bg-slate-50 px-4 py-3">
-                                    <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Текущий исполнитель</div>
-                                    <div class="mt-1 font-medium text-slate-900">@(string.IsNullOrWhiteSpace(Model.Assignment.AssignedUserName) ? "Не назначен" : Model.Assignment.AssignedUserName)</div>
+                                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                    <div class="rounded-xl bg-slate-50 px-4 py-3">
+                                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Исполнитель</div>
+                                        <div class="mt-1 text-sm font-medium text-slate-900">@(hasAssignedExecutor ? Model.Assignment.AssignedUserName : "Не назначен")</div>
+                                    </div>
+                                    <div class="rounded-xl bg-slate-50 px-4 py-3">
+                                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Номенклатура</div>
+                                        <div class="mt-1 text-sm font-medium text-slate-900">@(hasNomenclature ? Model.NomenclatureCaseLabel : "Не привязано")</div>
+                                    </div>
                                 </div>
-
-                                @if (canAssignExecutor && Model.Assignment.CanAssign)
-                                {
-                                    <form method="post" action="/Documents/@Model.Id/assign" class="space-y-3">
-                                        @Html.AntiForgeryToken()
-                                        <label class="block text-xs uppercase tracking-wider font-bold text-slate-500">Назначить исполнителя</label>
-                                        <select name="assignedUserId" class="w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5">
-                                            <option value="">Выберите исполнителя</option>
-                                            @foreach (var executor in Model.Assignment.Executors)
-                                            {
-                                                <option value="@executor.UserId" selected="@(Model.Assignment.AssignedUserId == executor.UserId)">@executor.DisplayName (@executor.Email)</option>
-                                            }
-                                        </select>
-                                        <button type="submit" class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Сохранить назначение</button>
-                                    </form>
-                                }
-                                else if (canAssignExecutor)
-                                {
-                                    <div class="text-sm text-slate-500">Назначение доступно после утверждения документа.</div>
-                                }
                             </div>
                         </section>
                     }
-
-                    @if (showNomenclatureSection)
+                    else
                     {
-                        <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                            <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
-                                <div class="text-sm font-semibold text-slate-700">Номенклатура дела</div>
-                            </div>
-                            <div class="p-4 space-y-4">
-                                <div class="rounded-xl bg-slate-50 px-4 py-3">
-                                    <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Текущее дело</div>
-                                    <div class="mt-1 font-medium text-slate-900">@(string.IsNullOrWhiteSpace(Model.NomenclatureCaseLabel) ? "Не привязано" : Model.NomenclatureCaseLabel)</div>
+                        @if (showAssignmentSection)
+                        {
+                            <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+                                    <div class="text-sm font-semibold text-slate-700">Назначение исполнителя</div>
                                 </div>
+                                <div class="p-4 space-y-4">
+                                    <div class="rounded-xl bg-slate-50 px-4 py-3">
+                                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Текущий исполнитель</div>
+                                        <div class="mt-1 font-medium text-slate-900">@(hasAssignedExecutor ? Model.Assignment.AssignedUserName : "Не назначен")</div>
+                                        <div class="mt-2 text-xs text-slate-500">@(hasAssignedExecutor ? "Исполнитель увидит документ в своих задачах и сможет начать работу." : "После утверждения выберите сотрудника, который будет выполнять документ.")</div>
+                                    </div>
 
-                                @if (canAssignExecutor)
-                                {
-                                    <form method="post" action="/Documents/@Model.Id/nomenclature" class="space-y-3">
-                                        @Html.AntiForgeryToken()
-                                        <label class="block text-xs uppercase tracking-wider font-bold text-slate-500">Привязать к делу номенклатуры</label>
-                                        <select name="nomenclatureCaseId" class="w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5">
-                                            <option value="">Не выбрано</option>
-                                            @foreach (var item in Model.NomenclatureCaseOptions)
-                                            {
-                                                <option value="@item.Id" selected="@(Model.NomenclatureCaseId == item.Id)">@item.Label</option>
-                                            }
-                                        </select>
-                                        <div class="text-xs text-slate-500">Перед архивированием документ должен быть привязан к делу номенклатуры.</div>
-                                        <button type="submit" class="w-full rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900">Сохранить номенклатуру</button>
-                                    </form>
-                                }
-                            </div>
-                        </section>
+                                    @if (canAssignExecutor && Model.Assignment.CanAssign)
+                                    {
+                                        <form method="post" action="/Documents/@Model.Id/assign" class="space-y-3">
+                                            @Html.AntiForgeryToken()
+                                            <label class="block text-xs uppercase tracking-wider font-bold text-slate-500">Назначить исполнителя</label>
+                                            <select name="assignedUserId" class="w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5">
+                                                <option value="">Выберите исполнителя</option>
+                                                @foreach (var executor in Model.Assignment.Executors)
+                                                {
+                                                    <option value="@executor.UserId" selected="@(Model.Assignment.AssignedUserId == executor.UserId)">@executor.DisplayName (@executor.Email)</option>
+                                                }
+                                            </select>
+                                            <button type="submit" class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Сохранить назначение</button>
+                                        </form>
+                                    }
+                                    else if (canAssignExecutor)
+                                    {
+                                        <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                                            Назначение станет доступно после завершения согласования и перевода документа в утверждённый статус.
+                                        </div>
+                                    }
+                                </div>
+                            </section>
+                        }
+
+                        @if (showNomenclatureSection)
+                        {
+                            <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+                                    <div class="text-sm font-semibold text-slate-700">Номенклатура дела</div>
+                                </div>
+                                <div class="p-4 space-y-4">
+                                    <div class="rounded-xl bg-slate-50 px-4 py-3">
+                                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Текущее дело</div>
+                                        <div class="mt-1 font-medium text-slate-900">@(hasNomenclature ? Model.NomenclatureCaseLabel : "Не привязано")</div>
+                                        <div class="mt-2 text-xs text-slate-500">@(hasNomenclature ? "Документ уже привязан к делу и сможет быть отправлен в архив." : "Без привязки к делу документ нельзя архивировать.")</div>
+                                    </div>
+
+                                    @if (canAssignExecutor)
+                                    {
+                                        <form method="post" action="/Documents/@Model.Id/nomenclature" class="space-y-3">
+                                            @Html.AntiForgeryToken()
+                                            <label class="block text-xs uppercase tracking-wider font-bold text-slate-500">Привязать к делу номенклатуры</label>
+                                            <select name="nomenclatureCaseId" class="w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5">
+                                                <option value="">Не выбрано</option>
+                                                @foreach (var item in Model.NomenclatureCaseOptions)
+                                                {
+                                                    <option value="@item.Id" selected="@(Model.NomenclatureCaseId == item.Id)">@item.Label</option>
+                                                }
+                                            </select>
+                                            <div class="text-xs text-slate-500">Перед архивированием документ должен быть привязан к делу номенклатуры.</div>
+                                            <button type="submit" class="w-full rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900">Сохранить номенклатуру</button>
+                                        </form>
+                                    }
+                                </div>
+                            </section>
+                        }
                     }
 
-                    <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden xl:sticky xl:top-[88px]">
+                    <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                         <div class="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
                             <div>
                                 <div class="text-sm font-semibold text-slate-700">@previewTitle</div>
@@ -833,8 +896,16 @@
                         <div class="bg-slate-100 p-3">
                             @if (string.IsNullOrWhiteSpace(previewUrl))
                             {
-                                <div class="min-h-[220px] flex items-center justify-center text-sm text-slate-500 text-center px-6">
-                                    Документ создан без исходного файла. Для документов по шаблону основным содержанием является карточка слева; файл появится здесь после загрузки исходного документа или итогового файла исполнения.
+                                <div class="flex min-h-[220px] items-center justify-center px-6 text-center">
+                                    <div class="max-w-sm space-y-3 text-sm text-slate-500">
+                                        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-400 shadow-sm">
+                                            <span class="material-symbols-outlined">visibility_off</span>
+                                        </div>
+                                        <div class="font-medium text-slate-700">Пока нет файла для просмотра</div>
+                                        <div>
+                                            Документ создан по карточке без исходного вложения. Превью появится после загрузки исходного документа или итогового файла исполнения.
+                                        </div>
+                                    </div>
                                 </div>
                             }
                             else if (string.Equals(previewKind, "image", StringComparison.OrdinalIgnoreCase))
