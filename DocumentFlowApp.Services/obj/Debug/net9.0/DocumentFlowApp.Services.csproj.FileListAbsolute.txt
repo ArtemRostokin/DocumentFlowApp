@@ -16,3 +16,4 @@ D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\Documen
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\refint\DocumentFlowApp.Services.dll
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\DocumentFlowApp.Services.pdb
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\obj\Debug\net9.0\ref\DocumentFlowApp.Services.dll
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Services\bin\Debug\net9.0\Scripts\ocr-image.ps1

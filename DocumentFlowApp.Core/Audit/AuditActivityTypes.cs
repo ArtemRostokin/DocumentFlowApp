@@ -15,6 +15,9 @@ public static class AuditActivityTypes
     public const string ExecutionSaved = "execution-saved";
     public const string ExecutionFileGenerated = "execution-file-generated";
     public const string ExecutionFileUploaded = "execution-file-uploaded";
+    public const string OcrExtracted = "ocr-extracted";
+    public const string AiClassified = "ai-classified";
+    public const string AiManualCorrection = "ai-manual-correction";
     public const string UserLogin = "user-login";
     public const string UserLogout = "user-logout";
     public const string UserCreated = "user-created";
@@ -38,6 +41,9 @@ public static class AuditActivityTypes
         ExecutionSaved,
         ExecutionFileGenerated,
         ExecutionFileUploaded,
+        OcrExtracted,
+        AiClassified,
+        AiManualCorrection,
         UserLogin,
         UserLogout,
         UserCreated,
@@ -62,6 +68,9 @@ public static class AuditActivityTypes
         ExecutionSaved => "Сохранение хода исполнения",
         ExecutionFileGenerated => "Формирование итогового файла",
         ExecutionFileUploaded => "Загрузка итогового файла",
+        OcrExtracted => "OCR-извлечение текста",
+        AiClassified => "AI-классификация",
+        AiManualCorrection => "Ручная корректировка AI",
         UserLogin => "Вход в систему",
         UserLogout => "Выход из системы",
         UserCreated => "Создание пользователя",

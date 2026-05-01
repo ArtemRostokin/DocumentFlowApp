@@ -138,6 +138,9 @@ builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAuditService, AuditService>();
+builder.Services.AddScoped<IAiClassifier, MlNetAiClassifier>();
+builder.Services.AddScoped<IOcrService, WindowsOcrService>();
+builder.Services.AddScoped<ITextExtractionService, DocumentTextExtractionService>();
 
     var app = builder.Build();
     AppendTrace("App built");

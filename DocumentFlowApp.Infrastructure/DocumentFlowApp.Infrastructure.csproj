@@ -12,10 +12,18 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.ML" Version="4.0.1" />
     <PackageReference Include="Microsoft.Extensions.Identity.Core" Version="9.0.2" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.2" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.8.0" />
+    <PackageReference Include="UglyToad.PdfPig" Version="1.7.0-custom-5" />
 	<ProjectReference Include="..\DocumentFlowApp.Core\DocumentFlowApp.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Scripts\ocr-image.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

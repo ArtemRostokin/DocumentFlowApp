@@ -133,6 +133,10 @@
               "target": "Package",
               "version": "[9.0.2, )"
             },
+            "Microsoft.ML": {
+              "target": "Package",
+              "version": "[4.0.1, )"
+            },
             "Npgsql.EntityFrameworkCore.PostgreSQL": {
               "target": "Package",
               "version": "[9.0.2, )"
@@ -140,6 +144,10 @@
             "System.IdentityModel.Tokens.Jwt": {
               "target": "Package",
               "version": "[8.8.0, )"
+            },
+            "UglyToad.PdfPig": {
+              "target": "Package",
+              "version": "[1.7.0-custom-5, )"
             }
           },
           "imports": [

@@ -79,7 +79,7 @@ public class AdminControllerTests
         Assert.Equal(1, model.InWorkDocuments);
         Assert.Equal(1, model.ActiveNomenclatureCases);
         Assert.Equal(1, model.ActiveNomenclatureRules);
-        Assert.NotEmpty(model.RecentActivities);
+        Assert.NotEmpty(model.AttentionItems);
     }
 
     [Fact]

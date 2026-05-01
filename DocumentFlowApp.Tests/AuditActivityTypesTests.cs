@@ -14,6 +14,9 @@ public class AuditActivityTypesTests
         Assert.Contains(AuditActivityTypes.UserCreated, AuditActivityTypes.All);
         Assert.Contains(AuditActivityTypes.UserUpdated, AuditActivityTypes.All);
         Assert.Contains(AuditActivityTypes.UserPasswordReset, AuditActivityTypes.All);
+        Assert.Contains(AuditActivityTypes.OcrExtracted, AuditActivityTypes.All);
+        Assert.Contains(AuditActivityTypes.AiClassified, AuditActivityTypes.All);
+        Assert.Contains(AuditActivityTypes.AiManualCorrection, AuditActivityTypes.All);
         Assert.Contains(AuditActivityTypes.NomenclatureCaseCreated, AuditActivityTypes.All);
         Assert.Contains(AuditActivityTypes.NomenclatureRuleCreated, AuditActivityTypes.All);
     }
@@ -21,6 +24,9 @@ public class AuditActivityTypesTests
     [Theory]
     [InlineData(AuditActivityTypes.DocumentCreated, "Создание документа")]
     [InlineData(AuditActivityTypes.ExecutionFileUploaded, "Загрузка итогового файла")]
+    [InlineData(AuditActivityTypes.OcrExtracted, "OCR-извлечение текста")]
+    [InlineData(AuditActivityTypes.AiClassified, "AI-классификация")]
+    [InlineData(AuditActivityTypes.AiManualCorrection, "Ручная корректировка AI")]
     [InlineData(AuditActivityTypes.UserLogin, "Вход в систему")]
     [InlineData(AuditActivityTypes.UserCreated, "Создание пользователя")]
     [InlineData(AuditActivityTypes.UserPasswordReset, "Сброс пароля пользователя")]

@@ -549,6 +549,9 @@ public class DocumentsControllerTests
         return new DocumentsController(
             new DocumentService(repository),
             audit,
+            new FakeAiClassifier(),
+            new FakeOcrService(),
+            new FakeTextExtractionService(),
             dbContext ?? CreateDbContext(),
             new FakeWebHostEnvironment(),
             NullLogger<DocumentsController>.Instance)

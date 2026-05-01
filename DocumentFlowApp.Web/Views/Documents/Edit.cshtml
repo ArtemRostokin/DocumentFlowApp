@@ -222,15 +222,21 @@
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 @foreach (var s in Model.AiSuggestions)
                                 {
-                                    var isHigh = s.Confidence >= 80;
-                                    <div class="rounded-xl border @(isHigh ? "border-emerald-200 bg-emerald-50/60" : "border-amber-200 bg-amber-50/70") px-4 py-3">
+                                    var isHigh = s.Confidence >= 85;
+                                    var needsReview = s.Confidence >= 60 && s.Confidence < 85;
+                                    <div class="rounded-xl border @(isHigh ? "border-emerald-200 bg-emerald-50/60" : needsReview ? "border-amber-200 bg-amber-50/70" : "border-slate-200 bg-slate-50") px-4 py-3">
                                         <div class="flex items-start justify-between gap-3">
                                             <div>
                                                 <div class="text-[10px] uppercase tracking-widest font-bold text-slate-500">@s.Label</div>
                                                 <div class="mt-1 text-sm font-medium text-slate-900 break-words">@s.SuggestedValue</div>
-                                                <div class="mt-2 text-xs text-slate-600">Уверенность: <span class="font-semibold">@s.Confidence%</span></div>
+                                                <div class="mt-2 text-xs text-slate-600">
+                                                    Уверенность: <span class="font-semibold">@s.Confidence%</span>
+                                                    <span class="ml-2 @(isHigh ? "text-emerald-700" : needsReview ? "text-amber-700" : "text-slate-500")">
+                                                        @(isHigh ? "автоприменение допустимо" : needsReview ? "нужна проверка" : "лучше проверить вручную")
+                                                    </span>
+                                                </div>
                                             </div>
-                                            <button type="button" class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold @(isHigh ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-amber-600 text-white hover:bg-amber-700")" data-ai-apply data-field="@s.FieldKey" data-value="@s.SuggestedValue">Применить</button>
+                                            <button type="button" class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold @(isHigh ? "bg-emerald-600 text-white hover:bg-emerald-700" : needsReview ? "bg-amber-600 text-white hover:bg-amber-700" : "bg-slate-700 text-white hover:bg-slate-800")" data-ai-apply data-field="@s.FieldKey" data-value="@s.SuggestedValue">Применить</button>
                                         </div>
                                     </div>
                                 }

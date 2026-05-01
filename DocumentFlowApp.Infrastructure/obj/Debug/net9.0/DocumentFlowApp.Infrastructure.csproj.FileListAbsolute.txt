@@ -16,3 +16,4 @@ D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\obj\Debug\net9.0\r
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\obj\Debug\net9.0\DocumentFlowApp.Infrastructure.pdb
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\obj\Debug\net9.0\DocumentFlowApp.Infrastructure.genruntimeconfig.cache
 D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\obj\Debug\net9.0\ref\DocumentFlowApp.Infrastructure.dll
+D:\DocumentApp\DocumentFlowApp\DocumentFlowApp.Infrastructure\bin\Debug\net9.0\Scripts\ocr-image.ps1

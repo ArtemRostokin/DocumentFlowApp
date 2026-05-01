@@ -31,6 +31,9 @@ public class DocumentsController : Controller
 
     private readonly IDocumentService _documentService;
     private readonly IAuditService _auditService;
+    private readonly IAiClassifier _aiClassifier;
+    private readonly IOcrService _ocrService;
+    private readonly ITextExtractionService _textExtractionService;
     private readonly ApplicationDbContext _dbContext;
     private readonly IWebHostEnvironment _environment;
     private readonly ILogger<DocumentsController> _logger;
@@ -38,12 +41,18 @@ public class DocumentsController : Controller
     public DocumentsController(
         IDocumentService documentService,
         IAuditService auditService,
+        IAiClassifier aiClassifier,
+        IOcrService ocrService,
+        ITextExtractionService textExtractionService,
         ApplicationDbContext dbContext,
         IWebHostEnvironment environment,
         ILogger<DocumentsController> logger)
     {
         _documentService = documentService;
         _auditService = auditService;
+        _aiClassifier = aiClassifier;
+        _ocrService = ocrService;
+        _textExtractionService = textExtractionService;
         _dbContext = dbContext;
         _environment = environment;
         _logger = logger;
@@ -325,6 +334,9 @@ public class DocumentsController : Controller
             if (doc is null)
                 return NotFound();
 
+            var previousType = TryParseEnum<DocumentType>(doc.DocumentType) ?? DocumentType.Other;
+            var classificationBeforeSave = _aiClassifier.ClassifyIncomingDocument(doc.Title ?? model.Title, doc.ExtractedText);
+
             doc.Title = model.Title;
             doc.ExtractedText = model.Description;
             doc.DocumentType = (model.Type ?? DocumentType.Other).ToString();
@@ -340,6 +352,22 @@ public class DocumentsController : Controller
                 AuditActivityTypes.DocumentUpdated,
                 $"Карточка обновлена. Тип: {GetDocumentTypeLabel(model.Type ?? DocumentType.Other)}.",
                 cancellationToken);
+
+            if ((model.Type ?? DocumentType.Other) != classificationBeforeSave.SuggestedType &&
+                classificationBeforeSave.ConfidenceScore >= 0.60m)
+            {
+                await LogDocumentActivityAsync(
+                    doc.DocumentId,
+                    AuditActivityTypes.AiManualCorrection,
+                    $"Менеджер изменил AI-рекомендацию с {GetDocumentTypeLabel(classificationBeforeSave.SuggestedType)} на {GetDocumentTypeLabel(model.Type ?? DocumentType.Other)} (уверенность AI: {classificationBeforeSave.ConfidencePercent}%).",
+                    cancellationToken);
+            }
+
+            if (previousType != (model.Type ?? DocumentType.Other))
+            {
+                var updatedClassification = _aiClassifier.ClassifyIncomingDocument(model.Title, model.Description);
+                await SaveAiMetadataAsync(doc.DocumentId, updatedClassification, cancellationToken);
+            }
 
             TempData["SuccessMessage"] = "Изменения сохранены.";
             return RedirectToAction("Index", "Home");
@@ -787,6 +815,9 @@ public class DocumentsController : Controller
         }
 
         var createdCount = 0;
+        var autoClassifiedCount = 0;
+        var reviewCount = 0;
+        var lowConfidenceCount = 0;
 
         try
         {
@@ -805,33 +836,60 @@ public class DocumentsController : Controller
                 }
 
                 var stored = await SaveUploadedDocumentFileAsync(file, cancellationToken);
-                var classifiedType = ClassifyIncomingDocument(file.FileName);
+                var extractedTextResult = await TryExtractIncomingTextAsync(stored.PhysicalPath, file.FileName, cancellationToken);
+                var classification = _aiClassifier.ClassifyIncomingDocument(file.FileName, extractedTextResult.ExtractedText);
+                var classifiedType = classification.ShouldAutoAssignType
+                    ? classification.SuggestedType
+                    : DocumentType.Other;
                 var title = Path.GetFileNameWithoutExtension(file.FileName);
 
                 var created = await _documentService.CreateDocumentAsync(new CreateDocumentRequest
                 {
                     Title = string.IsNullOrWhiteSpace(title) ? $"Входящий документ {DateTime.UtcNow:yyyyMMdd-HHmmss}" : title,
-                    Description = $"Загружено из внешнего источника. Предварительная AI-классификация: {GetDocumentTypeLabel(classifiedType)}.",
+                    Description = BuildIncomingDocumentDescription(classification, extractedTextResult),
                     Type = classifiedType,
                     Priority = 2,
-                    Tags = "incoming,batch,ai-classified",
+                    Tags = string.Join(',', classification.SuggestedTags.Append("batch")),
                     FilePath = stored.FilePath,
                     FileSize = stored.FileSize,
                     FileHash = stored.FileHash
                 });
 
+                await SaveAiMetadataAsync(created.DocumentId, classification, cancellationToken);
                 await LogDocumentActivityAsync(
                     created.DocumentId,
                     AuditActivityTypes.IncomingUploaded,
                     $"Загружен входящий файл {Path.GetFileName(file.FileName)}.",
                     cancellationToken);
+                if (extractedTextResult.IsSuccessful)
+                {
+                    await LogDocumentActivityAsync(
+                        created.DocumentId,
+                        AuditActivityTypes.OcrExtracted,
+                        BuildTextExtractionAuditDetails(extractedTextResult, file.FileName),
+                        cancellationToken);
+                }
+                await LogDocumentActivityAsync(
+                    created.DocumentId,
+                    AuditActivityTypes.AiClassified,
+                    BuildAiClassificationAuditDetails(classification, file.FileName),
+                    cancellationToken);
                 await TryAutoAssignRouteTemplateAsync(created, cancellationToken);
                 await TryAutoAssignNomenclatureAsync(created, cancellationToken);
+
+                if (classification.ShouldAutoAssignType)
+                    autoClassifiedCount++;
+                else if (classification.RequiresManualReview)
+                    reviewCount++;
+                else
+                    lowConfidenceCount++;
 
                 createdCount++;
             }
 
-            TempData["SuccessMessage"] = $"Загружено входящих документов: {createdCount}.";
+            TempData["SuccessMessage"] =
+                $"Загружено входящих документов: {createdCount}. " +
+                $"Автоклассификация: {autoClassifiedCount}, требуется проверка: {reviewCount}, низкая уверенность: {lowConfidenceCount}.";
             return RedirectToAction("Index", "Home");
         }
         catch (Exception ex)
@@ -2231,7 +2289,7 @@ public class DocumentsController : Controller
         return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
 
-    private async Task<(string FilePath, long FileSize, string FileHash)> SaveUploadedDocumentFileAsync(
+    private async Task<(string FilePath, string PhysicalPath, long FileSize, string FileHash)> SaveUploadedDocumentFileAsync(
         IFormFile file,
         CancellationToken cancellationToken)
     {
@@ -2249,7 +2307,7 @@ public class DocumentsController : Controller
             await fileStream.FlushAsync(cancellationToken);
         }
 
-        return ($"/Documents/File/{fileName}", file.Length, await ComputeSha256Async(physicalPath, cancellationToken));
+        return ($"/Documents/File/{fileName}", physicalPath, file.Length, await ComputeSha256Async(physicalPath, cancellationToken));
     }
 
     private async Task<(string FilePath, string FileName)> SaveGeneratedExecutionPrintFileAsync(
@@ -2441,6 +2499,12 @@ public class DocumentsController : Controller
         if (string.Equals(ext, ".pdf", StringComparison.OrdinalIgnoreCase))
             return IsAllowedPdf(file);
 
+        if (string.Equals(ext, ".docx", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Equals(file.ContentType, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(file.ContentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase);
+        }
+
         if (string.Equals(ext, ".jpg", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(ext, ".jpeg", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(ext, ".png", StringComparison.OrdinalIgnoreCase))
@@ -2482,34 +2546,114 @@ public class DocumentsController : Controller
         return false;
     }
 
-    private static DocumentType ClassifyIncomingDocument(string fileName)
+    private static string BuildIncomingAiDescription(AiClassificationResult classification)
     {
-        var name = Path.GetFileNameWithoutExtension(fileName).ToLowerInvariant();
+        if (classification.ShouldAutoAssignType)
+            return $"Загружено из внешнего источника. AI автоматически определил тип: {GetDocumentTypeLabel(classification.SuggestedType)} ({classification.ConfidencePercent}%).";
 
-        if (ContainsAny(name, "договор", "contract", "agreement"))
-            return DocumentType.Contract;
+        if (classification.RequiresManualReview)
+            return $"Загружено из внешнего источника. AI предлагает тип {GetDocumentTypeLabel(classification.SuggestedType)}, но требуется ручная проверка ({classification.ConfidencePercent}%).";
 
-        if (ContainsAny(name, "счет", "счёт", "invoice", "bill"))
-            return DocumentType.Invoice;
-
-        if (ContainsAny(name, "акт", "act"))
-            return DocumentType.Act;
-
-        if (ContainsAny(name, "приказ", "order"))
-            return DocumentType.Order;
-
-        if (ContainsAny(name, "заявление", "application", "request"))
-            return DocumentType.Application;
-
-        if (ContainsAny(name, "отчет", "отчёт", "report"))
-            return DocumentType.Report;
-
-        return DocumentType.Other;
+        return "Загружено из внешнего источника. AI не смог уверенно определить тип, требуется ручная классификация.";
     }
 
-    private static bool ContainsAny(string source, params string[] values)
+    private static string BuildIncomingDocumentDescription(AiClassificationResult classification, TextExtractionResult extractionResult)
     {
-        return values.Any(value => source.Contains(value, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(extractionResult.ExtractedText))
+            return extractionResult.ExtractedText;
+
+        return BuildIncomingAiDescription(classification);
+    }
+
+    private static string BuildTextExtractionAuditDetails(TextExtractionResult extractionResult, string fileName)
+    {
+        var mode = extractionResult.IsFallback ? "fallback" : "основной режим";
+        return $"Файл {Path.GetFileName(fileName)}: извлечение текста ({mode}) через {extractionResult.Provider}. Уверенность: {(int)Math.Round(extractionResult.ConfidenceScore * 100m, MidpointRounding.AwayFromZero)}%.";
+    }
+
+    private static string BuildAiClassificationAuditDetails(AiClassificationResult classification, string fileName)
+    {
+        var mode = classification.ShouldAutoAssignType
+            ? "автоклассификация"
+            : classification.RequiresManualReview
+                ? "требует подтверждения"
+                : "низкая уверенность";
+
+        return $"Файл {Path.GetFileName(fileName)}: AI предложил тип {GetDocumentTypeLabel(classification.SuggestedType)} ({classification.ConfidencePercent}%), режим — {mode}.";
+    }
+
+    private async Task<TextExtractionResult> TryExtractIncomingTextAsync(string physicalPath, string originalFileName, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var extension = Path.GetExtension(originalFileName);
+            if (string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase))
+            {
+                var ocrResult = await _ocrService.ExtractTextAsync(physicalPath, originalFileName, cancellationToken);
+                return new TextExtractionResult
+                {
+                    IsSuccessful = ocrResult.IsSuccessful,
+                    IsFallback = ocrResult.IsFallback,
+                    Provider = ocrResult.Provider,
+                    ExtractedText = ocrResult.ExtractedText,
+                    ConfidenceScore = ocrResult.ConfidenceScore,
+                    Summary = ocrResult.Summary
+                };
+            }
+
+            return await _textExtractionService.ExtractTextAsync(physicalPath, originalFileName, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Text extraction failed for {FileName}", originalFileName);
+            return new TextExtractionResult
+            {
+                IsSuccessful = false,
+                Provider = "text-extraction-error",
+                Summary = "Извлечение текста завершилось с ошибкой."
+            };
+        }
+    }
+
+    private async Task SaveAiMetadataAsync(int documentId, AiClassificationResult classification, CancellationToken cancellationToken)
+    {
+        var existing = await _dbContext.DocumentAiMetadata
+            .Where(x => x.DocumentId == documentId)
+            .OrderByDescending(x => x.ProcessingDate)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var extractedEntities = JsonSerializer.Serialize(new
+        {
+            classification.SuggestedType,
+            classification.ConfidencePercent,
+            classification.ShouldAutoAssignType,
+            classification.RequiresManualReview
+        });
+
+        if (existing is null)
+        {
+            _dbContext.DocumentAiMetadata.Add(new DocumentAiMetadata
+            {
+                DocumentId = documentId,
+                AiSummary = classification.Summary,
+                AiTags = string.Join(',', classification.SuggestedTags),
+                ConfidenceScore = classification.ConfidenceScore,
+                ExtractedEntities = extractedEntities,
+                ProcessingDate = DateTime.UtcNow
+            });
+        }
+        else
+        {
+            existing.AiSummary = classification.Summary;
+            existing.AiTags = string.Join(',', classification.SuggestedTags);
+            existing.ConfidenceScore = classification.ConfidenceScore;
+            existing.ExtractedEntities = extractedEntities;
+            existing.ProcessingDate = DateTime.UtcNow;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
     private static string GetUploadsRootPath()
@@ -2619,59 +2763,18 @@ public class DocumentsController : Controller
         _ => "Неизвестно"
     };
 
-    private static IReadOnlyList<AiSuggestionViewModel> BuildAiSuggestions(Document doc)
+    private IReadOnlyList<AiSuggestionViewModel> BuildAiSuggestions(Document doc)
     {
-        var seed = doc.DocumentId;
-        if (!string.IsNullOrWhiteSpace(doc.FileHash))
-        {
-            unchecked
+        return _aiClassifier
+            .BuildSuggestions(doc)
+            .Select(s => new AiSuggestionViewModel
             {
-                foreach (var ch in doc.FileHash)
-                    seed = (seed * 31) + ch;
-            }
-        }
-
-        var rng = new Random(seed);
-
-        int Conf(bool high) => high ? rng.Next(82, 97) : rng.Next(45, 72);
-        bool Flip() => rng.NextDouble() > 0.45;
-
-        var currentType = TryParseEnum<DocumentType>(doc.DocumentType) ?? DocumentType.Other;
-        var availableTypes = Enum.GetValues<DocumentType>();
-        var suggestedType = Flip() ? currentType : availableTypes[rng.Next(availableTypes.Length)];
-
-        var currentDue = doc.DueDate?.ToString("yyyy-MM-dd") ?? string.Empty;
-        var suggestedDue = string.IsNullOrWhiteSpace(currentDue)
-            ? DateTime.UtcNow.Date.AddDays(rng.Next(2, 20)).ToString("yyyy-MM-dd")
-            : currentDue;
-
-        var title = doc.Title ?? string.Empty;
-        var suggestedTitle = string.IsNullOrWhiteSpace(title) ? $"Документ #{doc.DocumentId}" : title;
-
-        var description = doc.ExtractedText ?? string.Empty;
-        var suggestedDescription = string.IsNullOrWhiteSpace(description)
-            ? "Извлечено ИИ: краткое описание документа."
-            : description;
-
-        var tags = doc.Tags ?? string.Empty;
-        var suggestedTags = string.IsNullOrWhiteSpace(tags) ? "pdf,входящие" : tags;
-
-        var priority = doc.Priority?.ToString() ?? string.Empty;
-        var suggestedPriority = string.IsNullOrWhiteSpace(priority) ? rng.Next(1, 4).ToString() : priority;
-
-        var lowKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var key in new[] { "title", "type", "duedate", "description", "priority", "tags" }.OrderBy(_ => rng.Next()).Take(3))
-            lowKeys.Add(key);
-
-        return
-        [
-            new AiSuggestionViewModel { FieldKey = "type", Label = "Тип", SuggestedValue = suggestedType.ToString(), Confidence = Conf(!lowKeys.Contains("type")) },
-            new AiSuggestionViewModel { FieldKey = "duedate", Label = "Срок исполнения", SuggestedValue = suggestedDue, Confidence = Conf(!lowKeys.Contains("duedate")) },
-            new AiSuggestionViewModel { FieldKey = "title", Label = "Название", SuggestedValue = suggestedTitle, Confidence = Conf(!lowKeys.Contains("title")) },
-            new AiSuggestionViewModel { FieldKey = "description", Label = "Описание", SuggestedValue = suggestedDescription, Confidence = Conf(!lowKeys.Contains("description")) },
-            new AiSuggestionViewModel { FieldKey = "priority", Label = "Приоритет", SuggestedValue = suggestedPriority, Confidence = Conf(!lowKeys.Contains("priority")) },
-            new AiSuggestionViewModel { FieldKey = "tags", Label = "Теги", SuggestedValue = suggestedTags, Confidence = Conf(!lowKeys.Contains("tags")) }
-        ];
+                FieldKey = s.FieldKey,
+                Label = s.Label,
+                SuggestedValue = s.SuggestedValue,
+                Confidence = s.ConfidencePercent
+            })
+            .ToList();
     }
 
     private async Task EnrichEditModelAsync(EditDocumentPageViewModel model)
