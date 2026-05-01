@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("DocumentFlowApp.Core")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+97a43fa6ac9fefc4672ea0abda1ab90b3e5c7f66")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9fdc24bac96a32d6b3f9f208bf1d1191a5e50dd5")]
 [assembly: System.Reflection.AssemblyProductAttribute("DocumentFlowApp.Core")]
 [assembly: System.Reflection.AssemblyTitleAttribute("DocumentFlowApp.Core")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

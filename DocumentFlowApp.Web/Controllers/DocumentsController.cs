@@ -34,6 +34,7 @@ public class DocumentsController : Controller
     private readonly IAiClassifier _aiClassifier;
     private readonly IOcrService _ocrService;
     private readonly ITextExtractionService _textExtractionService;
+    private readonly IDocumentFieldExtractor _documentFieldExtractor;
     private readonly ApplicationDbContext _dbContext;
     private readonly IWebHostEnvironment _environment;
     private readonly ILogger<DocumentsController> _logger;
@@ -44,6 +45,7 @@ public class DocumentsController : Controller
         IAiClassifier aiClassifier,
         IOcrService ocrService,
         ITextExtractionService textExtractionService,
+        IDocumentFieldExtractor documentFieldExtractor,
         ApplicationDbContext dbContext,
         IWebHostEnvironment environment,
         ILogger<DocumentsController> logger)
@@ -53,6 +55,7 @@ public class DocumentsController : Controller
         _aiClassifier = aiClassifier;
         _ocrService = ocrService;
         _textExtractionService = textExtractionService;
+        _documentFieldExtractor = documentFieldExtractor;
         _dbContext = dbContext;
         _environment = environment;
         _logger = logger;
@@ -254,12 +257,13 @@ public class DocumentsController : Controller
             ExecutionFileUrl = doc.ExecutionFilePath,
             ExecutionFileName = doc.ExecutionFileName,
             ExecutionFileKind = GetFileKind(doc.ExecutionFilePath),
-            AiSuggestions = BuildAiSuggestions(doc),
+            AiSuggestions = await BuildAiSuggestionsAsync(doc, cancellationToken),
             Assignment = await BuildAssignmentPanelAsync(doc, cancellationToken)
         };
         model.TemplateName = model.TemplateFields.Count > 0
             ? await GetTemplateNameAsync(doc.TemplateId, cancellationToken)
             : null;
+        model.TemplateFieldValues = model.TemplateFields.ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
         ApplyExecutionHints(model);
 
         ApplyEditAccessState(model, doc);
@@ -310,6 +314,7 @@ public class DocumentsController : Controller
         model.TemplateName = model.TemplateFields.Count > 0
             ? await GetTemplateNameAsync(doc.TemplateId, cancellationToken)
             : null;
+        model.TemplateFieldValues = model.TemplateFields.ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
         ApplyExecutionHints(model);
 
         return View(model);
@@ -363,10 +368,28 @@ public class DocumentsController : Controller
                     cancellationToken);
             }
 
-            if (previousType != (model.Type ?? DocumentType.Other))
+            var currentType = model.Type ?? DocumentType.Other;
+            if (previousType != currentType)
             {
                 var updatedClassification = _aiClassifier.ClassifyIncomingDocument(model.Title, model.Description);
-                await SaveAiMetadataAsync(doc.DocumentId, updatedClassification, cancellationToken);
+                await SaveAiMetadataAsync(
+                    doc.DocumentId,
+                    updatedClassification,
+                    doc.ExtractedText,
+                    currentType,
+                    model.TemplateFieldValues,
+                    cancellationToken);
+            }
+            else if (HasConfirmedTemplateFieldValues(model.TemplateFieldValues))
+            {
+                var updatedClassification = _aiClassifier.ClassifyIncomingDocument(model.Title, model.Description);
+                await SaveAiMetadataAsync(
+                    doc.DocumentId,
+                    updatedClassification,
+                    doc.ExtractedText,
+                    currentType,
+                    model.TemplateFieldValues,
+                    cancellationToken);
             }
 
             TempData["SuccessMessage"] = "Изменения сохранены.";
@@ -855,7 +878,13 @@ public class DocumentsController : Controller
                     FileHash = stored.FileHash
                 });
 
-                await SaveAiMetadataAsync(created.DocumentId, classification, cancellationToken);
+                await SaveAiMetadataAsync(
+                    created.DocumentId,
+                    classification,
+                    created.ExtractedText,
+                    classification.SuggestedType,
+                    null,
+                    cancellationToken);
                 await LogDocumentActivityAsync(
                     created.DocumentId,
                     AuditActivityTypes.IncomingUploaded,
@@ -1948,23 +1977,27 @@ public class DocumentsController : Controller
         Document document,
         CancellationToken cancellationToken)
     {
-        if (document.TemplateId is null)
+        var documentType = ParseDocumentType(document.DocumentType) ?? DocumentType.Other;
+        var templateFields = await LoadTemplateFieldDefinitionsAsync(document.TemplateId, documentType, cancellationToken);
+        if (templateFields.Count == 0)
             return [];
 
-        var template = await _dbContext.Templates
-            .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.TemplateId == document.TemplateId.Value, cancellationToken);
+        var snapshot = await LoadLatestAiSnapshotAsync(document.DocumentId, cancellationToken);
+        var extractedByKey = snapshot?.Fields
+            .GroupBy(x => x.FieldKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase)
+            ?? new Dictionary<string, ExtractedFieldResult>(StringComparer.OrdinalIgnoreCase);
 
-        if (template is null)
-            return [];
-
-        var mappedTemplate = MapTemplate(template);
-        return mappedTemplate.Fields
+        return templateFields
             .Select(field => new DocumentTemplateFieldDisplayViewModel
             {
+                Key = field.Key,
                 Label = field.Label,
-                Value = GetTemplateFieldValue(document.ExtractedText, field.Label, "Не заполнено"),
-                Required = field.Required
+                Value = extractedByKey.TryGetValue(field.Key, out var extracted)
+                    ? extracted.SuggestedValue
+                    : GetTemplateFieldValue(document.ExtractedText, field.Label, "Не заполнено"),
+                Required = field.Required,
+                InputType = field.InputType
             })
             .ToList();
     }
@@ -2617,19 +2650,34 @@ public class DocumentsController : Controller
         }
     }
 
-    private async Task SaveAiMetadataAsync(int documentId, AiClassificationResult classification, CancellationToken cancellationToken)
+    private async Task SaveAiMetadataAsync(
+        int documentId,
+        AiClassificationResult classification,
+        string? extractedText,
+        DocumentType effectiveType,
+        IReadOnlyDictionary<string, string>? templateFieldOverrides,
+        CancellationToken cancellationToken)
     {
         var existing = await _dbContext.DocumentAiMetadata
             .Where(x => x.DocumentId == documentId)
             .OrderByDescending(x => x.ProcessingDate)
             .FirstOrDefaultAsync(cancellationToken);
 
-        var extractedEntities = JsonSerializer.Serialize(new
+        var fieldExtraction = _documentFieldExtractor.Extract(effectiveType, extractedText);
+        var mergedFields = await MergeTemplateFieldValuesAsync(
+            documentId,
+            effectiveType,
+            fieldExtraction.Fields,
+            templateFieldOverrides,
+            cancellationToken);
+        var extractedEntities = JsonSerializer.Serialize(new DocumentAiSnapshot
         {
-            classification.SuggestedType,
-            classification.ConfidencePercent,
-            classification.ShouldAutoAssignType,
-            classification.RequiresManualReview
+            SuggestedType = classification.SuggestedType.ToString(),
+            EffectiveType = effectiveType.ToString(),
+            ConfidencePercent = classification.ConfidencePercent,
+            ShouldAutoAssignType = classification.ShouldAutoAssignType,
+            RequiresManualReview = classification.RequiresManualReview,
+            Fields = mergedFields
         });
 
         if (existing is null)
@@ -2654,6 +2702,59 @@ public class DocumentsController : Controller
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<List<ExtractedFieldResult>> MergeTemplateFieldValuesAsync(
+        int documentId,
+        DocumentType effectiveType,
+        IReadOnlyList<ExtractedFieldResult> extractedFields,
+        IReadOnlyDictionary<string, string>? templateFieldOverrides,
+        CancellationToken cancellationToken)
+    {
+        var templateFields = await LoadTemplateFieldDefinitionsAsync(null, effectiveType, cancellationToken);
+        var persistedSnapshot = await LoadLatestAiSnapshotAsync(documentId, cancellationToken);
+        var persistedByKey = persistedSnapshot?.Fields
+            .GroupBy(x => x.FieldKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase)
+            ?? new Dictionary<string, ExtractedFieldResult>(StringComparer.OrdinalIgnoreCase);
+        var extractedByKey = extractedFields
+            .GroupBy(x => x.FieldKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+        var result = new List<ExtractedFieldResult>();
+
+        if (templateFields.Count == 0)
+            return extractedFields.ToList();
+
+        foreach (var templateField in templateFields)
+        {
+            if (templateFieldOverrides is not null &&
+                templateFieldOverrides.TryGetValue(templateField.Key, out var overrideValue) &&
+                !string.IsNullOrWhiteSpace(overrideValue))
+            {
+                result.Add(new ExtractedFieldResult
+                {
+                    FieldKey = templateField.Key,
+                    Label = templateField.Label,
+                    SuggestedValue = overrideValue.Trim(),
+                    ConfidenceScore = 1.0m,
+                    Source = "manual"
+                });
+                continue;
+            }
+
+            if (extractedByKey.TryGetValue(templateField.Key, out var extracted))
+            {
+                result.Add(extracted);
+                continue;
+            }
+
+            if (persistedByKey.TryGetValue(templateField.Key, out var persisted))
+            {
+                result.Add(persisted);
+            }
+        }
+
+        return result;
     }
 
     private static string GetUploadsRootPath()
@@ -2763,18 +2864,139 @@ public class DocumentsController : Controller
         _ => "Неизвестно"
     };
 
-    private IReadOnlyList<AiSuggestionViewModel> BuildAiSuggestions(Document doc)
+    private async Task<IReadOnlyList<AiSuggestionViewModel>> BuildAiSuggestionsAsync(Document doc, CancellationToken cancellationToken)
     {
-        return _aiClassifier
-            .BuildSuggestions(doc)
-            .Select(s => new AiSuggestionViewModel
+        var snapshot = await LoadLatestAiSnapshotAsync(doc.DocumentId, cancellationToken);
+        if (snapshot is null)
+            return [];
+
+        var effectiveType = ParseDocumentType(snapshot.EffectiveType) ?? DocumentType.Other;
+        var templateFields = await LoadTemplateFieldDefinitionsAsync(doc.TemplateId, effectiveType, cancellationToken);
+        var extractedByKey = snapshot.Fields
+            .GroupBy(x => x.FieldKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+
+        var suggestions = new List<AiSuggestionViewModel>
+        {
+            new()
             {
-                FieldKey = s.FieldKey,
-                Label = s.Label,
-                SuggestedValue = s.SuggestedValue,
-                Confidence = s.ConfidencePercent
-            })
-            .ToList();
+                FieldKey = "type",
+                Label = "Предполагаемый тип",
+                SuggestedValue = GetDocumentTypeLabel(effectiveType),
+                Confidence = snapshot.ConfidencePercent,
+                CanApply = ModelCanApplyTypeSuggestion(doc, snapshot),
+                IsResolved = true
+            }
+        };
+
+        if (templateFields.Count > 0)
+        {
+            suggestions.AddRange(templateFields.Select(field =>
+            {
+                if (extractedByKey.TryGetValue(field.Key, out var extracted))
+                {
+                    return new AiSuggestionViewModel
+                    {
+                        FieldKey = extracted.FieldKey,
+                        Label = extracted.Label,
+                        SuggestedValue = extracted.SuggestedValue,
+                        Confidence = extracted.ConfidencePercent,
+                        CanApply = false,
+                        IsResolved = true
+                    };
+                }
+
+                return new AiSuggestionViewModel
+                {
+                    FieldKey = field.Key,
+                    Label = field.Label,
+                    SuggestedValue = "Не удалось определить",
+                    Confidence = 0,
+                    CanApply = false,
+                    IsResolved = false
+                };
+            }));
+        }
+        else
+        {
+            suggestions.AddRange(snapshot.Fields.Select(field => new AiSuggestionViewModel
+            {
+                FieldKey = field.FieldKey,
+                Label = field.Label,
+                SuggestedValue = field.SuggestedValue,
+                Confidence = field.ConfidencePercent,
+                CanApply = false,
+                IsResolved = true
+            }));
+        }
+
+        return suggestions;
+    }
+
+    private async Task<IReadOnlyList<DocumentTemplateFieldViewModel>> LoadTemplateFieldDefinitionsAsync(
+        int? templateId,
+        DocumentType effectiveType,
+        CancellationToken cancellationToken)
+    {
+        Template? template = null;
+        if (templateId.HasValue)
+        {
+            template = await _dbContext.Templates
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.TemplateId == templateId.Value, cancellationToken);
+        }
+
+        template ??= await _dbContext.Templates
+            .AsNoTracking()
+            .OrderBy(t => t.TemplateId)
+            .FirstOrDefaultAsync(t => t.Category == effectiveType.ToString(), cancellationToken);
+
+        if (template is null)
+            return [];
+
+        return ParseTemplateFields(template.AiSuggestedFields);
+    }
+
+    private async Task<DocumentAiSnapshot?> LoadLatestAiSnapshotAsync(int documentId, CancellationToken cancellationToken)
+    {
+        var rawSnapshot = await _dbContext.DocumentAiMetadata
+            .AsNoTracking()
+            .Where(x => x.DocumentId == documentId)
+            .OrderByDescending(x => x.ProcessingDate)
+            .Select(x => x.ExtractedEntities)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(rawSnapshot))
+            return null;
+
+        try
+        {
+            return JsonSerializer.Deserialize<DocumentAiSnapshot>(rawSnapshot, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool ModelCanApplyTypeSuggestion(Document document, DocumentAiSnapshot snapshot)
+    {
+        if (!Enum.TryParse<DocumentType>(snapshot.EffectiveType, true, out var effectiveType))
+            return false;
+
+        var currentType = ParseDocumentType(document.DocumentType) ?? DocumentType.Other;
+        return currentType != effectiveType;
+    }
+
+    private static bool HasConfirmedTemplateFieldValues(IReadOnlyDictionary<string, string>? values)
+    {
+        if (values is null || values.Count == 0)
+            return false;
+
+        return values.Any(static pair => !string.IsNullOrWhiteSpace(pair.Value));
     }
 
     private async Task EnrichEditModelAsync(EditDocumentPageViewModel model)
@@ -2798,6 +3020,18 @@ public class DocumentsController : Controller
         model.TemplateName = model.TemplateFields.Count > 0
             ? await GetTemplateNameAsync(doc.TemplateId, CancellationToken.None)
             : null;
+        if (model.TemplateFieldValues.Count == 0)
+        {
+            model.TemplateFieldValues = model.TemplateFields.ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
+        }
+        else
+        {
+            foreach (var field in model.TemplateFields)
+            {
+                if (!model.TemplateFieldValues.ContainsKey(field.Key))
+                    model.TemplateFieldValues[field.Key] = field.Value;
+            }
+        }
         model.ExecutionComment = doc.ExecutionComment ?? string.Empty;
         model.ExecutionResult = doc.ExecutionResult;
         model.ExecutionStartedAt = doc.ExecutionStartedAt;
@@ -2805,7 +3039,7 @@ public class DocumentsController : Controller
         model.ExecutionFileUrl = doc.ExecutionFilePath;
         model.ExecutionFileName = doc.ExecutionFileName;
         model.ExecutionFileKind = GetFileKind(doc.ExecutionFilePath);
-        model.AiSuggestions = BuildAiSuggestions(doc);
+        model.AiSuggestions = await BuildAiSuggestionsAsync(doc, CancellationToken.None);
         model.Assignment = await BuildAssignmentPanelAsync(doc, CancellationToken.None);
         ApplyExecutionHints(model);
         ApplyEditAccessState(model, doc);

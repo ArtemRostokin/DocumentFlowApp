@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using DocumentFlowApp.Core.Enums;
 
 namespace DocumentFlowApp.Web.Models;
@@ -40,6 +41,7 @@ public sealed class EditDocumentPageViewModel
 
     public string? TemplateName { get; set; }
     public IReadOnlyList<DocumentTemplateFieldDisplayViewModel> TemplateFields { get; set; } = [];
+    public Dictionary<string, string> TemplateFieldValues { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public string ExecutionComment { get; set; } = string.Empty;
     public string? ExecutionResult { get; set; }

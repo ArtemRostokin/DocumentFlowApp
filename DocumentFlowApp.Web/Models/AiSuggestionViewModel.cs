@@ -6,5 +6,7 @@ public sealed class AiSuggestionViewModel
     public required string Label { get; init; }
     public required string SuggestedValue { get; init; }
     public int Confidence { get; init; }
+    public bool CanApply { get; init; }
+    public bool IsResolved { get; init; } = true;
 }
 

@@ -552,6 +552,7 @@ public class DocumentsControllerTests
             new FakeAiClassifier(),
             new FakeOcrService(),
             new FakeTextExtractionService(),
+            new FakeDocumentFieldExtractor(),
             dbContext ?? CreateDbContext(),
             new FakeWebHostEnvironment(),
             NullLogger<DocumentsController>.Instance)
