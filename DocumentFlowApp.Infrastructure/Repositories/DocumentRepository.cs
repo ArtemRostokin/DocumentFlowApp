@@ -30,6 +30,7 @@ namespace DocumentFlowApp.Infrastructure.Repositories
         public async Task<List<Document>> GetAllAsync()
         {
             return await _context.Documents
+                .Include(d => d.User)
                 .OrderByDescending(d => d.CreatedDate)
                 .ToListAsync();
         }

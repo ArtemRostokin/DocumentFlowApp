@@ -1,0 +1,142 @@
+@model DocumentFlowApp.Web.Models.ProfilePageViewModel
+@{
+    ViewData["Title"] = "Мой профиль";
+}
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
+        <div>
+            <h1 class="h3 mb-2">Мой профиль</h1>
+            <p class="text-muted mb-0">Здесь можно проверить свои данные, роль в системе и при необходимости обновить профиль или пароль.</p>
+        </div>
+        <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary">Вернуться на главную</a>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.SuccessMessage))
+    {
+        <div class="alert alert-success">@Model.SuccessMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="alert alert-danger">@Model.ErrorMessage</div>
+    }
+
+    <div class="row g-4 align-items-start">
+        <div class="col-xl-4">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h2 class="h4 mb-3">Карточка пользователя</h2>
+
+                    <dl class="row mb-0">
+                        <dt class="col-sm-5 text-muted">Логин</dt>
+                        <dd class="col-sm-7">@Model.Summary.UserName</dd>
+
+                        <dt class="col-sm-5 text-muted">Email</dt>
+                        <dd class="col-sm-7">@Model.Summary.Email</dd>
+
+                        <dt class="col-sm-5 text-muted">ФИО</dt>
+                        <dd class="col-sm-7">@Model.Summary.FullName</dd>
+
+                        <dt class="col-sm-5 text-muted">Роль</dt>
+                        <dd class="col-sm-7">@Model.Summary.RoleName</dd>
+
+                        <dt class="col-sm-5 text-muted">Бизнес-роль</dt>
+                        <dd class="col-sm-7">@Model.Summary.ApprovalSpecializationLabel</dd>
+
+                        <dt class="col-sm-5 text-muted">Статус</dt>
+                        <dd class="col-sm-7">
+                            <span class="badge @(Model.Summary.IsActive ? "text-bg-success" : "text-bg-secondary")">
+                                @(Model.Summary.IsActive ? "Активен" : "Отключен")
+                            </span>
+                        </dd>
+
+                        <dt class="col-sm-5 text-muted">Email подтвержден</dt>
+                        <dd class="col-sm-7">@(Model.Summary.EmailConfirmed ? "Да" : "Нет")</dd>
+
+                        <dt class="col-sm-5 text-muted">Создан</dt>
+                        <dd class="col-sm-7">@Model.Summary.CreatedDateUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</dd>
+
+                        <dt class="col-sm-5 text-muted">Последний вход</dt>
+                        <dd class="col-sm-7">@(Model.Summary.LastLoginUtc.HasValue ? Model.Summary.LastLoginUtc.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm") : "Еще не входил")</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-8">
+            <div class="d-flex flex-column gap-4">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h2 class="h4 mb-3">Данные профиля</h2>
+                        <p class="text-muted small">Здесь можно обновить контактные данные, которые используются в карточке пользователя.</p>
+
+                        <form asp-action="UpdateProfile" method="post" class="row g-3">
+                            @Html.AntiForgeryToken()
+                            <div asp-validation-summary="ModelOnly" class="col-12 text-danger small"></div>
+
+                            <div class="col-md-6">
+                                <label asp-for="Profile.FirstName" class="form-label">Имя</label>
+                                <input asp-for="Profile.FirstName" class="form-control" />
+                                <span asp-validation-for="Profile.FirstName" class="text-danger small"></span>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label asp-for="Profile.LastName" class="form-label">Фамилия</label>
+                                <input asp-for="Profile.LastName" class="form-control" />
+                                <span asp-validation-for="Profile.LastName" class="text-danger small"></span>
+                            </div>
+
+                            <div class="col-12">
+                                <label asp-for="Profile.Email" class="form-label">Email</label>
+                                <input asp-for="Profile.Email" class="form-control" />
+                                <span asp-validation-for="Profile.Email" class="text-danger small"></span>
+                            </div>
+
+                            <div class="col-12">
+                                <button type="submit" class="btn btn-primary">Сохранить профиль</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h2 class="h4 mb-3">Смена пароля</h2>
+                        <p class="text-muted small">Для безопасности сначала укажите текущий пароль, затем задайте новый.</p>
+
+                        <form asp-action="ChangePassword" method="post" class="row g-3">
+                            @Html.AntiForgeryToken()
+
+                            <div class="col-12">
+                                <label asp-for="Password.CurrentPassword" class="form-label">Текущий пароль</label>
+                                <input asp-for="Password.CurrentPassword" class="form-control" />
+                                <span asp-validation-for="Password.CurrentPassword" class="text-danger small"></span>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label asp-for="Password.NewPassword" class="form-label">Новый пароль</label>
+                                <input asp-for="Password.NewPassword" class="form-control" />
+                                <span asp-validation-for="Password.NewPassword" class="text-danger small"></span>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label asp-for="Password.ConfirmPassword" class="form-label">Подтверждение</label>
+                                <input asp-for="Password.ConfirmPassword" class="form-control" />
+                                <span asp-validation-for="Password.ConfirmPassword" class="text-danger small"></span>
+                            </div>
+
+                            <div class="col-12">
+                                <button type="submit" class="btn btn-outline-primary">Обновить пароль</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

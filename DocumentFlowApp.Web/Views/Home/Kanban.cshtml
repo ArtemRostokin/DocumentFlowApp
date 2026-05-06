@@ -9,6 +9,12 @@
         ?? User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Role)?.Value
         ?? AppRoles.Employee;
     var normalizedRole = AppRoles.Normalize(currentUserRole) ?? AppRoles.Employee;
+    var currentUserRoleLabel = normalizedRole switch
+    {
+        AppRoles.Admin => "Администратор",
+        AppRoles.Manager => "Менеджер",
+        _ => "Исполнитель"
+    };
     var canManageDocuments = normalizedRole is AppRoles.Admin or AppRoles.Manager;
     var isAdmin = normalizedRole == AppRoles.Admin;
     var isEmployee = normalizedRole == AppRoles.Employee;
@@ -99,6 +105,18 @@
                 {
                     <input type="hidden" name="type" value="@Model.SelectedType" />
                 }
+                @if (!string.IsNullOrWhiteSpace(Model.SelectedStatus))
+                {
+                    <input type="hidden" name="status" value="@Model.SelectedStatus" />
+                }
+                @if (Model.SelectedPriority.HasValue)
+                {
+                    <input type="hidden" name="priority" value="@Model.SelectedPriority" />
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.SelectedPeriod))
+                {
+                    <input type="hidden" name="period" value="@Model.SelectedPeriod" />
+                }
                 <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
                 <input class="w-full bg-slate-100 border-none rounded-lg pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-primary text-slate-900 placeholder-slate-500"
                        name="q"
@@ -110,16 +128,36 @@
                     <span class="material-symbols-outlined">notifications</span>
                     <span class="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
                 </button>
-                <div class="flex items-center gap-3 border-l border-slate-200 pl-4">
-                    <div class="text-right hidden lg:block">
-                        <div class="text-sm font-medium text-slate-900">@currentUserName</div>
-                        <div class="text-xs text-slate-500">@normalizedRole</div>
+                <div class="relative flex items-center gap-3 border-l border-slate-200 pl-4">
+                    <button type="button"
+                            id="profileToggle"
+                            class="flex items-center gap-3 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-slate-50">
+                        <div class="text-right hidden lg:block">
+                            <div class="text-sm font-medium text-slate-900">@currentUserName</div>
+                            <div class="text-xs text-slate-500">@currentUserRoleLabel</div>
+                        </div>
+                        <div class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-600">DF</div>
+                    </button>
+                    <div id="profileMenu"
+                         class="hidden absolute right-0 top-full z-30 mt-2 w-56 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-200/70">
+                        <div class="border-b border-slate-100 px-3 py-2">
+                            <div class="text-sm font-medium text-slate-900">@currentUserName</div>
+                            <div class="text-xs text-slate-500">@currentUserRoleLabel</div>
+                        </div>
+                        <a asp-controller="Account"
+                           asp-action="Profile"
+                           class="mt-2 flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50">
+                            <span class="material-symbols-outlined text-[18px] text-slate-500">person</span>
+                            <span>Личный кабинет</span>
+                        </a>
+                        <form method="post" asp-controller="Account" asp-action="Logout" class="mt-1">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50">
+                                <span class="material-symbols-outlined text-[18px] text-slate-500">logout</span>
+                                <span>Выйти</span>
+                            </button>
+                        </form>
                     </div>
-                    <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-semibold text-slate-600">DF</div>
-                    <form method="post" asp-controller="Account" asp-action="Logout">
-                        @Html.AntiForgeryToken()
-                        <button type="submit" class="text-xs text-slate-500 hover:text-slate-800 transition-colors">Выйти</button>
-                    </form>
                 </div>
             </div>
         </div>
@@ -135,9 +173,22 @@
             <div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
                 <div class="flex min-w-0 flex-wrap items-center gap-2">
                     <div class="flex shrink-0 bg-slate-100 rounded-lg p-1">
-                        <a asp-action="Index" asp-route-q="@Model.SearchQuery" class="px-3 py-1.5 text-sm font-medium rounded-md @(IsActive(null))">Все</a>
-                        <a asp-action="Index" asp-route-type="@DocumentType.Contract" asp-route-q="@Model.SearchQuery" class="px-3 py-1.5 text-sm font-medium rounded-md @(IsActive(DocumentType.Contract))">Договоры</a>
-                        <a asp-action="Index" asp-route-type="@DocumentType.Invoice" asp-route-q="@Model.SearchQuery" class="px-3 py-1.5 text-sm font-medium rounded-md @(IsActive(DocumentType.Invoice))">Счета</a>
+                        <a asp-action="Index" asp-route-q="@Model.SearchQuery" asp-route-status="@Model.SelectedStatus" asp-route-priority="@Model.SelectedPriority" asp-route-period="@Model.SelectedPeriod" class="px-3 py-1.5 text-sm font-medium rounded-md @(IsActive(null))">Все</a>
+                        <a asp-action="Index" asp-route-type="@DocumentType.Contract" asp-route-q="@Model.SearchQuery" asp-route-status="@Model.SelectedStatus" asp-route-priority="@Model.SelectedPriority" asp-route-period="@Model.SelectedPeriod" class="px-3 py-1.5 text-sm font-medium rounded-md @(IsActive(DocumentType.Contract))">Договоры</a>
+                        <a asp-action="Index" asp-route-type="@DocumentType.Invoice" asp-route-q="@Model.SearchQuery" asp-route-status="@Model.SelectedStatus" asp-route-priority="@Model.SelectedPriority" asp-route-period="@Model.SelectedPeriod" class="px-3 py-1.5 text-sm font-medium rounded-md @(IsActive(DocumentType.Invoice))">Счета</a>
+                    </div>
+                    <div class="relative">
+                        <button type="button"
+                                id="filtersToggle"
+                                class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                            <span class="material-symbols-outlined text-[18px]">filter_alt</span>
+                            <span>Фильтры</span>
+                            @if (Model.HasActiveFilters)
+                            {
+                                <span class="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">активны</span>
+                            }
+                        </button>
+
                     </div>
                     <div class="hidden min-w-0 lg:flex items-center gap-2 text-xs text-slate-400">
                         <span class="truncate">Колонки прокручиваются отдельно</span>
@@ -321,6 +372,84 @@
         @Html.AntiForgeryToken()
     </form>
 
+    <div id="filtersOverlay" class="hidden fixed inset-0 z-40 bg-slate-900/20 backdrop-blur-[1px]">
+        <div class="flex min-h-full items-start justify-center px-4 py-16">
+            <div id="filtersPanel" class="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-5 shadow-2xl shadow-slate-300/40">
+                <div class="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                        <h3 class="text-base font-semibold text-slate-900">Фильтры доски</h3>
+                        <p class="mt-1 text-sm leading-6 text-slate-500">Сузьте список документов по статусу, приоритету и периоду.</p>
+                    </div>
+                    <button type="button" id="filtersClose" class="text-slate-400 hover:text-slate-600">
+                        <span class="material-symbols-outlined text-[18px]">close</span>
+                    </button>
+                </div>
+
+                <form method="get" asp-action="Index" class="space-y-4">
+                    @if (Model.SelectedType.HasValue)
+                    {
+                        <input type="hidden" name="type" value="@Model.SelectedType" />
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.SearchQuery))
+                    {
+                        <input type="hidden" name="q" value="@Model.SearchQuery" />
+                    }
+
+                    <label class="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Статус
+                        <select name="status" class="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-primary focus:ring-primary/30">
+                            <option value="">Все статусы</option>
+                            <option value="Draft" selected="@(string.Equals(Model.SelectedStatus, "Draft", StringComparison.OrdinalIgnoreCase) ? "selected" : null)">Черновик</option>
+                            <option value="OnApproval" selected="@(string.Equals(Model.SelectedStatus, "OnApproval", StringComparison.OrdinalIgnoreCase) ? "selected" : null)">На согласовании</option>
+                            <option value="Approved" selected="@(string.Equals(Model.SelectedStatus, "Approved", StringComparison.OrdinalIgnoreCase) ? "selected" : null)">Утвержден</option>
+                            <option value="InWork" selected="@(string.Equals(Model.SelectedStatus, "InWork", StringComparison.OrdinalIgnoreCase) ? "selected" : null)">В работе</option>
+                            <option value="Completed" selected="@(string.Equals(Model.SelectedStatus, "Completed", StringComparison.OrdinalIgnoreCase) ? "selected" : null)">Завершен</option>
+                            <option value="Archived" selected="@(string.Equals(Model.SelectedStatus, "Archived", StringComparison.OrdinalIgnoreCase) ? "selected" : null)">Архив</option>
+                        </select>
+                    </label>
+
+                    <label class="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Приоритет
+                        <select name="priority" class="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-primary focus:ring-primary/30">
+                            <option value="">Любой приоритет</option>
+                            <option value="1" selected="@(Model.SelectedPriority == 1 ? "selected" : null)">Низкий</option>
+                            <option value="2" selected="@(Model.SelectedPriority == 2 ? "selected" : null)">Средний</option>
+                            <option value="3" selected="@(Model.SelectedPriority == 3 ? "selected" : null)">Высокий</option>
+                        </select>
+                    </label>
+
+                    <label class="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Период
+                        <select name="period" class="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-primary focus:ring-primary/30">
+                            <option value="">Любой период</option>
+                            <option value="today" selected="@(string.Equals(Model.SelectedPeriod, "today", StringComparison.OrdinalIgnoreCase) ? "selected" : null)">Сегодня</option>
+                            <option value="7d" selected="@(string.Equals(Model.SelectedPeriod, "7d", StringComparison.OrdinalIgnoreCase) ? "selected" : null)">Последние 7 дней</option>
+                            <option value="30d" selected="@(string.Equals(Model.SelectedPeriod, "30d", StringComparison.OrdinalIgnoreCase) ? "selected" : null)">Последние 30 дней</option>
+                            <option value="overdue" selected="@(string.Equals(Model.SelectedPeriod, "overdue", StringComparison.OrdinalIgnoreCase) ? "selected" : null)">Просроченные</option>
+                        </select>
+                    </label>
+
+                    <div class="flex items-center justify-between gap-3 pt-1">
+                        @if (Model.HasActiveFilters)
+                        {
+                            <a asp-action="Index" class="text-sm font-medium text-slate-500 hover:text-slate-800">
+                                Сбросить
+                            </a>
+                        }
+                        else
+                        {
+                            <span class="text-xs text-slate-400">Фильтры пока не выбраны</span>
+                        }
+
+                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90">
+                            Применить
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <div id="kanbanToast" class="hidden fixed bottom-6 right-6 max-w-sm rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-lg text-sm text-slate-700"></div>
 
     <script>
@@ -329,6 +458,12 @@
             const tokenInput = document.querySelector("#antiForgeryForm input[name='__RequestVerificationToken']");
             const token = tokenInput ? tokenInput.value : "";
             const kanbanViewport = document.getElementById("kanbanViewport");
+            const filtersToggle = document.getElementById("filtersToggle");
+            const filtersOverlay = document.getElementById("filtersOverlay");
+            const filtersPanel = document.getElementById("filtersPanel");
+            const filtersClose = document.getElementById("filtersClose");
+            const profileToggle = document.getElementById("profileToggle");
+            const profileMenu = document.getElementById("profileMenu");
 
             function showToast(message) {
                 if (!toast) return;
@@ -348,6 +483,66 @@
 
             syncKanbanViewportHeight();
             window.addEventListener("resize", syncKanbanViewportHeight);
+
+            function setFiltersPanelVisible(isVisible) {
+                if (!filtersOverlay) return;
+                filtersOverlay.classList.toggle("hidden", !isVisible);
+                document.body.classList.toggle("overflow-hidden", isVisible);
+            }
+
+            function setProfileMenuVisible(isVisible) {
+                if (!profileMenu) return;
+                profileMenu.classList.toggle("hidden", !isVisible);
+            }
+
+            if (filtersToggle && filtersOverlay && filtersPanel) {
+                filtersToggle.addEventListener("click", () => {
+                    setProfileMenuVisible(false);
+                    setFiltersPanelVisible(filtersOverlay.classList.contains("hidden"));
+                });
+
+                if (filtersClose) {
+                    filtersClose.addEventListener("click", () => setFiltersPanelVisible(false));
+                }
+
+                document.addEventListener("click", (e) => {
+                    const target = e.target;
+                    if (!target || !(target instanceof Element)) return;
+                    if (!filtersOverlay.classList.contains("hidden")) {
+                        if (!filtersPanel.contains(target) && !filtersToggle.contains(target)) {
+                            if (filtersOverlay.contains(target) || !filtersPanel.contains(target)) {
+                                setFiltersPanelVisible(false);
+                            }
+                        }
+                    }
+
+                    if (profileToggle && profileMenu && !profileMenu.classList.contains("hidden")) {
+                        if (!profileMenu.contains(target) && !profileToggle.contains(target)) {
+                            setProfileMenuVisible(false);
+                        }
+                    }
+                });
+
+                document.addEventListener("keydown", (e) => {
+                    if (e.key === "Escape") {
+                        setFiltersPanelVisible(false);
+                        setProfileMenuVisible(false);
+                    }
+                });
+
+                filtersOverlay.addEventListener("click", (e) => {
+                    if (e.target === filtersOverlay) {
+                        setFiltersPanelVisible(false);
+                    }
+                });
+            }
+
+            if (profileToggle && profileMenu) {
+                profileToggle.addEventListener("click", () => {
+                    setFiltersPanelVisible(false);
+                    setProfileMenuVisible(profileMenu.classList.contains("hidden"));
+                });
+            }
 
             let draggingCard = null;
 

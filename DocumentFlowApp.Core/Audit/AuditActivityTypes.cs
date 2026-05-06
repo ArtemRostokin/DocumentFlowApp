@@ -23,6 +23,7 @@ public static class AuditActivityTypes
     public const string UserCreated = "user-created";
     public const string UserUpdated = "user-updated";
     public const string UserPasswordReset = "user-password-reset";
+    public const string UserPasswordChanged = "user-password-changed";
     public const string TemplateCreated = "template-created";
     public const string TemplateUpdated = "template-updated";
     public const string NomenclatureCaseCreated = "nomenclature-case-created";
@@ -51,6 +52,7 @@ public static class AuditActivityTypes
         UserCreated,
         UserUpdated,
         UserPasswordReset,
+        UserPasswordChanged,
         TemplateCreated,
         TemplateUpdated,
         NomenclatureCaseCreated,
@@ -80,6 +82,9 @@ public static class AuditActivityTypes
         UserCreated => "Создание пользователя",
         UserUpdated => "Обновление пользователя",
         UserPasswordReset => "Сброс пароля пользователя",
+        UserPasswordChanged => "Смена собственного пароля",
+        TemplateCreated => "Создание шаблона документа",
+        TemplateUpdated => "Обновление шаблона документа",
         NomenclatureCaseCreated => "Создание дела номенклатуры",
         NomenclatureRuleCreated => "Создание правила номенклатуры",
         _ => "Прочее действие"

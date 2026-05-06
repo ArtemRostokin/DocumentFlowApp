@@ -8,6 +8,10 @@ public sealed class KanbanBoardPageViewModel
     public string PeriodLabel { get; init; } = string.Empty;
     public string? SearchQuery { get; init; }
     public DocumentType? SelectedType { get; init; }
+    public string? SelectedStatus { get; init; }
+    public int? SelectedPriority { get; init; }
+    public string? SelectedPeriod { get; init; }
+    public bool HasActiveFilters { get; init; }
     public int TotalDocuments { get; init; }
     public string TotalLabel { get; init; } = "Всего документов";
     public string? Notice { get; init; }

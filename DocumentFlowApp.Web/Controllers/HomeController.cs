@@ -22,7 +22,7 @@ public class HomeController : Controller
         _logger = logger;
     }
 
-    public async Task<IActionResult> Index(string? q, DocumentType? type)
+    public async Task<IActionResult> Index(string? q, DocumentType? type, string? status, int? priority, string? period)
     {
         var normalizedRole = GetCurrentUserRole();
         var currentUserId = GetCurrentUserId();
@@ -30,7 +30,7 @@ public class HomeController : Controller
         if (normalizedRole == AppRoles.Employee && currentUserId is null)
             return RedirectToAction("Login", "Account");
 
-        var model = await BuildPageModelAsync(q, type, normalizedRole, currentUserId);
+        var model = await BuildPageModelAsync(q, type, status, priority, period, normalizedRole, currentUserId);
         return View("Kanban", model);
     }
 
@@ -361,9 +361,100 @@ public class HomeController : Controller
         ];
     }
 
+    private static string? NormalizeStatusFilter(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return null;
+
+        return Enum.TryParse<DocumentStatus>(status.Trim(), true, out var parsed) ? parsed.ToString() : null;
+    }
+
+    private static int? NormalizePriorityFilter(int? priority)
+    {
+        return priority is >= 1 and <= 3 ? priority : null;
+    }
+
+    private static string? NormalizePeriodFilter(string? period)
+    {
+        if (string.IsNullOrWhiteSpace(period))
+            return null;
+
+        var normalized = period.Trim().ToLowerInvariant();
+        return normalized is "today" or "7d" or "30d" or "overdue" ? normalized : null;
+    }
+
+    private static List<Document> ApplyFilters(
+        IEnumerable<Document> source,
+        string? query,
+        DocumentType? type,
+        string? status,
+        int? priority,
+        string? period)
+    {
+        var documents = source.ToList();
+
+        if (type.HasValue)
+        {
+            documents = documents
+                .Where(d => ParseDocumentType(d.DocumentType) == type.Value)
+                .ToList();
+        }
+
+        var normalizedStatus = NormalizeStatusFilter(status);
+        if (!string.IsNullOrWhiteSpace(normalizedStatus))
+        {
+            documents = documents
+                .Where(d => string.Equals(ParseDocumentStatus(d.Status).ToString(), normalizedStatus, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        var normalizedPriority = NormalizePriorityFilter(priority);
+        if (normalizedPriority.HasValue)
+        {
+            documents = documents
+                .Where(d => d.Priority == normalizedPriority.Value)
+                .ToList();
+        }
+
+        var normalizedPeriod = NormalizePeriodFilter(period);
+        if (!string.IsNullOrWhiteSpace(normalizedPeriod))
+        {
+            var now = DateTime.UtcNow;
+            documents = normalizedPeriod switch
+            {
+                "today" => documents.Where(d => (d.CreatedDate.ToLocalTime().Date == DateTime.Now.Date) || (d.DueDate.HasValue && d.DueDate.Value.ToLocalTime().Date == DateTime.Now.Date)).ToList(),
+                "7d" => documents.Where(d => d.CreatedDate >= now.AddDays(-7)).ToList(),
+                "30d" => documents.Where(d => d.CreatedDate >= now.AddDays(-30)).ToList(),
+                "overdue" => documents.Where(d => d.DueDate.HasValue && d.DueDate.Value < now && ParseDocumentStatus(d.Status) is not DocumentStatus.Completed and not DocumentStatus.Archived).ToList(),
+                _ => documents
+            };
+        }
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            var search = query.Trim();
+            documents = documents
+                .Where(d =>
+                    (!string.IsNullOrWhiteSpace(d.Title) && d.Title.Contains(search, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrWhiteSpace(d.ExtractedText) && d.ExtractedText.Contains(search, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrWhiteSpace(d.Tags) && d.Tags.Contains(search, StringComparison.OrdinalIgnoreCase)) ||
+                    (d.User != null &&
+                     ((!string.IsNullOrWhiteSpace(d.User.FirstName) && d.User.FirstName.Contains(search, StringComparison.OrdinalIgnoreCase)) ||
+                      (!string.IsNullOrWhiteSpace(d.User.LastName) && d.User.LastName.Contains(search, StringComparison.OrdinalIgnoreCase)) ||
+                      (!string.IsNullOrWhiteSpace(d.User.UserName) && d.User.UserName.Contains(search, StringComparison.OrdinalIgnoreCase))))
+                )
+                .ToList();
+        }
+
+        return documents;
+    }
+
     private async Task<KanbanBoardPageViewModel> BuildPageModelAsync(
         string? q,
         DocumentType? type,
+        string? status,
+        int? priority,
+        string? period,
         string normalizedRole,
         int? currentUserId)
     {
@@ -390,27 +481,17 @@ public class HomeController : Controller
                 .ToList();
         }
 
-        if (type.HasValue)
-        {
-            documents = documents
-                .Where(d => string.Equals(d.DocumentType, type.Value.ToString(), StringComparison.OrdinalIgnoreCase))
-                .ToList();
-        }
+        documents = ApplyFilters(documents, q, type, status, priority, period);
 
-        if (!string.IsNullOrWhiteSpace(q))
-        {
-            var query = q.Trim();
-            documents = documents
-                .Where(d =>
-                    (!string.IsNullOrWhiteSpace(d.Title) && d.Title.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
-                    (!string.IsNullOrWhiteSpace(d.ExtractedText) && d.ExtractedText.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
-                    (d.User != null &&
-                     ((!string.IsNullOrWhiteSpace(d.User.FirstName) && d.User.FirstName.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
-                      (!string.IsNullOrWhiteSpace(d.User.LastName) && d.User.LastName.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
-                      (!string.IsNullOrWhiteSpace(d.User.UserName) && d.User.UserName.Contains(query, StringComparison.OrdinalIgnoreCase))))
-                )
-                .ToList();
-        }
+        var normalizedStatus = NormalizeStatusFilter(status);
+        var normalizedPriority = NormalizePriorityFilter(priority);
+        var normalizedPeriod = NormalizePeriodFilter(period);
+        var hasActiveFilters =
+            !string.IsNullOrWhiteSpace(q) ||
+            type.HasValue ||
+            !string.IsNullOrWhiteSpace(normalizedStatus) ||
+            normalizedPriority.HasValue ||
+            !string.IsNullOrWhiteSpace(normalizedPeriod);
 
         return new KanbanBoardPageViewModel
         {
@@ -418,6 +499,10 @@ public class HomeController : Controller
             PeriodLabel = DateTime.Now.ToString("MMMM yyyy"),
             SearchQuery = q,
             SelectedType = type,
+            SelectedStatus = normalizedStatus,
+            SelectedPriority = normalizedPriority,
+            SelectedPeriod = normalizedPeriod,
+            HasActiveFilters = hasActiveFilters,
             TotalDocuments = documents.Count,
             TotalLabel = isEmployeeBoard ? "Всего задач" : "Всего документов",
             Notice = notice,
