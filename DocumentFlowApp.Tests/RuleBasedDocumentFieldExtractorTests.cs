@@ -82,17 +82,16 @@ public class RuleBasedDocumentFieldExtractorTests
     }
 
     [Fact]
-    public void BuildSuggestions_Shows_Unresolved_Template_Fields_When_NotExtracted()
+    public void Extract_Invoice_Leaves_PaymentDue_Unresolved_When_Missing()
     {
-        // Covered indirectly in UI-building logic; extractor intentionally returns no amount here.
         const string text = """
-            Счет № 453/34К от 30.09.2020 г.
-            Поставщик: ИП Иванов Анатолий Иванович
+            ???????? ??? 453/34?? ???? 30.09.2020 ??.
+            ??????????????????: ??? ??????????? ???????????????? ???????????????
             """;
 
         var result = _extractor.Extract(DocumentType.Invoice, text, "invoice.pdf");
 
-        Assert.DoesNotContain(result.Fields, x => x.FieldKey == "amount");
+        Assert.DoesNotContain(result.Fields, x => x.FieldKey == "payment_due");
     }
 
     [Fact]

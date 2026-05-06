@@ -1,4 +1,5 @@
 ﻿using System.Security.Claims;
+using System.Text.Json;
 using DocumentFlowApp.Core.Audit;
 using DocumentFlowApp.Core.Entities;
 using DocumentFlowApp.Core.Enums;
@@ -41,6 +42,130 @@ public class AdminController : Controller
         return View(await BuildRoutesPageAsync(cancellationToken));
     }
 
+    [HttpGet]
+    public async Task<IActionResult> Templates(CancellationToken cancellationToken)
+    {
+        return View(await BuildTemplatesPageAsync(cancellationToken));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateDocumentTemplate([Bind(Prefix = "NewTemplate")] CreateDocumentTemplateAdminInputModel input, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation(
+            "CreateDocumentTemplate POST received. Name={TemplateName}, DocumentType={DocumentType}, FieldRows={FieldRows}",
+            input.Name,
+            input.DocumentType,
+            input.Fields?.Count ?? 0);
+
+        ValidateTemplateInput(input.Name, input.DocumentType, input.Fields);
+
+        if (!ModelState.IsValid)
+        {
+            _logger.LogWarning(
+                "CreateDocumentTemplate validation failed. Errors: {Errors}",
+                string.Join(" | ", ModelState.SelectMany(x => x.Value?.Errors.Select(e => $"{x.Key}: {e.ErrorMessage}") ?? [])));
+            return View("Templates", await BuildTemplatesPageAsync(cancellationToken, createInput: input));
+        }
+
+        try
+        {
+            var normalizedName = input.Name.Trim();
+            if (await _dbContext.Templates.AnyAsync(x => x.Name == normalizedName, cancellationToken))
+            {
+                ModelState.AddModelError("NewTemplate.Name", "Шаблон с таким названием уже существует.");
+                return View("Templates", await BuildTemplatesPageAsync(cancellationToken, createInput: input));
+            }
+
+            var template = new Template
+            {
+                Name = normalizedName,
+                Category = input.DocumentType!.Value.ToString(),
+                Content = string.IsNullOrWhiteSpace(input.Description) ? null : input.Description.Trim(),
+                AiSuggestedFields = SerializeTemplateFields(input.Fields),
+                UsageCount = 0,
+                CreatedDate = DateTime.UtcNow
+            };
+
+            _dbContext.Templates.Add(template);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            await _auditService.LogSystemActivityAsync(
+                GetCurrentUserId(),
+                AuditActivityTypes.TemplateCreated,
+                $"Создан шаблон документа {template.Name} для типа {GetDocumentTypeLabel(input.DocumentType.Value)}.",
+                cancellationToken);
+
+            TempData["SuccessMessage"] = "Шаблон документа создан.";
+            return RedirectToAction(nameof(Templates));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось создать шаблон документа {TemplateName}", input.Name);
+            ModelState.AddModelError(string.Empty, "Не удалось сохранить шаблон документа.");
+            return View("Templates", await BuildTemplatesPageAsync(cancellationToken, createInput: input));
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateDocumentTemplate(UpdateDocumentTemplateAdminInputModel input, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation(
+            "UpdateDocumentTemplate POST received. TemplateId={TemplateId}, Name={TemplateName}, DocumentType={DocumentType}, FieldRows={FieldRows}",
+            input.TemplateId,
+            input.Name,
+            input.DocumentType,
+            input.Fields?.Count ?? 0);
+
+        ValidateTemplateInput(input.Name, input.DocumentType, input.Fields);
+
+        if (!ModelState.IsValid)
+        {
+            TempData["ErrorMessage"] = "Проверьте корректность данных шаблона.";
+            return RedirectToAction(nameof(Templates));
+        }
+
+        var template = await _dbContext.Templates.FirstOrDefaultAsync(x => x.TemplateId == input.TemplateId, cancellationToken);
+        if (template is null)
+        {
+            TempData["ErrorMessage"] = "Шаблон документа не найден.";
+            return RedirectToAction(nameof(Templates));
+        }
+
+        try
+        {
+            var normalizedName = input.Name.Trim();
+            if (await _dbContext.Templates.AnyAsync(x => x.TemplateId != input.TemplateId && x.Name == normalizedName, cancellationToken))
+            {
+                TempData["ErrorMessage"] = "Другой шаблон уже использует это название.";
+                return RedirectToAction(nameof(Templates));
+            }
+
+            var previousSummary = $"{template.Name} ({template.Category ?? "без типа"})";
+            template.Name = normalizedName;
+            template.Category = input.DocumentType!.Value.ToString();
+            template.Content = string.IsNullOrWhiteSpace(input.Description) ? null : input.Description.Trim();
+            template.AiSuggestedFields = SerializeTemplateFields(input.Fields);
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            await _auditService.LogSystemActivityAsync(
+                GetCurrentUserId(),
+                AuditActivityTypes.TemplateUpdated,
+                $"Обновлен шаблон документа {previousSummary} -> {template.Name} ({GetDocumentTypeLabel(input.DocumentType.Value)}).",
+                cancellationToken);
+
+            TempData["SuccessMessage"] = "Шаблон документа обновлен.";
+            return RedirectToAction(nameof(Templates));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось обновить шаблон документа {TemplateId}", input.TemplateId);
+            TempData["ErrorMessage"] = "Не удалось обновить шаблон документа.";
+            return RedirectToAction(nameof(Templates));
+        }
+    }
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreateRouteTemplate([Bind(Prefix = "NewTemplate")] CreateRouteTemplateAdminInputModel input, CancellationToken cancellationToken)
@@ -867,6 +992,67 @@ public class AdminController : Controller
             .ToList();
     }
 
+    private async Task<DocumentTemplatesAdminPageViewModel> BuildTemplatesPageAsync(
+        CancellationToken cancellationToken,
+        CreateDocumentTemplateAdminInputModel? createInput = null)
+    {
+        var templates = await _dbContext.Templates
+            .AsNoTracking()
+            .OrderBy(x => x.Category)
+            .ThenBy(x => x.Name)
+            .Select(x => new
+            {
+                x.TemplateId,
+                x.Name,
+                x.Content,
+                x.Category,
+                x.AiSuggestedFields,
+                x.UsageCount,
+                x.CreatedDate
+            })
+            .ToListAsync(cancellationToken);
+
+        return new DocumentTemplatesAdminPageViewModel
+        {
+            SuccessMessage = TempData["SuccessMessage"] as string,
+            ErrorMessage = TempData["ErrorMessage"] as string,
+            NewTemplate = EnsureTemplateFieldRows(createInput ?? new CreateDocumentTemplateAdminInputModel()),
+            Templates = templates.Select(template =>
+            {
+                var type = ParseDocumentType(template.Category);
+                var fields = ParseTemplateFields(template.AiSuggestedFields);
+                return new DocumentTemplateAdminItemViewModel
+                {
+                    Id = template.TemplateId,
+                    Name = template.Name,
+                    Description = template.Content ?? string.Empty,
+                    DocumentType = type,
+                    TypeLabel = GetDocumentTypeLabel(type),
+                    UsageCount = template.UsageCount,
+                    CreatedDateUtc = template.CreatedDate,
+                    Fields = fields,
+                    EditTemplate = new UpdateDocumentTemplateAdminInputModel
+                    {
+                        TemplateId = template.TemplateId,
+                        Name = template.Name,
+                        Description = template.Content,
+                        DocumentType = type,
+                        Fields = EnsureTemplateFieldRows(fields
+                            .Select(field => new DocumentTemplateFieldAdminInputModel
+                            {
+                                Key = field.Key,
+                                Label = field.Label,
+                                Placeholder = field.Placeholder,
+                                Required = field.Required,
+                                InputType = field.InputType
+                            })
+                            .ToList(), 8)
+                    }
+                };
+            }).ToList()
+        };
+    }
+
     private async Task<NomenclatureAdminPageViewModel> BuildNomenclaturePageAsync(
         CancellationToken cancellationToken,
         CreateNomenclatureCaseInputModel? caseInput = null,
@@ -1041,4 +1227,129 @@ public class AdminController : Controller
 
         return values.LastOrDefault() ?? fallback;
     }
+
+    private void ValidateTemplateInput(
+        string? name,
+        DocumentType? documentType,
+        IReadOnlyCollection<DocumentTemplateFieldAdminInputModel>? fields)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            ModelState.AddModelError("NewTemplate.Name", "Введите название шаблона.");
+
+        if (documentType is null)
+            ModelState.AddModelError("NewTemplate.DocumentType", "Выберите тип документа.");
+
+        var normalizedFields = NormalizeTemplateFields(fields);
+        if (normalizedFields.Count == 0)
+            ModelState.AddModelError("NewTemplate.Fields", "Добавьте хотя бы одно поле шаблона.");
+    }
+
+    private static string SerializeTemplateFields(IReadOnlyCollection<DocumentTemplateFieldAdminInputModel>? fields)
+    {
+        var normalizedFields = NormalizeTemplateFields(fields)
+            .Select(field => new DocumentTemplateFieldViewModel
+            {
+                Key = field.Key,
+                Label = field.Label,
+                Placeholder = field.Placeholder,
+                Required = field.Required,
+                InputType = field.InputType
+            })
+            .ToList();
+
+        return JsonSerializer.Serialize(normalizedFields);
+    }
+
+    private static List<DocumentTemplateFieldAdminInputModel> NormalizeTemplateFields(IReadOnlyCollection<DocumentTemplateFieldAdminInputModel>? fields)
+    {
+        if (fields is null)
+            return [];
+
+        return fields
+            .Where(field => !string.IsNullOrWhiteSpace(field.Key) || !string.IsNullOrWhiteSpace(field.Label))
+            .Select(field => new DocumentTemplateFieldAdminInputModel
+            {
+                Key = NormalizeTemplateFieldKey(field.Key),
+                Label = field.Label.Trim(),
+                Placeholder = string.IsNullOrWhiteSpace(field.Placeholder) ? string.Empty : field.Placeholder.Trim(),
+                Required = field.Required,
+                InputType = NormalizeInputType(field.InputType)
+            })
+            .Where(field => !string.IsNullOrWhiteSpace(field.Key) && !string.IsNullOrWhiteSpace(field.Label))
+            .ToList();
+    }
+
+    private static CreateDocumentTemplateAdminInputModel EnsureTemplateFieldRows(CreateDocumentTemplateAdminInputModel input)
+    {
+        input.Fields = EnsureTemplateFieldRows(input.Fields, 4);
+        return input;
+    }
+
+    private static List<DocumentTemplateFieldAdminInputModel> EnsureTemplateFieldRows(List<DocumentTemplateFieldAdminInputModel>? fields, int minimumRows)
+    {
+        var rows = fields ?? [];
+        while (rows.Count < minimumRows)
+            rows.Add(new DocumentTemplateFieldAdminInputModel());
+
+        return rows;
+    }
+
+    private static IReadOnlyList<DocumentTemplateFieldViewModel> ParseTemplateFields(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return [];
+
+        try
+        {
+            var fields = JsonSerializer.Deserialize<List<DocumentTemplateFieldViewModel>>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            return fields?
+                .Where(field => !string.IsNullOrWhiteSpace(field.Key) && !string.IsNullOrWhiteSpace(field.Label))
+                .ToList() ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static DocumentType ParseDocumentType(string? category)
+    {
+        return Enum.TryParse<DocumentType>(category, true, out var parsed)
+            ? parsed
+            : DocumentType.Other;
+    }
+
+    private static string NormalizeTemplateFieldKey(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return string.Empty;
+
+        return key.Trim().ToLowerInvariant().Replace(' ', '_').Replace('-', '_');
+    }
+
+    private static string NormalizeInputType(string? inputType)
+    {
+        return (inputType ?? string.Empty).Trim().ToLowerInvariant() switch
+        {
+            "textarea" => "textarea",
+            "date" => "date",
+            "number" => "number",
+            _ => "text"
+        };
+    }
+
+    private static string GetDocumentTypeLabel(DocumentType type) => type switch
+    {
+        DocumentType.Contract => "???????",
+        DocumentType.Invoice => "????",
+        DocumentType.Report => "?????",
+        DocumentType.Order => "??????",
+        DocumentType.Application => "?????????",
+        DocumentType.Act => "???",
+        _ => "??????"
+    };
 }

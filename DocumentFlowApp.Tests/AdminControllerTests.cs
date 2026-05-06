@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using DocumentFlowApp.Core.Audit;
 using DocumentFlowApp.Core.Entities;
+using DocumentFlowApp.Core.Enums;
 using DocumentFlowApp.Core.Models;
 using DocumentFlowApp.Infrastructure.Data;
 using DocumentFlowApp.Infrastructure.Services;
@@ -476,6 +477,67 @@ public class AdminControllerTests
         var entry = Assert.Single(audit.Entries);
         Assert.Equal(AuditActivityTypes.UserPasswordReset, entry.ActivityType);
         Assert.Equal(77, entry.UserId);
+    }
+
+    [Fact]
+    public async Task CreateDocumentTemplate_With_One_Field_Persists_Template_And_Writes_Audit()
+    {
+        await using var dbContext = CreateDbContext();
+        var audit = new FakeAuditService();
+        var controller = CreateController(dbContext, audit);
+
+        var result = await controller.CreateDocumentTemplate(
+            new CreateDocumentTemplateAdminInputModel
+            {
+                Name = "Тестовый шаблон",
+                DocumentType = DocumentType.Report,
+                Description = "Для тестового сценария",
+                Fields =
+                [
+                    new DocumentTemplateFieldAdminInputModel
+                    {
+                        Key = "report_subject",
+                        Label = "Тема отчета",
+                        InputType = "text",
+                        Placeholder = "Например: Еженедельный отчет",
+                        Required = true
+                    }
+                ]
+            },
+            CancellationToken.None);
+
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(nameof(AdminController.Templates), redirect.ActionName);
+
+        var stored = Assert.Single(dbContext.Templates);
+        Assert.Equal("Тестовый шаблон", stored.Name);
+        Assert.Equal(nameof(DocumentType.Report), stored.Category);
+        Assert.Contains("report_subject", stored.AiSuggestedFields);
+
+        var entry = Assert.Single(audit.Entries);
+        Assert.Equal(AuditActivityTypes.TemplateCreated, entry.ActivityType);
+    }
+
+    [Fact]
+    public async Task CreateDocumentTemplate_Without_Fields_Returns_View_With_Model_Error()
+    {
+        await using var dbContext = CreateDbContext();
+        var controller = CreateController(dbContext, new FakeAuditService());
+
+        var result = await controller.CreateDocumentTemplate(
+            new CreateDocumentTemplateAdminInputModel
+            {
+                Name = "Пустой шаблон",
+                DocumentType = DocumentType.Report,
+                Fields = []
+            },
+            CancellationToken.None);
+
+        var view = Assert.IsType<ViewResult>(result);
+        Assert.Equal("Templates", view.ViewName);
+        Assert.False(controller.ModelState.IsValid);
+        Assert.True(controller.ModelState.ContainsKey("NewTemplate.Fields"));
+        Assert.Empty(dbContext.Templates);
     }
 
     private static ApplicationDbContext CreateDbContext()

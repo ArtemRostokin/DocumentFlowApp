@@ -1,0 +1,320 @@
+@using DocumentFlowApp.Core.Enums
+@model DocumentFlowApp.Web.Models.DocumentTemplatesAdminPageViewModel
+@{
+    ViewData["Title"] = "Шаблоны документов";
+}
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
+        <div>
+            <h1 class="h3 mb-2">Шаблоны документов</h1>
+            <p class="text-muted mb-2">Здесь администратор управляет типовыми карточками документов и набором полей для разных сценариев.</p>
+        </div>
+        <a asp-action="Index" class="btn btn-outline-secondary">Назад в администрирование</a>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.SuccessMessage))
+    {
+        <div class="alert alert-success">@Model.SuccessMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="alert alert-danger">@Model.ErrorMessage</div>
+    }
+
+    <div class="row g-4 align-items-start">
+        <div class="col-xl-4">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h2 class="h4 mb-3">Создать шаблон</h2>
+                    <p class="text-muted small">Выберите тип документа и задайте поля, которые менеджер будет заполнять в карточке.</p>
+
+                    <form asp-controller="Admin" asp-action="CreateDocumentTemplate" method="post" class="row g-3" novalidate>
+                        @Html.AntiForgeryToken()
+                        <div asp-validation-summary="ModelOnly" class="col-12 alert alert-danger py-2 mb-0"></div>
+
+                        <div class="col-12">
+                            <label asp-for="NewTemplate.Name" class="form-label">Название</label>
+                            <input asp-for="NewTemplate.Name" class="form-control" placeholder="Например: Шаблон служебной записки" />
+                            <span asp-validation-for="NewTemplate.Name" class="text-danger small"></span>
+                        </div>
+
+                        <div class="col-12">
+                            <label asp-for="NewTemplate.DocumentType" class="form-label">Тип документа</label>
+                            <select asp-for="NewTemplate.DocumentType" class="form-select" asp-items="Html.GetEnumSelectList<DocumentType>()">
+                                <option value="">Выберите тип</option>
+                            </select>
+                            <span asp-validation-for="NewTemplate.DocumentType" class="text-danger small"></span>
+                        </div>
+
+                        <div class="col-12">
+                            <label asp-for="NewTemplate.Description" class="form-label">Описание</label>
+                            <textarea asp-for="NewTemplate.Description" rows="3" class="form-control" placeholder="Когда используется этот шаблон"></textarea>
+                        </div>
+
+                        <div class="col-12">
+                            <div class="d-flex justify-content-between align-items-center mb-2 gap-2 flex-wrap">
+                                <label class="form-label mb-0">Поля шаблона</label>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" data-add-field-row data-prefix="NewTemplate.Fields" data-target="create-template-fields">
+                                    Добавить поле
+                                </button>
+                            </div>
+                            <div class="small text-muted mb-2">Используйте универсальные ключи и понятные подписи. Пустые строки не сохраняются.</div>
+                            <div id="create-template-fields" class="border rounded-3 p-3 bg-light-subtle d-flex flex-column gap-3" style="max-height: 42vh; overflow-y: auto;" data-field-rows data-next-index="@Model.NewTemplate.Fields.Count" data-prefix="NewTemplate.Fields">
+                                @for (var i = 0; i < Model.NewTemplate.Fields.Count; i++)
+                                {
+                                    var field = Model.NewTemplate.Fields[i];
+                                    <div class="border rounded-3 bg-white p-3">
+                                        <div class="small text-muted fw-semibold mb-2">Поле @(i + 1)</div>
+                                        <div class="row g-2">
+                                            <div class="col-md-6">
+                                                <label class="form-label small">Ключ</label>
+                                                <input name="NewTemplate.Fields[@i].Key" value="@field.Key" class="form-control form-control-sm" placeholder="document_number" />
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label small">Заголовок</label>
+                                                <input name="NewTemplate.Fields[@i].Label" value="@field.Label" class="form-control form-control-sm" placeholder="Например: Номер документа" />
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label small">Тип поля</label>
+                                                @{
+                                                    var createInputType = string.IsNullOrWhiteSpace(field.InputType) ? "text" : field.InputType;
+                                                }
+                                                <select name="NewTemplate.Fields[@i].InputType" class="form-select form-select-sm">
+                                                    <option value="text" selected="@(createInputType == "text")">Текст</option>
+                                                    <option value="number" selected="@(createInputType == "number")">Число</option>
+                                                    <option value="date" selected="@(createInputType == "date")">Дата</option>
+                                                    <option value="textarea" selected="@(createInputType == "textarea")">Большой текст</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label small">Подсказка</label>
+                                                <input name="NewTemplate.Fields[@i].Placeholder" value="@field.Placeholder" class="form-control form-control-sm" placeholder="Подсказка для пользователя" />
+                                            </div>
+                                            <div class="col-12">
+                                                <div class="form-check">
+                                                    <input type="hidden" name="NewTemplate.Fields[@i].Required" value="false" />
+                                                    <input type="checkbox" name="NewTemplate.Fields[@i].Required" value="true" checked="@field.Required" class="form-check-input" />
+                                                    <label class="form-check-label small">Обязательное поле</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                            <span asp-validation-for="NewTemplate.Fields" class="text-danger small"></span>
+                        </div>
+
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-primary">Создать шаблон</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-8">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
+                        <div>
+                            <h2 class="h4 mb-1">Текущие шаблоны</h2>
+                            <div class="small text-muted">Всего шаблонов: @Model.Templates.Count</div>
+                        </div>
+                    </div>
+
+                    @if (Model.Templates.Count == 0)
+                    {
+                        <div class="border rounded-3 border-dashed p-4 text-center text-muted">
+                            Пока шаблонов нет. Создайте первый шаблон слева, чтобы использовать его при создании документов.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="d-flex flex-column gap-3 pe-1" style="max-height: 72vh; overflow-y: auto;">
+                            @foreach (var template in Model.Templates)
+                            {
+                                <details class="border rounded-3 bg-white" @(template.Id == Model.Templates.First().Id ? "open" : null)>
+                                    <summary class="list-unstyled p-3 d-flex justify-content-between align-items-start gap-3 cursor-pointer">
+                                        <div>
+                                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                                <h3 class="h5 mb-0">@template.Name</h3>
+                                                <span class="badge text-bg-light">@template.TypeLabel</span>
+                                            </div>
+                                            @if (!string.IsNullOrWhiteSpace(template.Description))
+                                            {
+                                                <div class="text-muted mt-2 small">@template.Description</div>
+                                            }
+                                            <div class="small text-muted mt-2">Полей: @template.Fields.Count · Использований: @template.UsageCount</div>
+                                        </div>
+                                        <span class="text-muted small">Открыть</span>
+                                    </summary>
+
+                                    <div class="px-3 pb-3">
+                                        <form asp-controller="Admin" asp-action="UpdateDocumentTemplate" method="post" class="row g-3" novalidate>
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="TemplateId" value="@template.EditTemplate.TemplateId" />
+
+                                            <div class="col-md-6">
+                                                <label class="form-label">Название</label>
+                                                <input name="Name" value="@template.EditTemplate.Name" class="form-control" />
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Тип документа</label>
+                                                <select name="DocumentType" class="form-select">
+                                                    @foreach (var option in Html.GetEnumSelectList<DocumentType>())
+                                                    {
+                                                        <option value="@option.Value" selected="@(string.Equals(option.Value, ((int)template.EditTemplate.DocumentType.GetValueOrDefault()).ToString(), StringComparison.OrdinalIgnoreCase))">@option.Text</option>
+                                                    }
+                                                </select>
+                                            </div>
+
+                                            <div class="col-12">
+                                                <label class="form-label">Описание</label>
+                                                <textarea name="Description" rows="2" class="form-control">@template.EditTemplate.Description</textarea>
+                                            </div>
+
+                                            <div class="col-12">
+                                                <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+                                                    <label class="form-label mb-0">Поля шаблона</label>
+                                                    <button type="button" class="btn btn-outline-secondary btn-sm" data-add-field-row data-prefix="Fields" data-target="template-fields-@template.Id">
+                                                        Добавить поле
+                                                    </button>
+                                                </div>
+
+                                                <div id="template-fields-@template.Id" class="border rounded-3 p-3 bg-light-subtle d-flex flex-column gap-3" data-field-rows data-next-index="@template.EditTemplate.Fields.Count" data-prefix="Fields">
+                                                    @for (var i = 0; i < template.EditTemplate.Fields.Count; i++)
+                                                    {
+                                                        var field = template.EditTemplate.Fields[i];
+                                                        <div class="border rounded-3 bg-white p-3">
+                                                            <div class="small text-muted fw-semibold mb-2">Поле @(i + 1)</div>
+                                                            <div class="row g-2">
+                                                                <div class="col-md-6">
+                                                                    <label class="form-label small">Ключ</label>
+                                                                    <input name="Fields[@i].Key" value="@field.Key" class="form-control form-control-sm" placeholder="document_number" />
+                                                                </div>
+                                                                <div class="col-md-6">
+                                                                    <label class="form-label small">Заголовок</label>
+                                                                    <input name="Fields[@i].Label" value="@field.Label" class="form-control form-control-sm" placeholder="Например: Номер документа" />
+                                                                </div>
+                                                                <div class="col-md-6">
+                                                                    <label class="form-label small">Тип поля</label>
+                                                                    <select name="Fields[@i].InputType" class="form-select form-select-sm">
+                                                                        <option value="text" selected="@(field.InputType == "text")">Текст</option>
+                                                                        <option value="number" selected="@(field.InputType == "number")">Число</option>
+                                                                        <option value="date" selected="@(field.InputType == "date")">Дата</option>
+                                                                        <option value="textarea" selected="@(field.InputType == "textarea")">Большой текст</option>
+                                                                    </select>
+                                                                </div>
+                                                                <div class="col-md-6">
+                                                                    <label class="form-label small">Подсказка</label>
+                                                                    <input name="Fields[@i].Placeholder" value="@field.Placeholder" class="form-control form-control-sm" placeholder="Подсказка для пользователя" />
+                                                                </div>
+                                                                <div class="col-12">
+                                                                    <div class="form-check">
+                                                                        <input type="hidden" name="Fields[@i].Required" value="false" />
+                                                                        <input type="checkbox" name="Fields[@i].Required" value="true" checked="@field.Required" class="form-check-input" />
+                                                                        <label class="form-check-label small">Обязательное поле</label>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </div>
+
+                                            <div class="col-12">
+                                                <button type="submit" class="btn btn-primary">Сохранить шаблон</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </details>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<template id="template-field-row-template">
+    <div class="border rounded-3 bg-white p-3">
+        <div class="small text-muted fw-semibold mb-2">Новое поле</div>
+        <div class="row g-2">
+            <div class="col-md-6">
+                <label class="form-label small">Ключ</label>
+                <input data-field-name="Key" class="form-control form-control-sm" placeholder="document_number" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small">Заголовок</label>
+                <input data-field-name="Label" class="form-control form-control-sm" placeholder="Например: Номер документа" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small">Тип поля</label>
+                <select data-field-name="InputType" class="form-select form-select-sm">
+                    <option value="text">Текст</option>
+                    <option value="number">Число</option>
+                    <option value="date">Дата</option>
+                    <option value="textarea">Большой текст</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small">Подсказка</label>
+                <input data-field-name="Placeholder" class="form-control form-control-sm" placeholder="Подсказка для пользователя" />
+            </div>
+            <div class="col-12">
+                <div class="form-check">
+                    <input type="hidden" data-field-hidden="Required" value="false" />
+                    <input type="checkbox" data-field-name="Required" value="true" class="form-check-input" />
+                    <label class="form-check-label small">Обязательное поле</label>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<script>
+    (function () {
+        const template = document.getElementById('template-field-row-template');
+        if (!template) return;
+
+        function applyNames(row, prefix, index) {
+            row.querySelectorAll('[data-field-name]').forEach((element) => {
+                const property = element.getAttribute('data-field-name');
+                element.setAttribute('name', `${prefix}[${index}].${property}`);
+            });
+
+            row.querySelectorAll('[data-field-hidden]').forEach((element) => {
+                const property = element.getAttribute('data-field-hidden');
+                element.setAttribute('name', `${prefix}[${index}].${property}`);
+            });
+        }
+
+        document.querySelectorAll('[data-add-field-row]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const targetId = button.getAttribute('data-target');
+                const container = targetId ? document.getElementById(targetId) : null;
+                if (!container) return;
+
+                const prefix = container.getAttribute('data-prefix') || button.getAttribute('data-prefix') || 'Fields';
+                const index = Number(container.getAttribute('data-next-index') || '0');
+                const fragment = template.content.cloneNode(true);
+                const wrapper = document.createElement('div');
+                wrapper.appendChild(fragment);
+                const row = wrapper.firstElementChild;
+                if (!row) return;
+
+                const title = row.querySelector('.small.text-muted.fw-semibold');
+                if (title) {
+                    title.textContent = `Поле ${index + 1}`;
+                }
+
+                applyNames(row, prefix, index);
+                container.appendChild(row);
+                container.setAttribute('data-next-index', String(index + 1));
+            });
+        });
+    })();
+</script>
