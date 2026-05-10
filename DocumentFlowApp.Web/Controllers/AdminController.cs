@@ -48,6 +48,18 @@ public class AdminController : Controller
         return View(await BuildTemplatesPageAsync(cancellationToken));
     }
 
+    [HttpGet]
+    public async Task<IActionResult> Reports(DateTime? dateFrom, DateTime? dateTo, DocumentType? type, string? status, CancellationToken cancellationToken)
+    {
+        return View(await BuildReportPageAsync(dateFrom, dateTo, type, status, cancellationToken));
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> ReportDocument(DateTime? dateFrom, DateTime? dateTo, DocumentType? type, string? status, CancellationToken cancellationToken)
+    {
+        return View(await BuildReportPageAsync(dateFrom, dateTo, type, status, cancellationToken));
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreateDocumentTemplate([Bind(Prefix = "NewTemplate")] CreateDocumentTemplateAdminInputModel input, CancellationToken cancellationToken)
@@ -1186,6 +1198,115 @@ public class AdminController : Controller
         };
     }
 
+    private async Task<AdminReportPageViewModel> BuildReportPageAsync(
+        DateTime? dateFrom,
+        DateTime? dateTo,
+        DocumentType? type,
+        string? status,
+        CancellationToken cancellationToken)
+    {
+        var from = (dateFrom ?? DateTime.UtcNow.Date.AddDays(-30)).Date;
+        var to = (dateTo ?? DateTime.UtcNow.Date).Date;
+        if (from > to)
+            (from, to) = (to, from);
+
+        var fromUtc = DateTime.SpecifyKind(from, DateTimeKind.Utc);
+        var toExclusiveUtc = DateTime.SpecifyKind(to.AddDays(1), DateTimeKind.Utc);
+
+        var normalizedStatus = string.IsNullOrWhiteSpace(status)
+            ? null
+            : Enum.TryParse<DocumentStatus>(status, true, out var parsedStatus)
+                ? parsedStatus.ToString()
+                : null;
+
+        var documents = await _dbContext.Documents
+            .AsNoTracking()
+            .Include(x => x.User)
+            .Where(x => x.CreatedDate >= fromUtc && x.CreatedDate < toExclusiveUtc)
+            .ToListAsync(cancellationToken);
+
+        if (type.HasValue)
+            documents = documents.Where(x => string.Equals(x.DocumentType, type.Value.ToString(), StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (!string.IsNullOrWhiteSpace(normalizedStatus))
+            documents = documents.Where(x => string.Equals(x.Status, normalizedStatus, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        var todayUtc = DateTime.UtcNow.Date;
+        var completedStatuses = new[] { nameof(DocumentStatus.Completed), nameof(DocumentStatus.Archived) };
+        var pendingStatuses = new[] { nameof(DocumentStatus.OnApproval), nameof(DocumentStatus.Approved), nameof(DocumentStatus.InWork) };
+
+        var overdueDocuments = documents
+            .Where(x => x.DueDate.HasValue
+                        && x.DueDate.Value.Date < todayUtc
+                        && !completedStatuses.Contains(x.Status ?? string.Empty, StringComparer.OrdinalIgnoreCase))
+            .OrderBy(x => x.DueDate)
+            .ThenByDescending(x => x.CreatedDate)
+            .ToList();
+
+        var completedDocuments = documents
+            .Where(x => completedStatuses.Contains(x.Status ?? string.Empty, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+
+        var averageCycleDays = completedDocuments.Count == 0
+            ? 0
+            : Math.Round(completedDocuments
+                .Select(x =>
+                {
+                    var completedAt = x.ExecutionCompletedAt ?? x.UpdatedDate ?? x.CreatedDate;
+                    return Math.Max(0, (completedAt - x.CreatedDate).TotalDays);
+                })
+                .Average(), 1);
+
+        var totalDocuments = documents.Count;
+
+        return new AdminReportPageViewModel
+        {
+            DateFrom = from,
+            DateTo = to,
+            SelectedType = type,
+            SelectedStatus = normalizedStatus,
+            TotalDocuments = totalDocuments,
+            CompletedDocuments = completedDocuments.Count,
+            PendingDocuments = documents.Count(x => pendingStatuses.Contains(x.Status ?? string.Empty, StringComparer.OrdinalIgnoreCase)),
+            OverdueDocuments = overdueDocuments.Count,
+            AverageCycleDays = averageCycleDays,
+            GeneratedAtUtc = DateTime.UtcNow,
+            StatusBreakdown = Enum.GetValues<DocumentStatus>()
+                .Select(statusValue =>
+                {
+                    var count = documents.Count(x => string.Equals(x.Status, statusValue.ToString(), StringComparison.OrdinalIgnoreCase));
+                    return new AdminReportBreakdownItemViewModel
+                    {
+                        Label = GetStatusLabel(statusValue),
+                        Count = count,
+                        SharePercent = totalDocuments == 0 ? 0 : Math.Round(count * 100d / totalDocuments, 1)
+                    };
+                })
+                .ToList(),
+            TypeBreakdown = Enum.GetValues<DocumentType>()
+                .Select(typeValue =>
+                {
+                    var count = documents.Count(x => string.Equals(x.DocumentType, typeValue.ToString(), StringComparison.OrdinalIgnoreCase));
+                    return new AdminReportBreakdownItemViewModel
+                    {
+                        Label = GetDocumentTypeLabel(typeValue),
+                        Count = count,
+                        SharePercent = totalDocuments == 0 ? 0 : Math.Round(count * 100d / totalDocuments, 1)
+                    };
+                })
+                .ToList(),
+            OverdueItems = overdueDocuments
+                .Take(10)
+                .Select(MapReportRow)
+                .ToList(),
+            RecentItems = documents
+                .OrderByDescending(x => x.CreatedDate)
+                .Take(10)
+                .Select(MapReportRow)
+                .ToList()
+        };
+    }
+
     private static string BuildAuditUserDisplayName(string? lastName, string? firstName, string? userName)
     {
         var fullName = string.Join(" ", new[] { lastName, firstName }.Where(v => !string.IsNullOrWhiteSpace(v)));
@@ -1344,12 +1465,41 @@ public class AdminController : Controller
 
     private static string GetDocumentTypeLabel(DocumentType type) => type switch
     {
-        DocumentType.Contract => "???????",
-        DocumentType.Invoice => "????",
-        DocumentType.Report => "?????",
-        DocumentType.Order => "??????",
-        DocumentType.Application => "?????????",
-        DocumentType.Act => "???",
-        _ => "??????"
+        DocumentType.Contract => "Договор",
+        DocumentType.Invoice => "Счет",
+        DocumentType.Report => "Отчет",
+        DocumentType.Order => "Приказ",
+        DocumentType.Application => "Заявление",
+        DocumentType.Act => "Акт",
+        _ => "Другое"
     };
+
+    private static string GetStatusLabel(DocumentStatus status) => status switch
+    {
+        DocumentStatus.Draft => "Черновик",
+        DocumentStatus.OnApproval => "На согласовании",
+        DocumentStatus.Approved => "Утвержден",
+        DocumentStatus.InWork => "В работе",
+        DocumentStatus.Completed => "Завершен",
+        DocumentStatus.Archived => "Архив",
+        _ => status.ToString()
+    };
+
+    private static AdminReportDocumentRowViewModel MapReportRow(Document document)
+    {
+        return new AdminReportDocumentRowViewModel
+        {
+            Id = document.DocumentId,
+            Title = string.IsNullOrWhiteSpace(document.Title) ? $"Документ #{document.DocumentId}" : document.Title,
+            TypeLabel = Enum.TryParse<DocumentType>(document.DocumentType, true, out var documentType)
+                ? GetDocumentTypeLabel(documentType)
+                : "Другое",
+            StatusLabel = Enum.TryParse<DocumentStatus>(document.Status, true, out var status)
+                ? GetStatusLabel(status)
+                : (document.Status ?? "Не указан"),
+            OwnerLabel = FormatUserDisplayName(document.User?.FirstName, document.User?.LastName, document.User?.UserName),
+            CreatedDateUtc = document.CreatedDate,
+            DueDateUtc = document.DueDate
+        };
+    }
 }

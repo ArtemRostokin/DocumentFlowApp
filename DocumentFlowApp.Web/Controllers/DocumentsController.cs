@@ -841,23 +841,41 @@ public class DocumentsController : Controller
         var autoClassifiedCount = 0;
         var reviewCount = 0;
         var lowConfidenceCount = 0;
+        var failedCount = 0;
+        var results = new List<UploadIncomingFileResultViewModel>();
 
-        try
+        foreach (var file in files)
         {
-            foreach (var file in files)
+            if (file.Length > 25 * 1024 * 1024)
             {
-                if (file.Length > 25 * 1024 * 1024)
+                failedCount++;
+                results.Add(new UploadIncomingFileResultViewModel
                 {
-                    ModelState.AddModelError(nameof(model.Files), $"Файл {file.FileName} превышает 25 MB.");
-                    return View(model);
-                }
+                    FileName = Path.GetFileName(file.FileName),
+                    Status = "failed",
+                    StatusLabel = "Ошибка",
+                    Message = "Файл превышает 25 MB и пропущен.",
+                    BadgeClass = "bg-red-50 text-red-700 border-red-200"
+                });
+                continue;
+            }
 
-                if (!IsAllowedIncomingFile(file))
+            if (!IsAllowedIncomingFile(file))
+            {
+                failedCount++;
+                results.Add(new UploadIncomingFileResultViewModel
                 {
-                    ModelState.AddModelError(nameof(model.Files), $"Файл {file.FileName} имеет неподдерживаемый формат.");
-                    return View(model);
-                }
+                    FileName = Path.GetFileName(file.FileName),
+                    Status = "failed",
+                    StatusLabel = "Ошибка",
+                    Message = "Неподдерживаемый формат файла.",
+                    BadgeClass = "bg-red-50 text-red-700 border-red-200"
+                });
+                continue;
+            }
 
+            try
+            {
                 var stored = await SaveUploadedDocumentFileAsync(file, cancellationToken);
                 var extractedTextResult = await TryExtractIncomingTextAsync(stored.PhysicalPath, file.FileName, cancellationToken);
                 var classification = _aiClassifier.ClassifyIncomingDocument(file.FileName, extractedTextResult.ExtractedText);
@@ -907,26 +925,89 @@ public class DocumentsController : Controller
                 await TryAutoAssignNomenclatureAsync(created, cancellationToken);
 
                 if (classification.ShouldAutoAssignType)
+                {
                     autoClassifiedCount++;
+                    results.Add(new UploadIncomingFileResultViewModel
+                    {
+                        FileName = Path.GetFileName(file.FileName),
+                        Status = "imported",
+                        StatusLabel = "Импортирован",
+                        Message = "Тип определен автоматически, документ создан как черновик.",
+                        BadgeClass = "bg-emerald-50 text-emerald-700 border-emerald-200",
+                        DocumentId = created.DocumentId,
+                        DocumentTitle = created.Title,
+                        TypeLabel = GetDocumentTypeLabel(classification.SuggestedType),
+                        ConfidencePercent = classification.ConfidencePercent
+                    });
+                }
                 else if (classification.RequiresManualReview)
+                {
                     reviewCount++;
+                    results.Add(new UploadIncomingFileResultViewModel
+                    {
+                        FileName = Path.GetFileName(file.FileName),
+                        Status = "needs_review",
+                        StatusLabel = "Нужна проверка",
+                        Message = "Документ создан, но тип стоит перепроверить вручную.",
+                        BadgeClass = "bg-amber-50 text-amber-700 border-amber-200",
+                        DocumentId = created.DocumentId,
+                        DocumentTitle = created.Title,
+                        TypeLabel = GetDocumentTypeLabel(classification.SuggestedType),
+                        ConfidencePercent = classification.ConfidencePercent
+                    });
+                }
                 else
+                {
                     lowConfidenceCount++;
+                    results.Add(new UploadIncomingFileResultViewModel
+                    {
+                        FileName = Path.GetFileName(file.FileName),
+                        Status = "low_confidence",
+                        StatusLabel = "Низкая уверенность",
+                        Message = "Документ создан, но тип не определен уверенно.",
+                        BadgeClass = "bg-slate-100 text-slate-700 border-slate-200",
+                        DocumentId = created.DocumentId,
+                        DocumentTitle = created.Title,
+                        TypeLabel = GetDocumentTypeLabel(classification.SuggestedType),
+                        ConfidencePercent = classification.ConfidencePercent
+                    });
+                }
 
                 createdCount++;
             }
+            catch (Exception ex)
+            {
+                failedCount++;
+                _logger.LogWarning(ex, "Не удалось обработать входящий файл {FileName}", file.FileName);
+                results.Add(new UploadIncomingFileResultViewModel
+                {
+                    FileName = Path.GetFileName(file.FileName),
+                    Status = "failed",
+                    StatusLabel = "Ошибка",
+                    Message = "Во время обработки произошла ошибка, файл пропущен.",
+                    BadgeClass = "bg-red-50 text-red-700 border-red-200"
+                });
+            }
+        }
 
-            TempData["SuccessMessage"] =
-                $"Загружено входящих документов: {createdCount}. " +
-                $"Автоклассификация: {autoClassifiedCount}, требуется проверка: {reviewCount}, низкая уверенность: {lowConfidenceCount}.";
-            return RedirectToAction("Index", "Home");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Не удалось загрузить входящие документы.");
-            ModelState.AddModelError(string.Empty, "Не удалось загрузить документы. Повторите попытку позже.");
-            return View(model);
-        }
+        model.Files = [];
+        model.TotalFiles = files.Count;
+        model.ImportedCount = createdCount;
+        model.AutoClassifiedCount = autoClassifiedCount;
+        model.NeedsReviewCount = reviewCount;
+        model.LowConfidenceCount = lowConfidenceCount;
+        model.FailedCount = failedCount;
+        model.Results = results;
+        model.SuccessMessage = createdCount > 0
+            ? $"Пакет обработан. Создано документов: {createdCount} из {files.Count}."
+            : null;
+        model.ErrorMessage = createdCount == 0
+            ? "Не удалось обработать ни один файл из пакета."
+            : failedCount > 0
+                ? $"Часть файлов не была импортирована: {failedCount}."
+                : null;
+
+        return View(model);
     }
 
     [HttpPost]

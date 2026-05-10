@@ -1,0 +1,400 @@
+@model DocumentFlowApp.Web.Models.AdminReportPageViewModel
+@using DocumentFlowApp.Core.Enums
+@{
+    ViewData["Title"] = "Админский отчет";
+
+    string TypeLabel(DocumentType type) => type switch
+    {
+        DocumentType.Contract => "Договор",
+        DocumentType.Invoice => "Счет",
+        DocumentType.Report => "Отчет",
+        DocumentType.Order => "Приказ",
+        DocumentType.Application => "Заявление",
+        DocumentType.Act => "Акт",
+        _ => "Другое"
+    };
+
+    string StatusFilterLabel() => Model.SelectedStatus switch
+    {
+        nameof(DocumentStatus.Draft) => "Черновик",
+        nameof(DocumentStatus.OnApproval) => "На согласовании",
+        nameof(DocumentStatus.Approved) => "Утвержден",
+        nameof(DocumentStatus.InWork) => "В работе",
+        nameof(DocumentStatus.Completed) => "Завершен",
+        nameof(DocumentStatus.Archived) => "Архив",
+        _ => "Все статусы"
+    };
+
+    var currentUserName = User.Identity?.Name ?? "Администратор";
+}
+
+<style>
+    .report-page {
+        background: #f8fafc;
+    }
+
+    .report-paper {
+        background: #fff;
+        border: 1px solid #dbe3ee;
+        border-radius: 24px;
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.08);
+    }
+
+    .report-kpi {
+        border: 1px solid #dbe3ee;
+        border-radius: 18px;
+        background: #fff;
+    }
+
+    .report-section {
+        border: 1px solid #e2e8f0;
+        border-radius: 18px;
+        background: #fff;
+    }
+
+    .report-table th {
+        font-size: 0.78rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #64748b;
+        background: #f8fafc;
+    }
+
+    .report-meta-label {
+        color: #64748b;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .report-signature-line {
+        height: 1px;
+        background: #94a3b8;
+        margin-top: 2.5rem;
+    }
+
+    @@media print {
+        body {
+            background: #fff !important;
+        }
+
+        .report-page,
+        .report-paper,
+        .report-kpi,
+        .report-section {
+            background: #fff !important;
+            box-shadow: none !important;
+            border-color: #cbd5e1 !important;
+        }
+
+        .report-toolbar,
+        .btn,
+        .form-control,
+        .form-select {
+            display: none !important;
+        }
+
+        .container {
+            max-width: none !important;
+            width: 100% !important;
+        }
+    }
+</style>
+
+<div class="report-page py-4">
+    <div class="container">
+        <div class="report-toolbar d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
+            <div>
+                <h1 class="h3 mb-2">Отчет по документообороту</h1>
+                <p class="text-muted mb-0">Официальная сводка по движению документов за выбранный период.</p>
+            </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a asp-action="ReportDocument"
+               asp-route-dateFrom="@Model.DateFrom.ToString("yyyy-MM-dd")"
+               asp-route-dateTo="@Model.DateTo.ToString("yyyy-MM-dd")"
+               asp-route-type="@Model.SelectedType"
+               asp-route-status="@Model.SelectedStatus"
+               class="btn btn-outline-primary">
+                Официальная форма
+            </a>
+            <button type="button" class="btn btn-outline-secondary" onclick="window.print()">Распечатать</button>
+            <a asp-action="Index" class="btn btn-outline-secondary">Назад в администрирование</a>
+        </div>
+        </div>
+
+        <div class="card shadow-sm mb-4 report-toolbar">
+            <div class="card-body">
+                <form method="get" class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label for="dateFrom" class="form-label">Период с</label>
+                        <input id="dateFrom" name="dateFrom" type="date" value="@Model.DateFrom.ToString("yyyy-MM-dd")" class="form-control" />
+                    </div>
+                    <div class="col-md-3">
+                        <label for="dateTo" class="form-label">Период по</label>
+                        <input id="dateTo" name="dateTo" type="date" value="@Model.DateTo.ToString("yyyy-MM-dd")" class="form-control" />
+                    </div>
+                    <div class="col-md-3">
+                        <label for="type" class="form-label">Тип документа</label>
+                        <select id="type" name="type" class="form-select">
+                            <option value="">Все типы</option>
+                            @foreach (var documentType in Enum.GetValues<DocumentType>())
+                            {
+                                <option value="@documentType" selected="@(Model.SelectedType == documentType ? "selected" : null)">@TypeLabel(documentType)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="status" class="form-label">Статус</label>
+                        <select id="status" name="status" class="form-select">
+                            <option value="">Все статусы</option>
+                            <option value="@nameof(DocumentStatus.Draft)" selected="@(Model.SelectedStatus == nameof(DocumentStatus.Draft) ? "selected" : null)">Черновик</option>
+                            <option value="@nameof(DocumentStatus.OnApproval)" selected="@(Model.SelectedStatus == nameof(DocumentStatus.OnApproval) ? "selected" : null)">На согласовании</option>
+                            <option value="@nameof(DocumentStatus.Approved)" selected="@(Model.SelectedStatus == nameof(DocumentStatus.Approved) ? "selected" : null)">Утвержден</option>
+                            <option value="@nameof(DocumentStatus.InWork)" selected="@(Model.SelectedStatus == nameof(DocumentStatus.InWork) ? "selected" : null)">В работе</option>
+                            <option value="@nameof(DocumentStatus.Completed)" selected="@(Model.SelectedStatus == nameof(DocumentStatus.Completed) ? "selected" : null)">Завершен</option>
+                            <option value="@nameof(DocumentStatus.Archived)" selected="@(Model.SelectedStatus == nameof(DocumentStatus.Archived) ? "selected" : null)">Архив</option>
+                        </select>
+                    </div>
+                    <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div class="small text-muted">
+                            Отчет сформирован: @Model.GeneratedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+                        </div>
+                        <div class="d-flex gap-2">
+                            <a asp-action="Reports" class="btn btn-link text-decoration-none">Сбросить</a>
+                            <button type="submit" class="btn btn-primary">Сформировать отчет</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="report-paper p-4 p-xl-5">
+            <div class="d-flex justify-content-between gap-4 flex-wrap border-bottom pb-4 mb-4">
+                <div>
+                    <div class="report-meta-label mb-2">Организация</div>
+                    <div class="fw-semibold fs-5">DocManager</div>
+                    <div class="text-muted">Система внутреннего документооборота</div>
+                </div>
+                <div class="text-md-end">
+                    <div class="report-meta-label mb-2">Реквизиты отчета</div>
+                    <div><span class="text-muted">Дата формирования:</span> @Model.GeneratedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</div>
+                    <div><span class="text-muted">Подготовил:</span> @currentUserName</div>
+                    <div><span class="text-muted">Период:</span> @Model.DateFrom.ToString("dd.MM.yyyy") - @Model.DateTo.ToString("dd.MM.yyyy")</div>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <h2 class="h4 mb-2">Сводный отчет по движению документов</h2>
+                <p class="mb-3 text-muted">
+                    Отчет отражает текущее состояние документооборота по выбранной выборке, включая структуру по статусам и типам,
+                    количество просроченных документов и список последних зарегистрированных позиций.
+                </p>
+
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="report-section p-3 h-100">
+                            <div class="report-meta-label mb-2">Фильтр по типу</div>
+                            <div class="fw-semibold">@(Model.SelectedType.HasValue ? TypeLabel(Model.SelectedType.Value) : "Все типы")</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="report-section p-3 h-100">
+                            <div class="report-meta-label mb-2">Фильтр по статусу</div>
+                            <div class="fw-semibold">@StatusFilterLabel()</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="report-section p-3 h-100">
+                            <div class="report-meta-label mb-2">Средний цикл обработки</div>
+                            <div class="fw-semibold">@Model.AverageCycleDays.ToString("0.0") дн.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-lg-3 col-md-6">
+                    <div class="report-kpi p-3 h-100">
+                        <div class="report-meta-label mb-2">Всего документов</div>
+                        <div class="display-6 mb-1">@Model.TotalDocuments</div>
+                        <div class="small text-muted">Во включенной выборке</div>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <div class="report-kpi p-3 h-100">
+                        <div class="report-meta-label mb-2">Завершено</div>
+                        <div class="display-6 mb-1">@Model.CompletedDocuments</div>
+                        <div class="small text-muted">Завершенные и архивные</div>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <div class="report-kpi p-3 h-100">
+                        <div class="report-meta-label mb-2">Требуют движения</div>
+                        <div class="display-6 mb-1">@Model.PendingDocuments</div>
+                        <div class="small text-muted">Согласование и исполнение</div>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <div class="report-kpi p-3 h-100">
+                        <div class="report-meta-label mb-2">Просрочено</div>
+                        <div class="display-6 mb-1">@Model.OverdueDocuments</div>
+                        <div class="small text-muted">Требуют внимания администратора</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-4 mb-4">
+                <div class="col-lg-6">
+                    <div class="report-section p-3 p-lg-4 h-100">
+                        <h3 class="h5 mb-3">1. Распределение по статусам</h3>
+                        <div class="table-responsive">
+                            <table class="table table-bordered align-middle mb-0 report-table">
+                                <thead>
+                                    <tr>
+                                        <th>Статус</th>
+                                        <th class="text-end">Количество</th>
+                                        <th class="text-end">Доля</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in Model.StatusBreakdown)
+                                    {
+                                        <tr>
+                                            <td>@item.Label</td>
+                                            <td class="text-end fw-semibold">@item.Count</td>
+                                            <td class="text-end">@item.SharePercent.ToString("0.0")%</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="report-section p-3 p-lg-4 h-100">
+                        <h3 class="h5 mb-3">2. Распределение по типам документов</h3>
+                        <div class="table-responsive">
+                            <table class="table table-bordered align-middle mb-0 report-table">
+                                <thead>
+                                    <tr>
+                                        <th>Тип документа</th>
+                                        <th class="text-end">Количество</th>
+                                        <th class="text-end">Доля</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in Model.TypeBreakdown)
+                                    {
+                                        <tr>
+                                            <td>@item.Label</td>
+                                            <td class="text-end fw-semibold">@item.Count</td>
+                                            <td class="text-end">@item.SharePercent.ToString("0.0")%</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-4">
+                <div class="col-xl-6">
+                    <div class="report-section p-3 p-lg-4 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h3 class="h5 mb-0">3. Просроченные документы</h3>
+                            <span class="badge text-bg-danger">@Model.OverdueDocuments</span>
+                        </div>
+                        @if (Model.OverdueItems.Count == 0)
+                        {
+                            <div class="text-muted">В выбранной выборке просроченные документы отсутствуют.</div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-bordered align-middle mb-0 report-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Документ</th>
+                                            <th>Ответственный</th>
+                                            <th>Срок</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var item in Model.OverdueItems)
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <div class="fw-semibold">@item.Title</div>
+                                                    <div class="small text-muted">@item.TypeLabel · @item.StatusLabel</div>
+                                                </td>
+                                                <td>@item.OwnerLabel</td>
+                                                <td>@(item.DueDateUtc?.ToLocalTime().ToString("dd.MM.yyyy") ?? "Не указан")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="col-xl-6">
+                    <div class="report-section p-3 p-lg-4 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h3 class="h5 mb-0">4. Последние документы выборки</h3>
+                            <span class="badge text-bg-secondary">@Model.RecentItems.Count</span>
+                        </div>
+                        @if (Model.RecentItems.Count == 0)
+                        {
+                            <div class="text-muted">За выбранный период документы не найдены.</div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-bordered align-middle mb-0 report-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Документ</th>
+                                            <th>Ответственный</th>
+                                            <th>Создан</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var item in Model.RecentItems)
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <div class="fw-semibold">@item.Title</div>
+                                                    <div class="small text-muted">@item.TypeLabel · @item.StatusLabel</div>
+                                                </td>
+                                                <td>@item.OwnerLabel</td>
+                                                <td>@item.CreatedDateUtc.ToLocalTime().ToString("dd.MM.yyyy")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-5 pt-4 border-top">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <div class="report-meta-label mb-2">Вывод</div>
+                        <p class="mb-0 text-muted">
+                            По итогам сформированной выборки в системе зарегистрировано <strong>@Model.TotalDocuments</strong> документов,
+                            из которых <strong>@Model.OverdueDocuments</strong> требуют приоритетного внимания из-за нарушения срока исполнения.
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="report-meta-label mb-2">Подпись ответственного</div>
+                        <div class="report-signature-line"></div>
+                        <div class="small text-muted mt-2">Администратор / ответственное лицо</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

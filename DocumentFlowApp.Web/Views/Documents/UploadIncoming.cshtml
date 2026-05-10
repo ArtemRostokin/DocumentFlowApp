@@ -9,9 +9,11 @@
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
     <title>Загрузка входящих документов - DocManager</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet" />
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet" />
-    <style>body { font-family: "Inter", sans-serif; }</style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <style>
+        body { font-family: "Inter", sans-serif; }
+    </style>
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen">
     <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6">
@@ -34,50 +36,67 @@
     </header>
 
     <main class="px-6 py-10 flex justify-center">
-        <div class="w-full max-w-4xl space-y-6">
+        <div class="w-full max-w-5xl space-y-6">
             <div>
                 <div class="text-sm font-semibold text-blue-600 uppercase tracking-widest">Входящие документы</div>
-                <h1 class="mt-2 text-3xl font-bold tracking-tight">Загрузка файлов извне</h1>
+                <h1 class="mt-2 text-3xl font-bold tracking-tight">Пакетная загрузка файлов</h1>
                 <p class="mt-2 text-sm text-slate-500">
-                    Загрузите от 1 до 20 PDF, JPG или PNG-файлов. Система создаст черновики документов и предварительно определит тип по правилам AI-классификации.
+                    Загрузите от 1 до 20 файлов. Система обработает каждый документ отдельно, покажет результат по каждому файлу
+                    и не остановит весь пакет, если один из файлов окажется проблемным.
                 </p>
             </div>
+
+            @if (!string.IsNullOrWhiteSpace(Model.SuccessMessage))
+            {
+                <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                    @Model.SuccessMessage
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+            {
+                <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    @Model.ErrorMessage
+                </div>
+            }
 
             <form method="post" asp-action="UploadIncoming" enctype="multipart/form-data" class="space-y-6">
                 @Html.AntiForgeryToken()
 
                 <div asp-validation-summary="ModelOnly" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"></div>
 
-                <section class="bg-white rounded-lg border border-slate-200 p-8 shadow-sm">
-                    <div class="rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
+                <section class="bg-white rounded-xl border border-slate-200 p-8 shadow-sm">
+                    <div class="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
                         <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
                             <span class="material-symbols-outlined">upload_file</span>
                         </div>
                         <label asp-for="Files" class="block text-base font-semibold text-slate-900">
                             Выберите входящие файлы
                         </label>
-                        <p class="mt-1 text-sm text-slate-500">PDF, JPG, PNG; до 25MB на файл; максимум 20 файлов за раз.</p>
+                        <p class="mt-1 text-sm text-slate-500">
+                            PDF, DOCX, JPG, PNG; до 25 MB на файл; максимум 20 файлов за одну загрузку.
+                        </p>
                         <input asp-for="Files"
                                type="file"
                                multiple
-                               accept="application/pdf,image/jpeg,image/png"
+                               accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
                                class="mx-auto mt-5 block w-full max-w-xl rounded-lg border border-slate-300 bg-white text-sm text-slate-700 file:mr-4 file:border-0 file:bg-slate-800 file:px-4 file:py-2.5 file:text-sm file:font-semibold file:text-white hover:file:bg-slate-900" />
                         <span asp-validation-for="Files" class="mt-2 block text-xs text-red-600"></span>
                     </div>
                 </section>
 
                 <section class="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <div class="rounded-lg border border-slate-200 bg-white p-5">
-                        <div class="text-sm font-bold text-slate-900">1. Сохранение</div>
-                        <p class="mt-2 text-sm text-slate-500">Файл получает безопасное имя, хеш и ссылку на просмотр.</p>
+                    <div class="rounded-xl border border-slate-200 bg-white p-5">
+                        <div class="text-sm font-bold text-slate-900">1. Обработка по файлам</div>
+                        <p class="mt-2 text-sm text-slate-500">Каждый файл проходит собственный цикл сохранения, извлечения текста и создания черновика.</p>
                     </div>
-                    <div class="rounded-lg border border-slate-200 bg-white p-5">
-                        <div class="text-sm font-bold text-slate-900">2. Классификация</div>
-                        <p class="mt-2 text-sm text-slate-500">Тип определяется по имени файла как временный AI-адаптер.</p>
+                    <div class="rounded-xl border border-slate-200 bg-white p-5">
+                        <div class="text-sm font-bold text-slate-900">2. Частичный успех</div>
+                        <p class="mt-2 text-sm text-slate-500">Если один файл упадет с ошибкой, остальные документы из пакета все равно будут обработаны.</p>
                     </div>
-                    <div class="rounded-lg border border-slate-200 bg-white p-5">
-                        <div class="text-sm font-bold text-slate-900">3. Черновик</div>
-                        <p class="mt-2 text-sm text-slate-500">Каждый файл попадает на доску в статусе “Черновик”.</p>
+                    <div class="rounded-xl border border-slate-200 bg-white p-5">
+                        <div class="text-sm font-bold text-slate-900">3. Итог по пакету</div>
+                        <p class="mt-2 text-sm text-slate-500">После загрузки вы сразу увидите, что импортировано, что требует проверки и что не удалось обработать.</p>
                     </div>
                 </section>
 
@@ -93,6 +112,86 @@
                     </button>
                 </div>
             </form>
+
+            @if (Model.TotalFiles > 0)
+            {
+                <section class="space-y-4">
+                    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <div class="flex items-start justify-between gap-4 flex-wrap">
+                            <div>
+                                <h2 class="text-xl font-semibold text-slate-900">Результат пакетной обработки</h2>
+                                <p class="mt-1 text-sm text-slate-500">Сводка по последнему загруженному пакету.</p>
+                            </div>
+                            <a asp-controller="Home" asp-action="Index" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                                Перейти на доску
+                            </a>
+                        </div>
+
+                        <div class="mt-5 grid gap-3 md:grid-cols-5">
+                            <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">Всего файлов</div>
+                                <div class="mt-2 text-2xl font-bold text-slate-900">@Model.TotalFiles</div>
+                            </div>
+                            <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                                <div class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Импортировано</div>
+                                <div class="mt-2 text-2xl font-bold text-emerald-900">@Model.ImportedCount</div>
+                            </div>
+                            <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                                <div class="text-xs font-semibold uppercase tracking-wide text-blue-700">Автоопределено</div>
+                                <div class="mt-2 text-2xl font-bold text-blue-900">@Model.AutoClassifiedCount</div>
+                            </div>
+                            <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                                <div class="text-xs font-semibold uppercase tracking-wide text-amber-700">Нужна проверка</div>
+                                <div class="mt-2 text-2xl font-bold text-amber-900">@(Model.NeedsReviewCount + Model.LowConfidenceCount)</div>
+                            </div>
+                            <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                                <div class="text-xs font-semibold uppercase tracking-wide text-red-700">Ошибки</div>
+                                <div class="mt-2 text-2xl font-bold text-red-900">@Model.FailedCount</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                        <div class="border-b border-slate-200 px-6 py-4">
+                            <h3 class="text-lg font-semibold text-slate-900">Пофайловый результат</h3>
+                        </div>
+                        <div class="divide-y divide-slate-200">
+                            @foreach (var item in Model.Results)
+                            {
+                                <div class="px-6 py-4">
+                                    <div class="flex items-start justify-between gap-4 flex-wrap">
+                                        <div class="min-w-0">
+                                            <div class="flex items-center gap-3 flex-wrap">
+                                                <div class="font-semibold text-slate-900">@item.FileName</div>
+                                                <span class="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold @item.BadgeClass">@item.StatusLabel</span>
+                                                @if (item.ConfidencePercent.HasValue)
+                                                {
+                                                    <span class="text-xs text-slate-500">Уверенность: @item.ConfidencePercent%</span>
+                                                }
+                                            </div>
+                                            <div class="mt-2 text-sm text-slate-600">@item.Message</div>
+                                            @if (!string.IsNullOrWhiteSpace(item.TypeLabel))
+                                            {
+                                                <div class="mt-1 text-xs text-slate-500">Предполагаемый тип: @item.TypeLabel</div>
+                                            }
+                                        </div>
+
+                                        @if (item.DocumentId.HasValue)
+                                        {
+                                            <a asp-controller="Documents"
+                                               asp-action="Edit"
+                                               asp-route-id="@item.DocumentId.Value"
+                                               class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                                                Открыть документ
+                                            </a>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </section>
+            }
         </div>
     </main>
 </body>

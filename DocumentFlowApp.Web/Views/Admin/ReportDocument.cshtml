@@ -1,0 +1,454 @@
+@model DocumentFlowApp.Web.Models.AdminReportPageViewModel
+@using DocumentFlowApp.Core.Enums
+@{
+    Layout = null;
+
+    string TypeLabel(DocumentType type) => type switch
+    {
+        DocumentType.Contract => "Договор",
+        DocumentType.Invoice => "Счет",
+        DocumentType.Report => "Отчет",
+        DocumentType.Order => "Приказ",
+        DocumentType.Application => "Заявление",
+        DocumentType.Act => "Акт",
+        _ => "Другое"
+    };
+
+    string StatusFilterLabel() => Model.SelectedStatus switch
+    {
+        nameof(DocumentStatus.Draft) => "Черновик",
+        nameof(DocumentStatus.OnApproval) => "На согласовании",
+        nameof(DocumentStatus.Approved) => "Утвержден",
+        nameof(DocumentStatus.InWork) => "В работе",
+        nameof(DocumentStatus.Completed) => "Завершен",
+        nameof(DocumentStatus.Archived) => "Архив",
+        _ => "Все статусы"
+    };
+
+    var currentUserName = User.Identity?.Name ?? "Администратор";
+}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Админский отчет</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #eef2f7;
+            color: #1e293b;
+            font: 14px/1.45 "Segoe UI", Arial, sans-serif;
+        }
+
+        .page {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 16px auto;
+            background: #fff;
+            padding: 18mm 16mm;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+        }
+
+        .topline,
+        .meta-grid,
+        .summary-grid,
+        .tables-grid,
+        .footer-grid {
+            width: 100%;
+        }
+
+        .topline {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+            margin-bottom: 18px;
+            font-size: 12px;
+            color: #475569;
+        }
+
+        .center-title {
+            text-align: center;
+            flex: 1;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .doc-title {
+            text-align: center;
+            margin: 10px 0 20px;
+        }
+
+        .doc-title h1 {
+            margin: 0;
+            font-size: 24px;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+        }
+
+        .doc-title p {
+            margin: 8px 0 0;
+            color: #64748b;
+            font-size: 13px;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .meta-card,
+        .summary-card,
+        .section {
+            border: 1px solid #d8e0ea;
+            border-radius: 14px;
+            background: #fff;
+        }
+
+        .meta-card {
+            padding: 12px 14px;
+        }
+
+        .meta-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #64748b;
+            margin-bottom: 6px;
+        }
+
+        .meta-value {
+            font-weight: 600;
+            color: #0f172a;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .summary-card {
+            padding: 12px 14px;
+        }
+
+        .summary-number {
+            font-size: 26px;
+            line-height: 1;
+            font-weight: 700;
+            color: #0f172a;
+            margin: 8px 0 6px;
+        }
+
+        .summary-note {
+            color: #64748b;
+            font-size: 12px;
+        }
+
+        .section {
+            padding: 14px;
+            margin-bottom: 16px;
+        }
+
+        .section-title {
+            margin: 0 0 12px;
+            font-size: 18px;
+            color: #0f172a;
+        }
+
+        .section-text {
+            margin: 0;
+            color: #475569;
+        }
+
+        .tables-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            border: 1px solid #d8e0ea;
+            padding: 8px 10px;
+            vertical-align: top;
+            text-align: left;
+        }
+
+        th {
+            background: #f8fafc;
+            color: #475569;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        td small {
+            color: #64748b;
+            display: block;
+            margin-top: 2px;
+        }
+
+        .footer-grid {
+            display: grid;
+            grid-template-columns: 1.4fr 1fr;
+            gap: 24px;
+            margin-top: 26px;
+            padding-top: 18px;
+            border-top: 1px solid #d8e0ea;
+        }
+
+        .signature-line {
+            margin-top: 44px;
+            border-bottom: 1px solid #64748b;
+        }
+
+        .toolbar {
+            width: 210mm;
+            margin: 16px auto 0;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .toolbar a,
+        .toolbar button {
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            color: #334155;
+            border-radius: 10px;
+            padding: 9px 14px;
+            font: 600 13px/1 "Segoe UI", Arial, sans-serif;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        @@media print {
+            body {
+                background: #fff;
+            }
+
+            .toolbar {
+                display: none;
+            }
+
+            .page {
+                width: auto;
+                min-height: auto;
+                margin: 0;
+                box-shadow: none;
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <button type="button" onclick="window.print()">Печать</button>
+        <a asp-action="Reports"
+           asp-route-dateFrom="@Model.DateFrom.ToString("yyyy-MM-dd")"
+           asp-route-dateTo="@Model.DateTo.ToString("yyyy-MM-dd")"
+           asp-route-type="@Model.SelectedType"
+           asp-route-status="@Model.SelectedStatus">Назад к отчетам</a>
+    </div>
+
+    <div class="page">
+        <div class="topline">
+            <div>@Model.GeneratedAtUtc.ToLocalTime().ToString("dd.MM.yyyy, HH:mm")</div>
+            <div class="center-title">Админский отчет - DocManager</div>
+            <div>Подготовил: @currentUserName</div>
+        </div>
+
+        <div class="doc-title">
+            <h1>Отчет по документообороту</h1>
+            <p>Сводная официальная форма по состоянию документов за выбранный период</p>
+        </div>
+
+        <div class="meta-grid">
+            <div class="meta-card">
+                <div class="meta-label">Отчетный период</div>
+                <div class="meta-value">@Model.DateFrom.ToString("dd.MM.yyyy") - @Model.DateTo.ToString("dd.MM.yyyy")</div>
+            </div>
+            <div class="meta-card">
+                <div class="meta-label">Выборка</div>
+                <div class="meta-value">Тип: @(Model.SelectedType.HasValue ? TypeLabel(Model.SelectedType.Value) : "Все типы"), статус: @StatusFilterLabel()</div>
+            </div>
+        </div>
+
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div class="meta-label">Всего документов</div>
+                <div class="summary-number">@Model.TotalDocuments</div>
+                <div class="summary-note">В сформированной выборке</div>
+            </div>
+            <div class="summary-card">
+                <div class="meta-label">Завершено</div>
+                <div class="summary-number">@Model.CompletedDocuments</div>
+                <div class="summary-note">Завершенные и архивные</div>
+            </div>
+            <div class="summary-card">
+                <div class="meta-label">Требуют движения</div>
+                <div class="summary-number">@Model.PendingDocuments</div>
+                <div class="summary-note">Согласование и исполнение</div>
+            </div>
+            <div class="summary-card">
+                <div class="meta-label">Просрочено</div>
+                <div class="summary-number">@Model.OverdueDocuments</div>
+                <div class="summary-note">Средний цикл: @Model.AverageCycleDays.ToString("0.0") дн.</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2 class="section-title">1. Общая характеристика выборки</h2>
+            <p class="section-text">
+                В отчетный период в систему вошло <strong>@Model.TotalDocuments</strong> документов. Из них
+                <strong>@Model.CompletedDocuments</strong> завершены, а <strong>@Model.PendingDocuments</strong>
+                продолжают движение по маршрутам согласования и исполнения. Просроченных документов:
+                <strong>@Model.OverdueDocuments</strong>.
+            </p>
+        </div>
+
+        <div class="tables-grid">
+            <div class="section">
+                <h2 class="section-title">2. Распределение по статусам</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Статус</th>
+                            <th>Кол-во</th>
+                            <th>Доля</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model.StatusBreakdown)
+                        {
+                            <tr>
+                                <td>@item.Label</td>
+                                <td>@item.Count</td>
+                                <td>@item.SharePercent.ToString("0.0")%</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">3. Распределение по типам документов</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Тип</th>
+                            <th>Кол-во</th>
+                            <th>Доля</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model.TypeBreakdown)
+                        {
+                            <tr>
+                                <td>@item.Label</td>
+                                <td>@item.Count</td>
+                                <td>@item.SharePercent.ToString("0.0")%</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2 class="section-title">4. Просроченные документы</h2>
+            @if (Model.OverdueItems.Count == 0)
+            {
+                <p class="section-text">Просроченные документы в сформированной выборке отсутствуют.</p>
+            }
+            else
+            {
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Документ</th>
+                            <th>Ответственный</th>
+                            <th>Срок</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model.OverdueItems)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@item.Title</strong>
+                                    <small>@item.TypeLabel - @item.StatusLabel</small>
+                                </td>
+                                <td>@item.OwnerLabel</td>
+                                <td>@(item.DueDateUtc?.ToLocalTime().ToString("dd.MM.yyyy") ?? "Не указан")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <div class="section">
+            <h2 class="section-title">5. Последние документы выборки</h2>
+            @if (Model.RecentItems.Count == 0)
+            {
+                <p class="section-text">За указанный период документы отсутствуют.</p>
+            }
+            else
+            {
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Документ</th>
+                            <th>Ответственный</th>
+                            <th>Создан</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model.RecentItems)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@item.Title</strong>
+                                    <small>@item.TypeLabel - @item.StatusLabel</small>
+                                </td>
+                                <td>@item.OwnerLabel</td>
+                                <td>@item.CreatedDateUtc.ToLocalTime().ToString("dd.MM.yyyy")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <div class="footer-grid">
+            <div>
+                <div class="meta-label">Вывод</div>
+                <p class="section-text">
+                    По итогам сформированной выборки в системе зарегистрировано <strong>@Model.TotalDocuments</strong> документов,
+                    из которых <strong>@Model.OverdueDocuments</strong> требуют приоритетного внимания из-за нарушения срока исполнения.
+                </p>
+            </div>
+            <div>
+                <div class="meta-label">Подпись ответственного</div>
+                <div class="signature-line"></div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
