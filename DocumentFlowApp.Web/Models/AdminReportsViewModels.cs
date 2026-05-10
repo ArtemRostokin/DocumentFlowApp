@@ -16,6 +16,10 @@ public sealed class AdminReportPageViewModel
     public DateTime GeneratedAtUtc { get; init; }
     public IReadOnlyList<AdminReportBreakdownItemViewModel> StatusBreakdown { get; init; } = [];
     public IReadOnlyList<AdminReportBreakdownItemViewModel> TypeBreakdown { get; init; } = [];
+    public IReadOnlyList<AdminReportTrendPointViewModel> DailyTrend { get; init; } = [];
+    public IReadOnlyList<AdminReportCycleByTypeItemViewModel> AverageCycleByType { get; init; } = [];
+    public IReadOnlyList<AdminReportBreakdownItemViewModel> OverdueByType { get; init; } = [];
+    public IReadOnlyList<AdminReportBreakdownItemViewModel> RoleBreakdown { get; init; } = [];
     public IReadOnlyList<AdminReportDocumentRowViewModel> OverdueItems { get; init; } = [];
     public IReadOnlyList<AdminReportDocumentRowViewModel> RecentItems { get; init; } = [];
 }
@@ -36,4 +40,20 @@ public sealed class AdminReportDocumentRowViewModel
     public string OwnerLabel { get; init; } = string.Empty;
     public DateTime CreatedDateUtc { get; init; }
     public DateTime? DueDateUtc { get; init; }
+}
+
+public sealed class AdminReportTrendPointViewModel
+{
+    public DateTime Date { get; init; }
+    public string ShortLabel { get; init; } = string.Empty;
+    public int CreatedCount { get; init; }
+    public int CompletedCount { get; init; }
+}
+
+public sealed class AdminReportCycleByTypeItemViewModel
+{
+    public string Label { get; init; } = string.Empty;
+    public int CompletedCount { get; init; }
+    public double AverageDays { get; init; }
+    public int OverdueCount { get; init; }
 }

@@ -1,7 +1,8 @@
 @model DocumentFlowApp.Web.Models.AdminReportPageViewModel
+@using System.Globalization
 @using DocumentFlowApp.Core.Enums
 @{
-    ViewData["Title"] = "Админский отчет";
+    ViewData["Title"] = "Отчет по документообороту";
 
     string TypeLabel(DocumentType type) => type switch
     {
@@ -26,33 +27,391 @@
     };
 
     var currentUserName = User.Identity?.Name ?? "Администратор";
+    var palette = new[] { "#2563eb", "#059669", "#f59e0b", "#dc2626", "#7c3aed", "#0f766e", "#ea580c", "#475569" };
+    var maxStatusCount = Math.Max(1, Model.StatusBreakdown.DefaultIfEmpty().Max(x => x?.Count ?? 0));
+    var maxTypeCount = Math.Max(1, Model.TypeBreakdown.DefaultIfEmpty().Max(x => x?.Count ?? 0));
+    var maxTrendCount = Math.Max(1, Model.DailyTrend.DefaultIfEmpty().Max(x => Math.Max(x?.CreatedCount ?? 0, x?.CompletedCount ?? 0)));
+    var maxAverageCycleByType = Math.Max(1d, Model.AverageCycleByType.DefaultIfEmpty().Max(x => x?.AverageDays ?? 0));
+    var maxOverdueByType = Math.Max(1, Model.OverdueByType.DefaultIfEmpty().Max(x => x?.Count ?? 0));
+    var trendSvgWidth = Math.Max(420, Model.DailyTrend.Count * 46);
+    const double trendSvgHeight = 220;
+
+    string PaletteColor(int index) => palette[index % palette.Length];
+    string CssPercent(double value) => value.ToString("0.0", CultureInfo.InvariantCulture);
+
+    string BuildConicGradient(IReadOnlyList<DocumentFlowApp.Web.Models.AdminReportBreakdownItemViewModel> items)
+    {
+        if (items.Count == 0 || items.All(x => x.Count == 0))
+            return "conic-gradient(#e2e8f0 0 100%)";
+
+        var segments = new List<string>();
+        var start = 0d;
+        for (var i = 0; i < items.Count; i++)
+        {
+            var share = Math.Max(0, items[i].SharePercent);
+            if (share <= 0)
+                continue;
+
+            var end = Math.Min(100, start + share);
+            segments.Add($"{PaletteColor(i)} {start.ToString("0.##", CultureInfo.InvariantCulture)}% {end.ToString("0.##", CultureInfo.InvariantCulture)}%");
+            start = end;
+        }
+
+        return segments.Count == 0 ? "conic-gradient(#e2e8f0 0 100%)" : $"conic-gradient({string.Join(", ", segments)})";
+    }
+
+    string BuildPolylinePoints(Func<DocumentFlowApp.Web.Models.AdminReportTrendPointViewModel, int> selector, double width, double height)
+    {
+        if (Model.DailyTrend.Count == 0)
+            return string.Empty;
+
+        var points = new List<string>();
+        var step = Model.DailyTrend.Count == 1 ? 0 : (width - 24d) / (Model.DailyTrend.Count - 1);
+        for (var i = 0; i < Model.DailyTrend.Count; i++)
+        {
+            var point = Model.DailyTrend[i];
+            var x = 12d + (step * i);
+            var normalized = selector(point) / (double)maxTrendCount;
+            var y = height - 16d - (normalized * (height - 32d));
+            points.Add($"{x.ToString("0.##", CultureInfo.InvariantCulture)},{y.ToString("0.##", CultureInfo.InvariantCulture)}");
+        }
+
+        return string.Join(" ", points);
+    }
+
+    var statusGradient = BuildConicGradient(Model.StatusBreakdown);
+    var typeGradient = BuildConicGradient(Model.TypeBreakdown);
+    var roleGradient = BuildConicGradient(Model.RoleBreakdown);
+    var createdPoints = BuildPolylinePoints(x => x.CreatedCount, trendSvgWidth, trendSvgHeight);
+    var completedPoints = BuildPolylinePoints(x => x.CompletedCount, trendSvgWidth, trendSvgHeight);
 }
 
 <style>
-    .report-page {
+    .reports-page {
         background: #f8fafc;
     }
 
-    .report-paper {
+    .reports-card,
+    .summary-card,
+    .workspace-card {
         background: #fff;
         border: 1px solid #dbe3ee;
-        border-radius: 24px;
-        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.08);
+        border-radius: 22px;
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
     }
 
-    .report-kpi {
+    .summary-card {
+        border-radius: 18px;
+        background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+
+    .reports-meta-label {
+        color: #64748b;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+
+    .graph-selector {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
+    .graph-selector__button {
         border: 1px solid #dbe3ee;
-        border-radius: 18px;
         background: #fff;
+        color: #334155;
+        border-radius: 999px;
+        padding: 0.55rem 0.95rem;
+        font-weight: 600;
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
     }
 
-    .report-section {
-        border: 1px solid #e2e8f0;
-        border-radius: 18px;
-        background: #fff;
+    .graph-selector__button.is-active {
+        background: #2563eb;
+        border-color: #2563eb;
+        color: #fff;
     }
 
-    .report-table th {
+    .chart-mode-toggle {
+        display: inline-flex;
+        gap: 0.35rem;
+        padding: 0.25rem;
+        border-radius: 999px;
+        background: #eff6ff;
+    }
+
+    .chart-mode-toggle button {
+        border: 0;
+        border-radius: 999px;
+        padding: 0.4rem 0.8rem;
+        background: transparent;
+        color: #475569;
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+
+    .chart-mode-toggle button.is-active {
+        background: #2563eb;
+        color: #fff;
+    }
+
+    .chart-workspace__panel[hidden],
+    .chart-mode-panel[hidden] {
+        display: none !important;
+    }
+
+    .chart-scale {
+        display: flex;
+        justify-content: space-between;
+        color: #94a3b8;
+        font-size: 0.8rem;
+        margin-top: 0.25rem;
+    }
+
+    .single-bar-chart,
+    .comparison-chart {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .single-bar-chart__row,
+    .comparison-chart__row {
+        display: grid;
+        gap: 0.9rem;
+        align-items: center;
+    }
+
+    .single-bar-chart__row {
+        grid-template-columns: minmax(130px, 170px) 1fr auto auto;
+    }
+
+    .comparison-chart__row {
+        grid-template-columns: minmax(170px, 220px) 1fr;
+    }
+
+    .single-bar-chart__label,
+    .comparison-chart__label {
+        font-weight: 600;
+        color: #1e293b;
+    }
+
+    .single-bar-chart__track,
+    .comparison-chart__track {
+        position: relative;
+        height: 14px;
+        border-radius: 999px;
+        background: #e2e8f0;
+        overflow: hidden;
+    }
+
+    .single-bar-chart__fill,
+    .comparison-chart__fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        border-radius: 999px;
+    }
+
+    .single-bar-chart__fill--blue { background: linear-gradient(90deg, #2563eb 0%, #60a5fa 100%); }
+    .single-bar-chart__fill--green { background: linear-gradient(90deg, #059669 0%, #34d399 100%); }
+    .single-bar-chart__fill--red { background: linear-gradient(90deg, #dc2626 0%, #fb7185 100%); }
+    .comparison-chart__fill--blue { background: linear-gradient(90deg, #2563eb 0%, #60a5fa 100%); }
+    .comparison-chart__fill--green { background: linear-gradient(90deg, #059669 0%, #34d399 100%); }
+    .comparison-chart__fill--red { background: linear-gradient(90deg, #dc2626 0%, #fb7185 100%); }
+
+    .single-bar-chart__value,
+    .single-bar-chart__share {
+        color: #0f172a;
+        font-weight: 700;
+        text-align: right;
+        min-width: 52px;
+    }
+
+    .comparison-chart__bars {
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+    }
+
+    .comparison-chart__metric {
+        display: grid;
+        grid-template-columns: 92px 1fr auto;
+        gap: 0.75rem;
+        align-items: center;
+    }
+
+    .comparison-chart__metric-label {
+        color: #64748b;
+        font-size: 0.88rem;
+        font-weight: 600;
+    }
+
+    .comparison-chart__metric-value {
+        min-width: 38px;
+        text-align: right;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .donut-layout {
+        display: grid;
+        grid-template-columns: minmax(220px, 260px) 1fr;
+        gap: 1.75rem;
+        align-items: center;
+    }
+
+    .donut-chart {
+        width: 220px;
+        height: 220px;
+        border-radius: 50%;
+        position: relative;
+        margin: 0 auto;
+    }
+
+    .donut-chart::after {
+        content: "";
+        position: absolute;
+        inset: 30px;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: inset 0 0 0 1px #e2e8f0;
+    }
+
+    .donut-chart__center {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+    }
+
+    .donut-chart__value {
+        font-size: 2rem;
+        font-weight: 800;
+        color: #0f172a;
+    }
+
+    .donut-chart__caption {
+        color: #64748b;
+        font-size: 0.9rem;
+    }
+
+    .donut-legend {
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+    }
+
+    .donut-legend__row {
+        display: grid;
+        grid-template-columns: auto 1fr auto auto;
+        gap: 0.75rem;
+        align-items: center;
+    }
+
+    .donut-legend__swatch {
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+    }
+
+    .trend-legend {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        color: #475569;
+        font-size: 0.92rem;
+    }
+
+    .trend-legend__dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+        display: inline-block;
+        margin-right: 0.45rem;
+    }
+
+    .trend-bars {
+        display: flex;
+        align-items: flex-end;
+        gap: 0.75rem;
+        min-height: 250px;
+        padding-top: 1rem;
+        overflow-x: auto;
+    }
+
+    .trend-bars__group {
+        min-width: 52px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .trend-bars__columns {
+        width: 100%;
+        min-height: 180px;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        gap: 0.35rem;
+    }
+
+    .trend-bars__bar {
+        width: 18px;
+        min-height: 4px;
+        border-radius: 10px 10px 0 0;
+    }
+
+    .trend-bars__bar--created { background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%); }
+    .trend-bars__bar--completed { background: linear-gradient(180deg, #6ee7b7 0%, #059669 100%); }
+
+    .trend-bars__label {
+        font-size: 0.76rem;
+        color: #64748b;
+        white-space: nowrap;
+    }
+
+    .trend-line {
+        overflow-x: auto;
+    }
+
+    .trend-line svg {
+        display: block;
+    }
+
+    .trend-line__grid line {
+        stroke: #e2e8f0;
+        stroke-width: 1;
+    }
+
+    .trend-line__created,
+    .trend-line__completed {
+        fill: none;
+        stroke-width: 3.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
+    .trend-line__created { stroke: #2563eb; }
+    .trend-line__completed { stroke: #059669; }
+
+    .trend-line__labels {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.5rem;
+        min-width: fit-content;
+        margin-top: 0.5rem;
+        color: #64748b;
+        font-size: 0.76rem;
+    }
+
+    .reports-table th {
         font-size: 0.78rem;
         letter-spacing: 0.04em;
         text-transform: uppercase;
@@ -60,70 +419,69 @@
         background: #f8fafc;
     }
 
-    .report-meta-label {
-        color: #64748b;
-        font-size: 0.8rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-    }
-
-    .report-signature-line {
-        height: 1px;
-        background: #94a3b8;
-        margin-top: 2.5rem;
+    @@media (max-width: 991px) {
+        .donut-layout,
+        .comparison-chart__row,
+        .single-bar-chart__row {
+            grid-template-columns: 1fr;
+        }
     }
 
     @@media print {
-        body {
-            background: #fff !important;
-        }
+        body { background: #fff !important; }
 
-        .report-page,
-        .report-paper,
-        .report-kpi,
-        .report-section {
+        .reports-page,
+        .reports-card,
+        .summary-card,
+        .workspace-card {
             background: #fff !important;
             box-shadow: none !important;
             border-color: #cbd5e1 !important;
         }
 
-        .report-toolbar,
+        .reports-toolbar,
         .btn,
         .form-control,
-        .form-select {
+        .form-select,
+        .graph-selector,
+        .chart-mode-toggle {
             display: none !important;
-        }
-
-        .container {
-            max-width: none !important;
-            width: 100% !important;
         }
     }
 </style>
 
-<div class="report-page py-4">
+<div class="reports-page py-4">
     <div class="container">
-        <div class="report-toolbar d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
+        <div class="reports-toolbar d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
             <div>
                 <h1 class="h3 mb-2">Отчет по документообороту</h1>
-                <p class="text-muted mb-0">Официальная сводка по движению документов за выбранный период.</p>
+                <p class="text-muted mb-0">Рабочая аналитическая панель по документам, срокам исполнения и загрузке пользователей.</p>
             </div>
-        <div class="d-flex gap-2 flex-wrap">
-            <a asp-action="ReportDocument"
-               asp-route-dateFrom="@Model.DateFrom.ToString("yyyy-MM-dd")"
-               asp-route-dateTo="@Model.DateTo.ToString("yyyy-MM-dd")"
-               asp-route-type="@Model.SelectedType"
-               asp-route-status="@Model.SelectedStatus"
-               class="btn btn-outline-primary">
-                Официальная форма
-            </a>
-            <button type="button" class="btn btn-outline-secondary" onclick="window.print()">Распечатать</button>
-            <a asp-action="Index" class="btn btn-outline-secondary">Назад в администрирование</a>
-        </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <a asp-action="ReportDocument"
+                   asp-route-dateFrom="@Model.DateFrom.ToString("yyyy-MM-dd")"
+                   asp-route-dateTo="@Model.DateTo.ToString("yyyy-MM-dd")"
+                   asp-route-type="@Model.SelectedType"
+                   asp-route-status="@Model.SelectedStatus"
+                   class="btn btn-outline-primary">
+                    Печатная форма
+                </a>
+                <button type="button" class="btn btn-outline-secondary" onclick="window.print()">Печать</button>
+                <a asp-action="Index" class="btn btn-outline-secondary">Назад в админку</a>
+            </div>
         </div>
 
-        <div class="card shadow-sm mb-4 report-toolbar">
-            <div class="card-body">
+        <div class="reports-card mb-4">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                    <div>
+                        <div class="reports-meta-label mb-2">Параметры выборки</div>
+                        <div class="small text-muted">
+                            Отчет сформирован @Model.GeneratedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm") пользователем @currentUserName
+                        </div>
+                    </div>
+                </div>
+
                 <form method="get" class="row g-3 align-items-end">
                     <div class="col-md-3">
                         <label for="dateFrom" class="form-label">Период с</label>
@@ -157,244 +515,455 @@
                     </div>
                     <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <div class="small text-muted">
-                            Отчет сформирован: @Model.GeneratedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+                            Текущие фильтры: @(Model.SelectedType.HasValue ? TypeLabel(Model.SelectedType.Value) : "все типы"), @StatusFilterLabel()
                         </div>
                         <div class="d-flex gap-2">
                             <a asp-action="Reports" class="btn btn-link text-decoration-none">Сбросить</a>
-                            <button type="submit" class="btn btn-primary">Сформировать отчет</button>
+                            <button type="submit" class="btn btn-primary">Обновить отчет</button>
                         </div>
                     </div>
                 </form>
             </div>
         </div>
 
-        <div class="report-paper p-4 p-xl-5">
-            <div class="d-flex justify-content-between gap-4 flex-wrap border-bottom pb-4 mb-4">
+        <div class="row g-3 mb-4">
+            <div class="col-lg-3 col-md-6">
+                <div class="summary-card p-3 h-100">
+                    <div class="reports-meta-label mb-2">Всего документов</div>
+                    <div class="display-6 mb-1">@Model.TotalDocuments</div>
+                    <div class="small text-muted">В текущей выборке</div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="summary-card p-3 h-100">
+                    <div class="reports-meta-label mb-2">Завершено</div>
+                    <div class="display-6 mb-1">@Model.CompletedDocuments</div>
+                    <div class="small text-muted">Завершенные и архивные</div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="summary-card p-3 h-100">
+                    <div class="reports-meta-label mb-2">В активной работе</div>
+                    <div class="display-6 mb-1">@Model.PendingDocuments</div>
+                    <div class="small text-muted">Согласование и исполнение</div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="summary-card p-3 h-100">
+                    <div class="reports-meta-label mb-2">Просрочено</div>
+                    <div class="display-6 mb-1">@Model.OverdueDocuments</div>
+                    <div class="small text-muted">Требуют внимания</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="workspace-card p-4 mb-4">
+            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
                 <div>
-                    <div class="report-meta-label mb-2">Организация</div>
-                    <div class="fw-semibold fs-5">DocManager</div>
-                    <div class="text-muted">Система внутреннего документооборота</div>
+                    <h2 class="h4 mb-2">Аналитические графики</h2>
+                    <p class="text-muted mb-0">Выберите интересующий график: на странице одновременно показывается только одна аналитика, без перегруза интерфейса.</p>
                 </div>
-                <div class="text-md-end">
-                    <div class="report-meta-label mb-2">Реквизиты отчета</div>
-                    <div><span class="text-muted">Дата формирования:</span> @Model.GeneratedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</div>
-                    <div><span class="text-muted">Подготовил:</span> @currentUserName</div>
-                    <div><span class="text-muted">Период:</span> @Model.DateFrom.ToString("dd.MM.yyyy") - @Model.DateTo.ToString("dd.MM.yyyy")</div>
-                </div>
-            </div>
-
-            <div class="mb-4">
-                <h2 class="h4 mb-2">Сводный отчет по движению документов</h2>
-                <p class="mb-3 text-muted">
-                    Отчет отражает текущее состояние документооборота по выбранной выборке, включая структуру по статусам и типам,
-                    количество просроченных документов и список последних зарегистрированных позиций.
-                </p>
-
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <div class="report-section p-3 h-100">
-                            <div class="report-meta-label mb-2">Фильтр по типу</div>
-                            <div class="fw-semibold">@(Model.SelectedType.HasValue ? TypeLabel(Model.SelectedType.Value) : "Все типы")</div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="report-section p-3 h-100">
-                            <div class="report-meta-label mb-2">Фильтр по статусу</div>
-                            <div class="fw-semibold">@StatusFilterLabel()</div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="report-section p-3 h-100">
-                            <div class="report-meta-label mb-2">Средний цикл обработки</div>
-                            <div class="fw-semibold">@Model.AverageCycleDays.ToString("0.0") дн.</div>
-                        </div>
-                    </div>
+                <div class="graph-selector" id="graphSelector">
+                    <button type="button" class="graph-selector__button is-active" data-report-graph="status">Статусы</button>
+                    <button type="button" class="graph-selector__button" data-report-graph="type">Типы</button>
+                    <button type="button" class="graph-selector__button" data-report-graph="trend">Динамика</button>
+                    <button type="button" class="graph-selector__button" data-report-graph="cycle">Средний срок по типам</button>
+                    <button type="button" class="graph-selector__button" data-report-graph="overdueType">Просрочка по типам</button>
+                    <button type="button" class="graph-selector__button" data-report-graph="roles">Роли пользователей</button>
                 </div>
             </div>
 
-            <div class="row g-3 mb-4">
-                <div class="col-lg-3 col-md-6">
-                    <div class="report-kpi p-3 h-100">
-                        <div class="report-meta-label mb-2">Всего документов</div>
-                        <div class="display-6 mb-1">@Model.TotalDocuments</div>
-                        <div class="small text-muted">Во включенной выборке</div>
+            <section class="chart-workspace__panel" data-report-graph-panel="status">
+                <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3">
+                    <div>
+                        <h3 class="h5 mb-1">Структура по статусам</h3>
+                        <div class="small text-muted">Показывает, на каких этапах сейчас находится основной объём документов.</div>
+                    </div>
+                    <div class="chart-mode-toggle" data-chart-toggle="statusChart">
+                        <button type="button" class="is-active" data-mode="bars">Столбцы</button>
+                        <button type="button" data-mode="donut">Кольцо</button>
                     </div>
                 </div>
-                <div class="col-lg-3 col-md-6">
-                    <div class="report-kpi p-3 h-100">
-                        <div class="report-meta-label mb-2">Завершено</div>
-                        <div class="display-6 mb-1">@Model.CompletedDocuments</div>
-                        <div class="small text-muted">Завершенные и архивные</div>
-                    </div>
-                </div>
-                <div class="col-lg-3 col-md-6">
-                    <div class="report-kpi p-3 h-100">
-                        <div class="report-meta-label mb-2">Требуют движения</div>
-                        <div class="display-6 mb-1">@Model.PendingDocuments</div>
-                        <div class="small text-muted">Согласование и исполнение</div>
-                    </div>
-                </div>
-                <div class="col-lg-3 col-md-6">
-                    <div class="report-kpi p-3 h-100">
-                        <div class="report-meta-label mb-2">Просрочено</div>
-                        <div class="display-6 mb-1">@Model.OverdueDocuments</div>
-                        <div class="small text-muted">Требуют внимания администратора</div>
-                    </div>
-                </div>
-            </div>
 
-            <div class="row g-4 mb-4">
-                <div class="col-lg-6">
-                    <div class="report-section p-3 p-lg-4 h-100">
-                        <h3 class="h5 mb-3">1. Распределение по статусам</h3>
+                <div class="chart-mode-panel" data-chart-panel="statusChart" data-mode="bars">
+                    <div class="small text-muted mb-2">Шкала сравнения: от 0 до @maxStatusCount документов</div>
+                    <div class="single-bar-chart">
+                        @foreach (var item in Model.StatusBreakdown)
+                        {
+                            var width = Math.Round(item.Count * 100d / maxStatusCount, 1);
+                            <div class="single-bar-chart__row">
+                                <div class="single-bar-chart__label">@item.Label</div>
+                                <div>
+                                    <div class="single-bar-chart__track">
+                                        <div class="single-bar-chart__fill single-bar-chart__fill--blue" style="width:@(CssPercent(width))%;"></div>
+                                    </div>
+                                </div>
+                                <div class="single-bar-chart__value">@item.Count</div>
+                                <div class="single-bar-chart__share">@item.SharePercent.ToString("0.0")%</div>
+                            </div>
+                        }
+                    </div>
+                    <div class="chart-scale"><span>0</span><span>@maxStatusCount</span></div>
+                </div>
+
+                <div class="chart-mode-panel" data-chart-panel="statusChart" data-mode="donut" hidden>
+                    <div class="donut-layout">
+                        <div class="donut-chart" style="background:@statusGradient;">
+                            <div class="donut-chart__center">
+                                <div class="donut-chart__value">@Model.TotalDocuments</div>
+                                <div class="donut-chart__caption">документов</div>
+                            </div>
+                        </div>
+                        <div class="donut-legend">
+                            @for (var i = 0; i < Model.StatusBreakdown.Count; i++)
+                            {
+                                var item = Model.StatusBreakdown[i];
+                                <div class="donut-legend__row">
+                                    <span class="donut-legend__swatch" style="background:@PaletteColor(i)"></span>
+                                    <span>@item.Label</span>
+                                    <strong>@item.Count</strong>
+                                    <span class="text-muted">@item.SharePercent.ToString("0.0")%</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="chart-workspace__panel" data-report-graph-panel="type" hidden>
+                <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3">
+                    <div>
+                        <h3 class="h5 mb-1">Структура по типам документов</h3>
+                        <div class="small text-muted">Помогает понять, какие категории документов преобладают в текущем потоке.</div>
+                    </div>
+                    <div class="chart-mode-toggle" data-chart-toggle="typeChart">
+                        <button type="button" class="is-active" data-mode="bars">Столбцы</button>
+                        <button type="button" data-mode="donut">Кольцо</button>
+                    </div>
+                </div>
+
+                <div class="chart-mode-panel" data-chart-panel="typeChart" data-mode="bars">
+                    <div class="small text-muted mb-2">Шкала сравнения: от 0 до @maxTypeCount документов</div>
+                    <div class="single-bar-chart">
+                        @foreach (var item in Model.TypeBreakdown)
+                        {
+                            var width = Math.Round(item.Count * 100d / maxTypeCount, 1);
+                            <div class="single-bar-chart__row">
+                                <div class="single-bar-chart__label">@item.Label</div>
+                                <div>
+                                    <div class="single-bar-chart__track">
+                                        <div class="single-bar-chart__fill single-bar-chart__fill--green" style="width:@(CssPercent(width))%;"></div>
+                                    </div>
+                                </div>
+                                <div class="single-bar-chart__value">@item.Count</div>
+                                <div class="single-bar-chart__share">@item.SharePercent.ToString("0.0")%</div>
+                            </div>
+                        }
+                    </div>
+                    <div class="chart-scale"><span>0</span><span>@maxTypeCount</span></div>
+                </div>
+
+                <div class="chart-mode-panel" data-chart-panel="typeChart" data-mode="donut" hidden>
+                    <div class="donut-layout">
+                        <div class="donut-chart" style="background:@typeGradient;">
+                            <div class="donut-chart__center">
+                                <div class="donut-chart__value">@Model.TypeBreakdown.Sum(x => x.Count)</div>
+                                <div class="donut-chart__caption">документов</div>
+                            </div>
+                        </div>
+                        <div class="donut-legend">
+                            @for (var i = 0; i < Model.TypeBreakdown.Count; i++)
+                            {
+                                var item = Model.TypeBreakdown[i];
+                                <div class="donut-legend__row">
+                                    <span class="donut-legend__swatch" style="background:@PaletteColor(i)"></span>
+                                    <span>@item.Label</span>
+                                    <strong>@item.Count</strong>
+                                    <span class="text-muted">@item.SharePercent.ToString("0.0")%</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="chart-workspace__panel" data-report-graph-panel="trend" hidden>
+                <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3">
+                    <div>
+                        <h3 class="h5 mb-1">Динамика документов по дням</h3>
+                        <div class="small text-muted">Сравнивает создание документов и завершение работ по датам.</div>
+                    </div>
+                    <div class="chart-mode-toggle" data-chart-toggle="trendChart">
+                        <button type="button" class="is-active" data-mode="bars">Столбцы</button>
+                        <button type="button" data-mode="line">Линии</button>
+                    </div>
+                </div>
+
+                <div class="trend-legend mb-3">
+                    <span><span class="trend-legend__dot" style="background:#2563eb"></span>Создано</span>
+                    <span><span class="trend-legend__dot" style="background:#059669"></span>Завершено</span>
+                </div>
+
+                <div class="chart-mode-panel" data-chart-panel="trendChart" data-mode="bars">
+                    <div class="small text-muted mb-2">Шкала сравнения: от 0 до @maxTrendCount документов в день</div>
+                    <div class="trend-bars">
+                        @foreach (var point in Model.DailyTrend)
+                        {
+                            var createdHeight = Math.Max(4, Math.Round(point.CreatedCount * 180d / maxTrendCount, 0));
+                            var completedHeight = Math.Max(4, Math.Round(point.CompletedCount * 180d / maxTrendCount, 0));
+                            <div class="trend-bars__group" title="@point.Date.ToString("dd.MM.yyyy"): создано @point.CreatedCount, завершено @point.CompletedCount">
+                                <div class="trend-bars__columns">
+                                    <div class="trend-bars__bar trend-bars__bar--created" style="height:@(point.CreatedCount == 0 ? 4 : createdHeight)px"></div>
+                                    <div class="trend-bars__bar trend-bars__bar--completed" style="height:@(point.CompletedCount == 0 ? 4 : completedHeight)px"></div>
+                                </div>
+                                <div class="trend-bars__label">@point.ShortLabel</div>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="chart-mode-panel" data-chart-panel="trendChart" data-mode="line" hidden>
+                    <div class="small text-muted mb-2">Линии позволяют легче заметить пики входящего потока и завершений.</div>
+                    <div class="trend-line">
+                        <svg viewBox="0 0 @trendSvgWidth @trendSvgHeight" width="@trendSvgWidth" height="@trendSvgHeight" aria-label="Линейный график динамики документов">
+                            <g class="trend-line__grid">
+                                <line x1="0" y1="20" x2="@trendSvgWidth" y2="20"></line>
+                                <line x1="0" y1="75" x2="@trendSvgWidth" y2="75"></line>
+                                <line x1="0" y1="130" x2="@trendSvgWidth" y2="130"></line>
+                                <line x1="0" y1="185" x2="@trendSvgWidth" y2="185"></line>
+                            </g>
+                            @if (!string.IsNullOrWhiteSpace(createdPoints))
+                            {
+                                <polyline class="trend-line__created" points="@createdPoints"></polyline>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(completedPoints))
+                            {
+                                <polyline class="trend-line__completed" points="@completedPoints"></polyline>
+                            }
+                        </svg>
+                        <div class="trend-line__labels" style="width:@($"{trendSvgWidth}px")">
+                            @foreach (var point in Model.DailyTrend)
+                            {
+                                <span>@point.ShortLabel</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="chart-workspace__panel" data-report-graph-panel="cycle" hidden>
+                <div class="mb-3">
+                    <h3 class="h5 mb-1">Средний срок исполнения по типам</h3>
+                    <div class="small text-muted">Показывает, какие категории документов в среднем закрываются дольше всего. Для расчета учитываются только завершенные и архивные документы из текущей выборки.</div>
+                </div>
+                <div class="small text-muted mb-2">Шкала сравнения: от 0 до @maxAverageCycleByType.ToString("0.0") дней</div>
+                @if (Model.AverageCycleByType.Count == 0)
+                {
+                    <div class="text-muted">В выбранной выборке пока нет завершенных или просроченных документов по типам.</div>
+                }
+                else
+                {
+                    <div class="comparison-chart">
+                        @foreach (var item in Model.AverageCycleByType)
+                        {
+                            var averageWidth = Math.Round(item.AverageDays * 100d / maxAverageCycleByType, 1);
+                            <div class="comparison-chart__row">
+                                <div class="comparison-chart__label">@item.Label</div>
+                                <div class="comparison-chart__bars">
+                                    <div class="comparison-chart__metric">
+                                        <div class="comparison-chart__metric-label">Среднее время</div>
+                                        <div class="comparison-chart__track">
+                                            <div class="comparison-chart__fill comparison-chart__fill--blue" style="width:@(CssPercent(averageWidth))%;"></div>
+                                        </div>
+                                        <div class="comparison-chart__metric-value">@item.AverageDays.ToString("0.0") дн.</div>
+                                    </div>
+                                    <div class="d-flex flex-wrap gap-2 small text-muted">
+                                        <span>Завершено: <strong class="text-dark">@item.CompletedCount</strong></span>
+                                        <span>Просрочено сейчас: <strong class="text-dark">@item.OverdueCount</strong></span>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section class="chart-workspace__panel" data-report-graph-panel="overdueType" hidden>
+                <div class="mb-3">
+                    <h3 class="h5 mb-1">Просрочка по типам документов</h3>
+                    <div class="small text-muted">Помогает быстро увидеть, в каких категориях сейчас сосредоточено больше всего просроченных документов и где требуется управленческое внимание.</div>
+                </div>
+                <div class="small text-muted mb-2">Шкала сравнения: от 0 до @maxOverdueByType документов</div>
+                @if (Model.OverdueByType.Count == 0)
+                {
+                    <div class="text-muted">В выбранной выборке просроченные документы по типам не обнаружены.</div>
+                }
+                else
+                {
+                    <div class="single-bar-chart">
+                        @foreach (var item in Model.OverdueByType)
+                        {
+                            var width = Math.Round(item.Count * 100d / maxOverdueByType, 1);
+                            <div class="single-bar-chart__row">
+                                <div class="single-bar-chart__label">@item.Label</div>
+                                <div class="single-bar-chart__track">
+                                    <div class="single-bar-chart__fill single-bar-chart__fill--red" style="width:@(CssPercent(width))%;"></div>
+                                </div>
+                                <div class="single-bar-chart__value">@item.Count</div>
+                                <div class="single-bar-chart__share">@item.SharePercent.ToString("0.0")%</div>
+                            </div>
+                        }
+                    </div>
+                    <div class="chart-scale">
+                        <span>0</span>
+                        <span>@maxOverdueByType</span>
+                    </div>
+                }
+            </section>
+
+            <section class="chart-workspace__panel" data-report-graph-panel="roles" hidden>
+                <div class="mb-3">
+                    <h3 class="h5 mb-1">Роли пользователей</h3>
+                    <div class="small text-muted">Отражает состав активных учетных записей в системе по категориям ролей.</div>
+                </div>
+                <div class="donut-layout">
+                    <div class="donut-chart" style="background:@roleGradient;">
+                        <div class="donut-chart__center">
+                            <div class="donut-chart__value">@Model.RoleBreakdown.Sum(x => x.Count)</div>
+                            <div class="donut-chart__caption">активных</div>
+                        </div>
+                    </div>
+                    <div class="donut-legend">
+                        @for (var i = 0; i < Model.RoleBreakdown.Count; i++)
+                        {
+                            var item = Model.RoleBreakdown[i];
+                            <div class="donut-legend__row">
+                                <span class="donut-legend__swatch" style="background:@PaletteColor(i)"></span>
+                                <span>@item.Label</span>
+                                <strong>@item.Count</strong>
+                                <span class="text-muted">@item.SharePercent.ToString("0.0")%</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-xl-6">
+                <div class="reports-card p-4 h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2 class="h5 mb-0">Просроченные документы</h2>
+                        <span class="badge text-bg-danger">@Model.OverdueDocuments</span>
+                    </div>
+                    @if (Model.OverdueItems.Count == 0)
+                    {
+                        <div class="text-muted">В выбранной выборке просроченные документы отсутствуют.</div>
+                    }
+                    else
+                    {
                         <div class="table-responsive">
-                            <table class="table table-bordered align-middle mb-0 report-table">
+                            <table class="table table-bordered align-middle mb-0 reports-table">
                                 <thead>
                                     <tr>
-                                        <th>Статус</th>
-                                        <th class="text-end">Количество</th>
-                                        <th class="text-end">Доля</th>
+                                        <th>Документ</th>
+                                        <th>Ответственный</th>
+                                        <th>Срок</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var item in Model.StatusBreakdown)
+                                    @foreach (var item in Model.OverdueItems)
                                     {
                                         <tr>
-                                            <td>@item.Label</td>
-                                            <td class="text-end fw-semibold">@item.Count</td>
-                                            <td class="text-end">@item.SharePercent.ToString("0.0")%</td>
+                                            <td>
+                                                <div class="fw-semibold">@item.Title</div>
+                                                <div class="small text-muted">@item.TypeLabel · @item.StatusLabel</div>
+                                            </td>
+                                            <td>@item.OwnerLabel</td>
+                                            <td>@(item.DueDateUtc?.ToLocalTime().ToString("dd.MM.yyyy") ?? "Не указан")</td>
                                         </tr>
                                     }
                                 </tbody>
                             </table>
                         </div>
-                    </div>
+                    }
                 </div>
-                <div class="col-lg-6">
-                    <div class="report-section p-3 p-lg-4 h-100">
-                        <h3 class="h5 mb-3">2. Распределение по типам документов</h3>
+            </div>
+
+            <div class="col-xl-6">
+                <div class="reports-card p-4 h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2 class="h5 mb-0">Последние документы выборки</h2>
+                        <span class="badge text-bg-secondary">@Model.RecentItems.Count</span>
+                    </div>
+                    @if (Model.RecentItems.Count == 0)
+                    {
+                        <div class="text-muted">За выбранный период документы не найдены.</div>
+                    }
+                    else
+                    {
                         <div class="table-responsive">
-                            <table class="table table-bordered align-middle mb-0 report-table">
+                            <table class="table table-bordered align-middle mb-0 reports-table">
                                 <thead>
                                     <tr>
-                                        <th>Тип документа</th>
-                                        <th class="text-end">Количество</th>
-                                        <th class="text-end">Доля</th>
+                                        <th>Документ</th>
+                                        <th>Ответственный</th>
+                                        <th>Создан</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var item in Model.TypeBreakdown)
+                                    @foreach (var item in Model.RecentItems)
                                     {
                                         <tr>
-                                            <td>@item.Label</td>
-                                            <td class="text-end fw-semibold">@item.Count</td>
-                                            <td class="text-end">@item.SharePercent.ToString("0.0")%</td>
+                                            <td>
+                                                <div class="fw-semibold">@item.Title</div>
+                                                <div class="small text-muted">@item.TypeLabel · @item.StatusLabel</div>
+                                            </td>
+                                            <td>@item.OwnerLabel</td>
+                                            <td>@item.CreatedDateUtc.ToLocalTime().ToString("dd.MM.yyyy")</td>
                                         </tr>
                                     }
                                 </tbody>
                             </table>
                         </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="row g-4">
-                <div class="col-xl-6">
-                    <div class="report-section p-3 p-lg-4 h-100">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h3 class="h5 mb-0">3. Просроченные документы</h3>
-                            <span class="badge text-bg-danger">@Model.OverdueDocuments</span>
-                        </div>
-                        @if (Model.OverdueItems.Count == 0)
-                        {
-                            <div class="text-muted">В выбранной выборке просроченные документы отсутствуют.</div>
-                        }
-                        else
-                        {
-                            <div class="table-responsive">
-                                <table class="table table-bordered align-middle mb-0 report-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Документ</th>
-                                            <th>Ответственный</th>
-                                            <th>Срок</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var item in Model.OverdueItems)
-                                        {
-                                            <tr>
-                                                <td>
-                                                    <div class="fw-semibold">@item.Title</div>
-                                                    <div class="small text-muted">@item.TypeLabel · @item.StatusLabel</div>
-                                                </td>
-                                                <td>@item.OwnerLabel</td>
-                                                <td>@(item.DueDateUtc?.ToLocalTime().ToString("dd.MM.yyyy") ?? "Не указан")</td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
-                            </div>
-                        }
-                    </div>
-                </div>
-                <div class="col-xl-6">
-                    <div class="report-section p-3 p-lg-4 h-100">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h3 class="h5 mb-0">4. Последние документы выборки</h3>
-                            <span class="badge text-bg-secondary">@Model.RecentItems.Count</span>
-                        </div>
-                        @if (Model.RecentItems.Count == 0)
-                        {
-                            <div class="text-muted">За выбранный период документы не найдены.</div>
-                        }
-                        else
-                        {
-                            <div class="table-responsive">
-                                <table class="table table-bordered align-middle mb-0 report-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Документ</th>
-                                            <th>Ответственный</th>
-                                            <th>Создан</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var item in Model.RecentItems)
-                                        {
-                                            <tr>
-                                                <td>
-                                                    <div class="fw-semibold">@item.Title</div>
-                                                    <div class="small text-muted">@item.TypeLabel · @item.StatusLabel</div>
-                                                </td>
-                                                <td>@item.OwnerLabel</td>
-                                                <td>@item.CreatedDateUtc.ToLocalTime().ToString("dd.MM.yyyy")</td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
-                            </div>
-                        }
-                    </div>
-                </div>
-            </div>
-
-            <div class="mt-5 pt-4 border-top">
-                <div class="row g-4">
-                    <div class="col-md-6">
-                        <div class="report-meta-label mb-2">Вывод</div>
-                        <p class="mb-0 text-muted">
-                            По итогам сформированной выборки в системе зарегистрировано <strong>@Model.TotalDocuments</strong> документов,
-                            из которых <strong>@Model.OverdueDocuments</strong> требуют приоритетного внимания из-за нарушения срока исполнения.
-                        </p>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="report-meta-label mb-2">Подпись ответственного</div>
-                        <div class="report-signature-line"></div>
-                        <div class="small text-muted mt-2">Администратор / ответственное лицо</div>
-                    </div>
+                    }
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const switchChartMode = (chartId, mode) => {
+            document.querySelectorAll(`[data-chart-panel="${chartId}"]`).forEach(panel => {
+                panel.hidden = panel.dataset.mode !== mode;
+            });
+
+            document.querySelectorAll(`[data-chart-toggle="${chartId}"] button`).forEach(button => {
+                button.classList.toggle("is-active", button.dataset.mode === mode);
+            });
+        };
+
+        const switchGraph = graphId => {
+            document.querySelectorAll("[data-report-graph-panel]").forEach(panel => {
+                panel.hidden = panel.dataset.reportGraphPanel !== graphId;
+            });
+
+            document.querySelectorAll("[data-report-graph]").forEach(button => {
+                button.classList.toggle("is-active", button.dataset.reportGraph === graphId);
+            });
+        };
+
+        document.querySelectorAll("[data-chart-toggle]").forEach(toggle => {
+            const chartId = toggle.dataset.chartToggle;
+            toggle.querySelectorAll("button").forEach(button => {
+                button.addEventListener("click", () => switchChartMode(chartId, button.dataset.mode));
+            });
+        });
+
+        document.querySelectorAll("[data-report-graph]").forEach(button => {
+            button.addEventListener("click", () => switchGraph(button.dataset.reportGraph));
+        });
+    });
+</script>

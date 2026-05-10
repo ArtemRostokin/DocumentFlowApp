@@ -1259,6 +1259,97 @@ public class AdminController : Controller
 
         var totalDocuments = documents.Count;
 
+        var averageCycleByType = Enum.GetValues<DocumentType>()
+            .Select(typeValue =>
+            {
+                var typedCompletedDocuments = completedDocuments
+                    .Where(x => string.Equals(x.DocumentType, typeValue.ToString(), StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                var typedOverdueDocuments = overdueDocuments.Count(x =>
+                    string.Equals(x.DocumentType, typeValue.ToString(), StringComparison.OrdinalIgnoreCase));
+
+                var averageDays = typedCompletedDocuments.Count == 0
+                    ? 0
+                    : Math.Round(typedCompletedDocuments
+                        .Select(x =>
+                        {
+                            var completedAt = x.ExecutionCompletedAt ?? x.UpdatedDate ?? x.CreatedDate;
+                            return Math.Max(0, (completedAt - x.CreatedDate).TotalDays);
+                        })
+                        .Average(), 1);
+
+                return new AdminReportCycleByTypeItemViewModel
+                {
+                    Label = GetDocumentTypeLabel(typeValue),
+                    CompletedCount = typedCompletedDocuments.Count,
+                    AverageDays = averageDays,
+                    OverdueCount = typedOverdueDocuments
+                };
+            })
+            .Where(x => x.CompletedCount > 0 || x.OverdueCount > 0)
+            .OrderByDescending(x => x.AverageDays)
+            .ThenByDescending(x => x.OverdueCount)
+            .ThenByDescending(x => x.CompletedCount)
+            .ThenBy(x => x.Label)
+            .ToList();
+
+        var overdueByType = Enum.GetValues<DocumentType>()
+            .Select(typeValue =>
+            {
+                var count = overdueDocuments.Count(x => string.Equals(x.DocumentType, typeValue.ToString(), StringComparison.OrdinalIgnoreCase));
+                return new AdminReportBreakdownItemViewModel
+                {
+                    Label = GetDocumentTypeLabel(typeValue),
+                    Count = count,
+                    SharePercent = overdueDocuments.Count == 0 ? 0 : Math.Round(count * 100d / overdueDocuments.Count, 1)
+                };
+            })
+            .Where(x => x.Count > 0)
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.Label)
+            .ToList();
+
+        var activeUsers = await _dbContext.Users
+            .AsNoTracking()
+            .Include(x => x.Role)
+            .Where(x => x.IsActive)
+            .ToListAsync(cancellationToken);
+
+        var activeUsersCount = Math.Max(1, activeUsers.Count);
+        var roleBreakdown = activeUsers
+            .GroupBy(x => AppRoles.Normalize(x.Role?.RoleName) ?? "Other")
+            .Select(group => new AdminReportBreakdownItemViewModel
+            {
+                Label = GetRoleLabel(group.Key),
+                Count = group.Count(),
+                SharePercent = Math.Round(group.Count() * 100d / activeUsersCount, 1)
+            })
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.Label)
+            .ToList();
+
+        var dailyTrend = Enumerable.Range(0, (to - from).Days + 1)
+            .Select(offset =>
+            {
+                var day = from.AddDays(offset);
+                var createdCount = documents.Count(x => x.CreatedDate.Date == day);
+                var completedCount = completedDocuments.Count(x =>
+                {
+                    var completedAt = (x.ExecutionCompletedAt ?? x.UpdatedDate ?? x.CreatedDate).Date;
+                    return completedAt == day;
+                });
+
+                return new AdminReportTrendPointViewModel
+                {
+                    Date = day,
+                    ShortLabel = day.ToString("dd.MM"),
+                    CreatedCount = createdCount,
+                    CompletedCount = completedCount
+                };
+            })
+            .ToList();
+
         return new AdminReportPageViewModel
         {
             DateFrom = from,
@@ -1295,6 +1386,10 @@ public class AdminController : Controller
                     };
                 })
                 .ToList(),
+            DailyTrend = dailyTrend,
+            AverageCycleByType = averageCycleByType,
+            OverdueByType = overdueByType,
+            RoleBreakdown = roleBreakdown,
             OverdueItems = overdueDocuments
                 .Take(10)
                 .Select(MapReportRow)
@@ -1483,6 +1578,14 @@ public class AdminController : Controller
         DocumentStatus.Completed => "Завершен",
         DocumentStatus.Archived => "Архив",
         _ => status.ToString()
+    };
+
+    private static string GetRoleLabel(string? role) => AppRoles.Normalize(role) switch
+    {
+        AppRoles.Admin => "Администраторы",
+        AppRoles.Manager => "Менеджеры",
+        AppRoles.Employee => "Исполнители",
+        _ => "Прочие роли"
     };
 
     private static AdminReportDocumentRowViewModel MapReportRow(Document document)
