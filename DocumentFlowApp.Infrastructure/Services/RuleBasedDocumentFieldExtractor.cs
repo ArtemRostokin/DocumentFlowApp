@@ -17,7 +17,7 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex NameRegex = new(
-        @"\b(?<value>[Р В РЎвЂ™-Р В Р вЂЎР В Р С“][Р В Р’В°-Р РЋР РЏР РЋРІР‚В-]+\s+[Р В РЎвЂ™-Р В Р вЂЎР В Р С“][Р В Р’В°-Р РЋР РЏР РЋРІР‚В-]+\s+[Р В РЎвЂ™-Р В Р вЂЎР В Р С“][Р В Р’В°-Р РЋР РЏР РЋРІР‚В-]+)\b",
+        @"\b(?<value>[A-ZА-ЯЁ][a-zа-яё-]+(?:\s+[A-ZА-ЯЁ][a-zа-яё-]+){1,2})\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public DocumentFieldExtractionResult Extract(DocumentType documentType, string? extractedText, string? fileName = null)

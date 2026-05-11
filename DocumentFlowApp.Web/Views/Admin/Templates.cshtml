@@ -4,6 +4,39 @@
     ViewData["Title"] = "Шаблоны документов";
 }
 
+<style>
+    @@media (min-width: 1200px) {
+        .admin-template-panel {
+            height: min(76vh, 64rem);
+        }
+    }
+
+    .admin-template-panel .card-body {
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .admin-template-form {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        gap: 1rem;
+        min-height: 0;
+    }
+
+    .admin-template-grow {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    .admin-template-scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+    }
+</style>
 <div class="container py-4">
     <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
         <div>
@@ -23,24 +56,24 @@
         <div class="alert alert-danger">@Model.ErrorMessage</div>
     }
 
-    <div class="row g-4 align-items-start">
+    <div class="row g-4 align-items-stretch">
         <div class="col-xl-4">
-            <div class="card shadow-sm">
-                <div class="card-body">
+            <div class="card shadow-sm h-100 admin-template-panel">
+                <div class="card-body d-flex flex-column">
                     <h2 class="h4 mb-3">Создать шаблон</h2>
                     <p class="text-muted small">Выберите тип документа и задайте поля, которые менеджер будет заполнять в карточке.</p>
 
-                    <form asp-controller="Admin" asp-action="CreateDocumentTemplate" method="post" class="row g-3" novalidate>
+                    <form asp-controller="Admin" asp-action="CreateDocumentTemplate" method="post" class="admin-template-form" novalidate>
                         @Html.AntiForgeryToken()
-                        <div asp-validation-summary="ModelOnly" class="col-12 alert alert-danger py-2 mb-0"></div>
+                        <div asp-validation-summary="ModelOnly" class="alert alert-danger py-2 mb-0"></div>
 
-                        <div class="col-12">
+                        <div>
                             <label asp-for="NewTemplate.Name" class="form-label">Название</label>
                             <input asp-for="NewTemplate.Name" class="form-control" placeholder="Например: Шаблон служебной записки" />
                             <span asp-validation-for="NewTemplate.Name" class="text-danger small"></span>
                         </div>
 
-                        <div class="col-12">
+                        <div>
                             <label asp-for="NewTemplate.DocumentType" class="form-label">Тип документа</label>
                             <select asp-for="NewTemplate.DocumentType" class="form-select" asp-items="Html.GetEnumSelectList<DocumentType>()">
                                 <option value="">Выберите тип</option>
@@ -48,12 +81,12 @@
                             <span asp-validation-for="NewTemplate.DocumentType" class="text-danger small"></span>
                         </div>
 
-                        <div class="col-12">
+                        <div>
                             <label asp-for="NewTemplate.Description" class="form-label">Описание</label>
                             <textarea asp-for="NewTemplate.Description" rows="3" class="form-control" placeholder="Когда используется этот шаблон"></textarea>
                         </div>
 
-                        <div class="col-12">
+                        <div class="admin-template-grow">
                             <div class="d-flex justify-content-between align-items-center mb-2 gap-2 flex-wrap">
                                 <label class="form-label mb-0">Поля шаблона</label>
                                 <button type="button" class="btn btn-outline-secondary btn-sm" data-add-field-row data-prefix="NewTemplate.Fields" data-target="create-template-fields">
@@ -61,7 +94,7 @@
                                 </button>
                             </div>
                             <div class="small text-muted mb-2">Используйте универсальные ключи и понятные подписи. Пустые строки не сохраняются.</div>
-                            <div id="create-template-fields" class="border rounded-3 p-3 bg-light-subtle d-flex flex-column gap-3" style="max-height: 42vh; overflow-y: auto;" data-field-rows data-next-index="@Model.NewTemplate.Fields.Count" data-prefix="NewTemplate.Fields">
+                            <div id="create-template-fields" class="admin-template-scroll border rounded-3 p-3 bg-light-subtle d-flex flex-column gap-3" style="min-height: 22rem;" data-field-rows data-next-index="@Model.NewTemplate.Fields.Count" data-prefix="NewTemplate.Fields">
                                 @for (var i = 0; i < Model.NewTemplate.Fields.Count; i++)
                                 {
                                     var field = Model.NewTemplate.Fields[i];
@@ -106,7 +139,7 @@
                             <span asp-validation-for="NewTemplate.Fields" class="text-danger small"></span>
                         </div>
 
-                        <div class="col-12">
+                        <div class="pt-3">
                             <button type="submit" class="btn btn-primary">Создать шаблон</button>
                         </div>
                     </form>
@@ -115,8 +148,8 @@
         </div>
 
         <div class="col-xl-8">
-            <div class="card shadow-sm">
-                <div class="card-body">
+            <div class="card shadow-sm h-100 admin-template-panel">
+                <div class="card-body d-flex flex-column">
                     <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
                         <div>
                             <h2 class="h4 mb-1">Текущие шаблоны</h2>
@@ -132,10 +165,10 @@
                     }
                     else
                     {
-                        <div class="d-flex flex-column gap-3 pe-1" style="max-height: 72vh; overflow-y: auto;">
+                        <div class="admin-template-scroll d-flex flex-column gap-3 pe-1">
                             @foreach (var template in Model.Templates)
                             {
-                                <details class="border rounded-3 bg-white" @(template.Id == Model.Templates.First().Id ? "open" : null)>
+                                <details class="border rounded-3 bg-white">
                                     <summary class="list-unstyled p-3 d-flex justify-content-between align-items-start gap-3 cursor-pointer">
                                         <div>
                                             <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -224,8 +257,8 @@
                                                 </div>
                                             </div>
 
-                                            <div class="col-12">
-                                                <button type="submit" class="btn btn-primary">Сохранить шаблон</button>
+                                            <div class="pt-3">
+                            <button type="submit" class="btn btn-primary">Сохранить шаблон</button>
                                             </div>
                                         </form>
                                     </div>

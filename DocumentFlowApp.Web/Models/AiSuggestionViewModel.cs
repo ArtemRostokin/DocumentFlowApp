@@ -8,5 +8,7 @@ public sealed class AiSuggestionViewModel
     public int Confidence { get; init; }
     public bool CanApply { get; init; }
     public bool IsResolved { get; init; } = true;
+    public string Source { get; init; } = "rule-based";
+    public bool IsManualOverride { get; init; }
 }
 

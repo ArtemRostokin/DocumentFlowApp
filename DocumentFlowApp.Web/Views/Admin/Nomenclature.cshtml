@@ -22,7 +22,7 @@
         <div class="alert alert-danger">@Model.ErrorMessage</div>
     }
 
-    <div class="row g-4">
+    <div class="row g-4 align-items-stretch">
         <div class="col-lg-6">
             <div class="card shadow-sm h-100">
                 <div class="card-body">
@@ -104,12 +104,12 @@
         </div>
     </div>
 
-    <div class="row g-4 mt-1">
+    <div class="row g-4 mt-1 align-items-stretch">
         <div class="col-lg-7">
-            <div class="card shadow-sm">
-                <div class="card-body">
+            <div class="card shadow-sm h-100">
+                <div class="card-body d-flex flex-column">
                     <h2 class="h5 mb-3">Дела номенклатуры</h2>
-                    <div class="table-responsive">
+                    <div class="table-responsive flex-grow-1 border rounded-3" style="max-height: 52vh; overflow: auto;">
                         <table class="table table-sm align-middle mb-0">
                             <thead>
                                 <tr>
@@ -145,10 +145,10 @@
         </div>
 
         <div class="col-lg-5">
-            <div class="card shadow-sm">
-                <div class="card-body">
+            <div class="card shadow-sm h-100">
+                <div class="card-body d-flex flex-column">
                     <h2 class="h5 mb-3">Правила автопривязки</h2>
-                    <div class="table-responsive">
+                    <div class="table-responsive flex-grow-1 border rounded-3" style="max-height: 52vh; overflow: auto;">
                         <table class="table table-sm align-middle mb-0">
                             <thead>
                                 <tr>

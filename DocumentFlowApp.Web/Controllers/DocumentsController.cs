@@ -148,7 +148,6 @@ public class DocumentsController : Controller
             else
             {
                 await CaptureApprovalReworkAsync(document, currentUserId, input.Comment, cancellationToken);
-                await CaptureApprovalReworkAsync(document, currentUserId, input.Comment, cancellationToken);
                 await _documentService.ChangeDocumentStatusAsync(id, DocumentStatus.Draft, input.Comment);
                 await LogDocumentActivityAsync(
                     id,
@@ -371,31 +370,33 @@ public class DocumentsController : Controller
             }
 
             var currentType = model.Type ?? DocumentType.Other;
-            if (previousType != currentType)
+            var shouldRefreshAiMetadata = previousType != currentType || HasConfirmedTemplateFieldValues(model.TemplateFieldValues);
+            var aiRefreshFailed = false;
+
+            if (shouldRefreshAiMetadata)
             {
-                var updatedClassification = _aiClassifier.ClassifyIncomingDocument(model.Title, model.Description);
-                await SaveAiMetadataAsync(
-                    doc.DocumentId,
-                    updatedClassification,
-                    doc.ExtractedText,
-                    currentType,
-                    model.TemplateFieldValues,
-                    cancellationToken);
-            }
-            else if (HasConfirmedTemplateFieldValues(model.TemplateFieldValues))
-            {
-                var updatedClassification = _aiClassifier.ClassifyIncomingDocument(model.Title, model.Description);
-                await SaveAiMetadataAsync(
-                    doc.DocumentId,
-                    updatedClassification,
-                    doc.ExtractedText,
-                    currentType,
-                    model.TemplateFieldValues,
-                    cancellationToken);
+                try
+                {
+                    var updatedClassification = _aiClassifier.ClassifyIncomingDocument(model.Title, model.Description);
+                    await SaveAiMetadataAsync(
+                        doc.DocumentId,
+                        updatedClassification,
+                        doc.ExtractedText,
+                        currentType,
+                        model.TemplateFieldValues,
+                        cancellationToken);
+                }
+                catch (Exception aiEx)
+                {
+                    aiRefreshFailed = true;
+                    _logger.LogWarning(aiEx, "Не удалось обновить AI-рекомендации для документа {DocumentId} после сохранения карточки", doc.DocumentId);
+                }
             }
 
-            TempData["SuccessMessage"] = "Изменения сохранены.";
-            return RedirectToAction("Index", "Home");
+            TempData["SuccessMessage"] = aiRefreshFailed
+                ? "Изменения сохранены. AI-рекомендации временно не удалось обновить."
+                : "Изменения сохранены.";
+            return RedirectToAction(nameof(Edit), new { id = doc.DocumentId });
         }
         catch (Exception ex)
         {
@@ -3017,7 +3018,8 @@ public class DocumentsController : Controller
                 SuggestedValue = GetDocumentTypeLabel(effectiveType),
                 Confidence = snapshot.ConfidencePercent,
                 CanApply = ModelCanApplyTypeSuggestion(doc, snapshot),
-                IsResolved = true
+                IsResolved = true,
+                Source = "classifier"
             }
         };
 
@@ -3034,7 +3036,9 @@ public class DocumentsController : Controller
                         SuggestedValue = extracted.SuggestedValue,
                         Confidence = extracted.ConfidencePercent,
                         CanApply = false,
-                        IsResolved = true
+                        IsResolved = true,
+                        Source = extracted.Source,
+                        IsManualOverride = string.Equals(extracted.Source, "manual", StringComparison.OrdinalIgnoreCase)
                     };
                 }
 
@@ -3045,7 +3049,8 @@ public class DocumentsController : Controller
                     SuggestedValue = "Не удалось определить",
                     Confidence = 0,
                     CanApply = false,
-                    IsResolved = false
+                    IsResolved = false,
+                    Source = "missing"
                 };
             }));
         }
@@ -3058,7 +3063,9 @@ public class DocumentsController : Controller
                 SuggestedValue = field.SuggestedValue,
                 Confidence = field.ConfidencePercent,
                 CanApply = false,
-                IsResolved = true
+                IsResolved = true,
+                Source = field.Source,
+                IsManualOverride = string.Equals(field.Source, "manual", StringComparison.OrdinalIgnoreCase)
             }));
         }
 

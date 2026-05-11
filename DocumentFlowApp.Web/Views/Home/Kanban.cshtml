@@ -3,7 +3,6 @@
 @using DocumentFlowApp.Core.Security
 @{
     Layout = null;
-    string IsActive(DocumentType? type) => Model.SelectedType == type ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors";
     var currentUserName = User.Identity?.Name ?? "Пользователь";
     var currentUserRole = User.Claims.FirstOrDefault(c => c.Type == "df_role")?.Value
         ?? User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Role)?.Value
@@ -18,6 +17,19 @@
     var canManageDocuments = normalizedRole is AppRoles.Admin or AppRoles.Manager;
     var isAdmin = normalizedRole == AppRoles.Admin;
     var isEmployee = normalizedRole == AppRoles.Employee;
+    string GetTypeFilterLabel(DocumentType type) => type switch
+    {
+        DocumentType.Contract => "Договор",
+        DocumentType.Invoice => "Счет",
+        DocumentType.Report => "Отчет",
+        DocumentType.Order => "Приказ",
+        DocumentType.Application => "Заявление",
+        DocumentType.Act => "Акт",
+        DocumentType.ServiceMemo => "Служебная записка",
+        DocumentType.PurchaseRequest => "Заявка на закупку",
+        DocumentType.OutgoingLetter => "Исходящее письмо",
+        _ => "Прочее"
+    };
 }
 <!DOCTYPE html>
 <html lang="ru">
@@ -176,11 +188,6 @@
             </div>
             <div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
                 <div class="flex min-w-0 flex-wrap items-center gap-2">
-                    <div class="flex shrink-0 bg-slate-100 rounded-lg p-1">
-                        <a asp-action="Index" asp-route-q="@Model.SearchQuery" asp-route-status="@Model.SelectedStatus" asp-route-priority="@Model.SelectedPriority" asp-route-period="@Model.SelectedPeriod" class="px-3 py-1.5 text-sm font-medium rounded-md @(IsActive(null))">Все</a>
-                        <a asp-action="Index" asp-route-type="@DocumentType.Contract" asp-route-q="@Model.SearchQuery" asp-route-status="@Model.SelectedStatus" asp-route-priority="@Model.SelectedPriority" asp-route-period="@Model.SelectedPeriod" class="px-3 py-1.5 text-sm font-medium rounded-md @(IsActive(DocumentType.Contract))">Договоры</a>
-                        <a asp-action="Index" asp-route-type="@DocumentType.Invoice" asp-route-q="@Model.SearchQuery" asp-route-status="@Model.SelectedStatus" asp-route-priority="@Model.SelectedPriority" asp-route-period="@Model.SelectedPeriod" class="px-3 py-1.5 text-sm font-medium rounded-md @(IsActive(DocumentType.Invoice))">Счета</a>
-                    </div>
                     <div class="relative">
                         <button type="button"
                                 id="filtersToggle"
@@ -390,14 +397,21 @@
                 </div>
 
                 <form method="get" asp-action="Index" class="space-y-4">
-                    @if (Model.SelectedType.HasValue)
-                    {
-                        <input type="hidden" name="type" value="@Model.SelectedType" />
-                    }
                     @if (!string.IsNullOrWhiteSpace(Model.SearchQuery))
                     {
                         <input type="hidden" name="q" value="@Model.SearchQuery" />
                     }
+
+                    <label class="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Тип документа
+                        <select name="type" class="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-primary focus:ring-primary/30">
+                            <option value="">Все типы</option>
+                            @foreach (var documentType in Enum.GetValues<DocumentType>())
+                            {
+                                <option value="@documentType" selected="@(Model.SelectedType == documentType ? "selected" : null)">@GetTypeFilterLabel(documentType)</option>
+                            }
+                        </select>
+                    </label>
 
                     <label class="block text-xs font-medium uppercase tracking-wide text-slate-500">
                         Статус

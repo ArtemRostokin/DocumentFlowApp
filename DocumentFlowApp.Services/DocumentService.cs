@@ -87,6 +87,7 @@ namespace DocumentFlowApp.Services
 
         public async Task UpdateDocumentAsync(Document document)
         {
+            document.DueDate = NormalizeToUtc(document.DueDate);
             document.UpdatedDate = DateTime.UtcNow;
             await _documentRepository.UpdateAsync(document);
         }

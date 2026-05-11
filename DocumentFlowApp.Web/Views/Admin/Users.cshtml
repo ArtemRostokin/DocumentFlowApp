@@ -3,6 +3,43 @@
     ViewData["Title"] = "Пользователи";
 }
 
+<style>
+    .users-admin-table {
+        table-layout: fixed;
+    }
+
+    .users-admin-table th,
+    .users-admin-table td {
+        vertical-align: top;
+    }
+
+    .users-admin-table .form-control,
+    .users-admin-table .form-select,
+    .users-admin-table .btn {
+        min-width: 0;
+    }
+
+    .users-admin-table .account-col {
+        width: 23%;
+    }
+
+    .users-admin-table .name-col {
+        width: 18%;
+    }
+
+    .users-admin-table .roles-col {
+        width: 21%;
+    }
+
+    .users-admin-table .status-col {
+        width: 18%;
+    }
+
+    .users-admin-table .actions-col {
+        width: 20%;
+    }
+</style>
+
 <div class="container py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
         <div>
@@ -22,8 +59,8 @@
         <div class="alert alert-danger">@Model.ErrorMessage</div>
     }
 
-    <div class="row g-4">
-        <div class="col-xl-4">
+    <div class="row g-4 align-items-stretch">
+        <div class="col-xl-3">
             <div class="card shadow-sm h-100">
                 <div class="card-body">
                     <h2 class="h5 mb-3">Создать пользователя</h2>
@@ -92,25 +129,23 @@
             </div>
         </div>
 
-        <div class="col-xl-8">
-            <div class="card shadow-sm">
+        <div class="col-xl-9">
+            <div class="card shadow-sm h-100">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
                         <h2 class="h5 mb-0">Список пользователей</h2>
                         <span class="text-muted small">Всего: @Model.Users.Count</span>
                     </div>
 
-                    <div class="table-responsive border rounded-3" style="max-height: 68vh; overflow: auto;">
-                        <table class="table table-sm align-middle">
+                    <div class="border rounded-3" style="max-height: 68vh; overflow-y: auto;">
+                        <table class="table table-sm align-middle users-admin-table mb-0">
                             <thead>
                                 <tr>
-                                    <th style="min-width: 240px;">Учетная запись</th>
-                                    <th style="min-width: 180px;">Имя и фамилия</th>
-                                    <th style="min-width: 220px;">Роли</th>
-                                    <th style="min-width: 150px;">Статус</th>
-                                    <th style="min-width: 150px;">Последний вход</th>
-                                    <th style="min-width: 220px;">Сброс пароля</th>
-                                    <th style="min-width: 160px;"></th>
+                                    <th class="account-col">Учетная запись</th>
+                                    <th class="name-col">Имя и фамилия</th>
+                                    <th class="roles-col">Роли</th>
+                                    <th class="status-col">Статус и активность</th>
+                                    <th class="actions-col">Действия</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -154,19 +189,17 @@
                                         </div>
                                         <div class="small text-muted">Email: @(item.EmailConfirmed ? "подтвержден" : "не подтвержден")</div>
                                         <div class="small text-muted mt-1">Согласование: @item.ApprovalSpecializationLabel</div>
+                                        <div class="small text-muted mt-2">Последний вход: @(item.LastLoginUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ?? "еще не входил")</div>
+                                        <div class="small text-muted mt-1">Создан: @item.CreatedDateUtc.ToLocalTime().ToString("dd.MM.yyyy")</div>
                                     </td>
-                                    <td class="small text-muted">@(item.LastLoginUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ?? "Еще не входил")</td>
                                     <td>
-                                        <form id="@resetFormId" asp-action="ResetUserPassword" method="post" class="d-flex flex-column gap-2">
+                                        <form id="@resetFormId" asp-action="ResetUserPassword" method="post" class="d-flex flex-column gap-2 mb-2">
                                             @Html.AntiForgeryToken()
                                             <input type="hidden" name="UserId" value="@item.UserId" />
                                             <input type="password" name="NewPassword" class="form-control form-control-sm" placeholder="Новый пароль" />
                                             <button type="submit" class="btn btn-outline-secondary btn-sm">Сохранить новый пароль</button>
                                         </form>
-                                    </td>
-                                    <td>
                                         <button type="submit" form="@updateFormId" class="btn btn-primary btn-sm w-100">Сохранить профиль</button>
-                                        <div class="small text-muted mt-2">Создан: @item.CreatedDateUtc.ToLocalTime().ToString("dd.MM.yyyy")</div>
                                     </td>
                                 </tr>
                             }

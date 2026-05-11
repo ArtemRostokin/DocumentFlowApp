@@ -1,0 +1,771 @@
+210:            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+211:                <div class="lg:col-span-7 xl:col-span-8 space-y-6">
+212:                    @if (showAiPanel)
+213:                    {
+214:                        <section class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+215:                            <div class="flex items-center justify-between gap-4 mb-4">
+216:                                <div class="flex items-center gap-2">
+217:                                    <span class="material-symbols-outlined text-blue-600">smart_toy</span>
+218:                                    <h2 class="text-sm font-bold uppercase tracking-widest text-slate-600">Распознанные реквизиты</h2>
+219:                                </div>
+220:                                <div class="text-xs text-slate-500">Сначала определяется тип документа, затем показываются ключевые поля для этого типа.</div>
+221:                            </div>
+222:
+223:                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+224:                                @foreach (var s in Model.AiSuggestions)
+225:                                {
+226:                                    var isHigh = s.Confidence >= 85;
+227:                                    var needsReview = s.Confidence >= 60 && s.Confidence < 85;
+228:                                    var unresolved = !s.IsResolved;
+229:                                    <div class="rounded-xl border @(unresolved ? "border-rose-200 bg-rose-50/70" : isHigh ? "border-emerald-200 bg-emerald-50/60" : needsReview ? "border-amber-200 bg-amber-50/70" : "border-slate-200 bg-slate-50") px-4 py-3">
+230:                                        <div class="flex items-start justify-between gap-3">
+231:                                            <div>
+232:                                                <div class="text-[10px] uppercase tracking-widest font-bold text-slate-500">@s.Label</div>
+233:                                                <div class="mt-1 text-sm font-medium text-slate-900 break-words">@s.SuggestedValue</div>
+234:                                                <div class="mt-2 text-xs text-slate-600">
+235:                                                    @if (unresolved)
+236:                                                    {
+237:                                                        <span class="font-semibold text-rose-700">Поле не удалось заполнить автоматически</span>
+238:                                                    }
+239:                                                    else
+240:                                                    {
+241:                                                        <text>Уверенность: <span class="font-semibold">@s.Confidence%</span></text>
+242:                                                        <span class="ml-2 @(isHigh ? "text-emerald-700" : needsReview ? "text-amber-700" : "text-slate-500")">
+243:                                                            @(s.CanApply ? (isHigh ? "можно применить" : needsReview ? "проверьте перед применением" : "лучше проверить вручную") : (isHigh ? "поле распознано уверенно" : needsReview ? "поле стоит проверить" : "лучше сверить вручную"))
+244:                                                        </span>
+245:                                                    }
+246:                                                </div>
+247:                                            </div>
+248:                                            @if (s.CanApply)
+249:                                            {
+250:                                                <button type="button" class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold @(isHigh ? "bg-emerald-600 text-white hover:bg-emerald-700" : needsReview ? "bg-amber-600 text-white hover:bg-amber-700" : "bg-slate-700 text-white hover:bg-slate-800")" data-ai-apply data-field="@s.FieldKey" data-value="@s.SuggestedValue">Применить</button>
+251:                                            }
+252:                                        </div>
+253:                                    </div>
+254:                                }
+255:                            </div>
+256:                        </section>
+257:                    }
+258:
+259:                    @if (Model.CanEditDocument)
+260:                    {
+261:                        <form id="editDocumentForm" method="post" asp-action="Edit" class="space-y-6">
+262:                            @Html.AntiForgeryToken()
+263:                            <input type="hidden" asp-for="Id" />
+264:
+265:                            <div asp-validation-summary="ModelOnly" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"></div>
+266:
+267:                            <section class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-5">
+268:                                <div class="flex items-start justify-between gap-4">
+269:                                    <div>
+270:                                        <h2 class="text-sm font-bold uppercase tracking-widest text-slate-600">Основные реквизиты</h2>
+271:                                        <p class="mt-1 text-sm text-slate-500">Здесь менеджер или администратор заполняет и корректирует карточку документа.</p>
+272:                                    </div>
+273:                                    <span class="rounded-lg bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Режим управления</span>
+274:                                </div>
+275:
+276:                                <fieldset class="space-y-5">
+277:                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+278:                                        <div class="md:col-span-2">
+279:                                            <label asp-for="Title" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Название</label>
+280:                                            <input asp-for="Title" id="field-title" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600" />
+281:                                            <span asp-validation-for="Title" class="text-xs text-red-600"></span>
+282:                                        </div>
+283:
+284:                                        <div>
+285:                                            <label asp-for="Type" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Тип</label>
+286:                                            <select asp-for="Type" id="field-type" asp-items="Html.GetEnumSelectList<DocumentType>()" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600">
+287:                                                <option value="">Выберите тип</option>
+288:                                            </select>
+289:                                            <span asp-validation-for="Type" class="text-xs text-red-600"></span>
+290:                                        </div>
+291:
+292:                                        <div>
+293:                                            <label asp-for="DueDate" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Срок исполнения</label>
+294:                                            <input asp-for="DueDate" id="field-duedate" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600" />
+295:                                            <span asp-validation-for="DueDate" class="text-xs text-red-600"></span>
+296:                                        </div>
+297:                                    </div>
+298:
+299:                                    <div>
+300:                                        <label asp-for="Description" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Описание</label>
+301:                                        <textarea asp-for="Description" id="field-description" rows="4" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600"></textarea>
+302:                                        <span asp-validation-for="Description" class="text-xs text-red-600"></span>
+303:                                    </div>
+304:
+305:                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+306:                                        <div>
+307:                                            <label asp-for="Priority" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Приоритет</label>
+308:                                            <select asp-for="Priority" id="field-priority" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600">
+309:                                                <option value="">Не выбран</option>
+310:                                                <option value="1">Низкий</option>
+311:                                                <option value="2">Средний</option>
+312:                                                <option value="3">Высокий</option>
+313:                                            </select>
+314:                                            <span asp-validation-for="Priority" class="text-xs text-red-600"></span>
+315:                                        </div>
+316:
+317:                                        <div>
+318:                                            <label asp-for="Tags" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Теги</label>
+319:                                            <input asp-for="Tags" id="field-tags" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600" placeholder="Например: финансы, договор, согласование" />
+320:                                            <span asp-validation-for="Tags" class="text-xs text-red-600"></span>
+321:                                        </div>
+322:                                    </div>
+323:                                </fieldset>
+324:                            </section>
+325:
+326:                            @if (Model.TemplateFields.Count > 0)
+327:                            {
+328:                                <section class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+329:                                    <div class="flex items-start justify-between gap-4">
+330:                                        <div>
+331:                                            <h2 class="text-sm font-bold uppercase tracking-widest text-slate-600">Данные шаблона</h2>
+332:                                            <p class="mt-1 text-sm text-slate-500">@(string.IsNullOrWhiteSpace(Model.TemplateName) ? "Поля документа" : Model.TemplateName)</p>
+333:                                            <p class="mt-2 text-xs text-slate-500">Менеджер может подтвердить или исправить распознанные значения перед отправкой документа дальше.</p>
+334:                                        </div>
+335:                                        <span class="rounded-lg bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">Подтверждение реквизитов</span>
+336:                                    </div>
+337:
+338:                                    <div class="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+339:                                        @foreach (var field in Model.TemplateFields)
+340:                                        {
+341:                                            <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+342:                                                <div class="text-xs font-bold uppercase tracking-wider text-slate-500">
+343:                                                    @field.Label
+344:                                                    @if (field.Required)
+345:                                                    {
+346:                                                        <span class="text-red-500">*</span>
+347:                                                    }
+348:                                                </div>
+349:                                                @{
+350:                                                    var editorValue = Model.TemplateFieldValues.TryGetValue(field.Key, out var fieldValue)
+351:                                                        ? fieldValue
+352:                                                        : field.Value;
+353:                                                }
+354:                                                @if (string.Equals(field.InputType, "textarea", StringComparison.OrdinalIgnoreCase))
+355:                                                {
+356:                                                    <textarea name="TemplateFieldValues[@field.Key]" rows="3" class="mt-2 w-full rounded-lg border-slate-300 bg-white text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600">@editorValue</textarea>
+357:                                                }
+358:                                                else
+359:                                                {
+360:                                                    <input name="TemplateFieldValues[@field.Key]" value="@editorValue" type="@(string.Equals(field.InputType, "number", StringComparison.OrdinalIgnoreCase) ? "text" : field.InputType)" class="mt-2 w-full rounded-lg border-slate-300 bg-white text-sm px-4 py-2.5 focus:ring-2 focus:ring-blue-600 focus:border-blue-600" />
+361:                                                }
+362:                                            </div>
+363:                                        }
+364:                                    </div>
+365:                                </section>
+366:                            }
+367:                        </form>
+368:                    }
+369:                    else
+370:                    {
+371:                        <section class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-5">
+372:                            <div class="flex items-start justify-between gap-4">
+373:                                <div>
+374:                                    <h2 class="text-sm font-bold uppercase tracking-widest text-slate-600">Кратко о документе</h2>
+375:                                    <p class="mt-1 text-sm text-slate-500">Показываем только те сведения, которые нужны для согласования и исполнения.</p>
+376:                                </div>
+377:                                <span class="rounded-lg bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">Рабочий режим</span>
+378:                            </div>
+379:
+380:                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+381:                                <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+382:                                    <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Название</div>
+383:                                    <div class="mt-1 text-sm font-medium text-slate-900">@Model.Title</div>
+384:                                </div>
+385:                                <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+386:                                    <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Тип документа</div>
+387:                                    <div class="mt-1 text-sm font-medium text-slate-900">@Model.Type</div>
+388:                                </div>
+389:                                <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+390:                                    <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Срок исполнения</div>
+391:                                    <div class="mt-1 text-sm font-medium text-slate-900">@(Model.DueDate.HasValue ? Model.DueDate.Value.ToString("dd.MM.yyyy") : "Не указан")</div>
+392:                                </div>
+393:                                <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+394:                                    <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Приоритет</div>
+395:                                    <div class="mt-1 text-sm font-medium text-slate-900">@(Model.Priority switch { 1 => "Низкий", 2 => "Средний", 3 => "Высокий", _ => "Не выбран" })</div>
+396:                                </div>
+397:                            </div>
+398:
+399:                            <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+400:                                <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Описание</div>
+401:                                <div class="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">@Model.Description</div>
+402:                            </div>
+403:
+404:                            @if (Model.TemplateFields.Count > 0)
+405:                            {
+406:                                <section class="space-y-4">
+407:                                    <div>
+408:                                        <h2 class="text-sm font-bold uppercase tracking-widest text-slate-600">Данные шаблона</h2>
+409:                                        <p class="mt-1 text-sm text-slate-500">@(string.IsNullOrWhiteSpace(Model.TemplateName) ? "Поля документа" : Model.TemplateName)</p>
+410:                                    </div>
+411:                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+412:                                        @foreach (var field in Model.TemplateFields)
+413:                                        {
+414:                                            <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+415:                                                <div class="text-xs font-bold uppercase tracking-wider text-slate-500">@field.Label</div>
+416:                                                <div class="mt-1 text-sm font-medium text-slate-900 whitespace-pre-wrap break-words">@field.Value</div>
+417:                                            </div>
+418:                                        }
+419:                                    </div>
+420:                                </section>
+421:                            }
+422:                        </section>
+423:                    }
+424:                </div>
+425:
+426:                <div class="space-y-6 lg:col-span-5 xl:col-span-4 xl:sticky xl:top-[88px] xl:max-h-[calc(100vh-112px)] xl:overflow-y-auto xl:pr-1">
+427:                    <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+428:                        <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+429:                            <div class="text-sm font-semibold text-slate-700">Что происходит сейчас</div>
+430:                        </div>
+431:                        <div class="p-4 space-y-4">
+432:                            <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+433:                                <div class="flex items-center justify-between gap-3">
+434:                                    <div>
+435:                                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Текущий этап</div>
+436:                                        <div class="mt-1 text-sm font-semibold text-slate-900">@currentStageTitle</div>
+437:                                    </div>
+438:                                    <span class="rounded-full px-3 py-1 text-xs font-semibold @currentStageAccent">@Model.Status</span>
+439:                                </div>
+440:                                <div class="mt-3 text-sm leading-6 text-slate-700">@currentActionHint</div>
+441:                            </div>
+442:
+443:                            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+444:                                <div class="rounded-xl bg-slate-50 px-4 py-3">
+445:                                    <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Маршрут</div>
+446:                                    <div class="mt-1 text-sm font-medium text-slate-900">@routeProgressText</div>
+447:                                    <div class="mt-2 text-xs text-slate-500">@(routeNeedsSetup ? "Подготовьте маршрут перед отправкой на согласование." : $"Согласовано шагов: {completedApprovalSteps} из {approvalStepsCount}")</div>
+448:                                </div>
+449:                                <div class="rounded-xl bg-slate-50 px-4 py-3">
+450:                                    <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Следующий участник</div>
+451:                                    <div class="mt-1 text-sm font-medium text-slate-900">
+452:                                        @if (routeNeedsSetup && string.Equals(statusText, "Draft", StringComparison.OrdinalIgnoreCase))
+453:                                        {
+454:                                            <span>Сначала подготовьте маршрут</span>
+455:                                        }
+456:                                        else if (string.Equals(statusText, "OnApproval", StringComparison.OrdinalIgnoreCase))
+457:                                        {
+458:                                            @currentApprovalActor
+459:                                        }
+460:                                        else if (nextApprovalStep is not null)
+461:                                        {
+462:                                            @(string.IsNullOrWhiteSpace(nextApprovalStep.ApproverDisplayName) || string.Equals(nextApprovalStep.ApproverDisplayName, "Не назначен", StringComparison.OrdinalIgnoreCase)
+463:                                                ? nextApprovalStep.ApproverSpecializationLabel
+464:                                                : $"{nextApprovalStep.ApproverSpecializationLabel} · {nextApprovalStep.ApproverDisplayName}")
+465:                                        }
+466:                                        else if (!string.IsNullOrWhiteSpace(Model.Assignment.AssignedUserName))
+467:                                        {
+468:                                            @Model.Assignment.AssignedUserName
+469:                                        }
+470:                                        else
+471:                                        {
+472:                                            <span>Будет определен на следующем этапе</span>
+473:                                        }
+474:                                    </div>
+475:                                </div>
+476:                            </div>
+477:                        </div>
+478:                    </section>
+479:
+480:                    @if (hasUserActions)
+481:                    {
+482:                        <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+483:                            <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+484:                                <div class="text-sm font-semibold text-slate-700">Действия по документу</div>
+485:                            </div>
+486:                            <div class="p-4 space-y-3">
+487:                                <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
+488:                                    @currentActionHint
+489:                                </div>
+490:
+491:                                @if (Model.CanApprove)
+492:                                {
+493:                                    <form method="post" action="/Documents/@Model.Id/review">
+494:                                        @Html.AntiForgeryToken()
+495:                                        <input type="hidden" name="Decision" value="approve" />
+496:                                        <button type="submit" class="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700">
+497:                                            Утвердить документ
+498:                                        </button>
+499:                                    </form>
+500:                                }
+501:
+502:                                @if (Model.CanRework)
+503:                                {
+504:                                    <form method="post" action="/Documents/@Model.Id/review" class="space-y-3">
+505:                                        @Html.AntiForgeryToken()
+506:                                        <input type="hidden" name="Decision" value="rework" />
+507:                                        <label class="block text-xs uppercase tracking-wider font-bold text-slate-500">Комментарий для доработки</label>
+508:                                        <textarea name="Comment" rows="3" class="w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5" placeholder="Укажите, что нужно исправить"></textarea>
+509:                                        <button type="submit" class="w-full rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-700">
+510:                                            Вернуть на доработку
+511:                                        </button>
+512:                                    </form>
+513:                                }
+514:
+515:                                @if (Model.CanStartWork)
+516:                                {
+517:                                    <form method="post" action="/Documents/@Model.Id/start-work">
+518:                                        @Html.AntiForgeryToken()
+519:                                        <input type="hidden" name="returnToEdit" value="true" />
+520:                                        <button type="submit" class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
+521:                                            Начать работу
+522:                                        </button>
+523:                                    </form>
+524:                                }
+525:
+526:                                @if (Model.CanComplete)
+527:                                {
+528:                                    <form method="post" action="/Documents/@Model.Id/complete-work">
+529:                                        @Html.AntiForgeryToken()
+530:                                        <input type="hidden" name="returnToEdit" value="true" />
+531:                                        <button type="submit" class="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700">
+532:                                            Завершить исполнение
+533:                                        </button>
+534:                                    </form>
+535:                                }
+536:                            </div>
+537:                        </section>
+538:                    }
+539:
+540:                    @if (hasExecutionBlock)
+541:                    {
+542:                        <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+543:                            <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+544:                                <div class="text-sm font-semibold text-slate-700">Исполнение документа</div>
+545:                            </div>
+546:                            <div class="p-4 space-y-4">
+547:                                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+548:                                    <div class="rounded-xl bg-slate-50 px-4 py-3">
+549:                                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Дата начала</div>
+550:                                        <div class="mt-1 font-medium text-slate-900">@(Model.ExecutionStartedAt.HasValue ? Model.ExecutionStartedAt.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm") : "Еще не начато")</div>
+551:                                    </div>
+552:                                    <div class="rounded-xl bg-slate-50 px-4 py-3">
+553:                                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Дата завершения</div>
+554:                                        <div class="mt-1 font-medium text-slate-900">@(Model.ExecutionCompletedAt.HasValue ? Model.ExecutionCompletedAt.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm") : "Еще не завершено")</div>
+555:                                    </div>
+556:                                </div>
+557:
+558:                                @if (Model.ExecutionHintItems.Count > 0)
+559:                                {
+560:                                    <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+561:                                        <div class="text-xs font-bold uppercase tracking-wider text-blue-700">@Model.ExecutionHintTitle</div>
+562:                                        <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-blue-900">
+563:                                            @foreach (var item in Model.ExecutionHintItems)
+564:                                            {
+565:                                                <li>@item</li>
+566:                                            }
+567:                                        </ul>
+568:                                    </div>
+569:                                }
+570:
+571:                                @if (isEmployeeRole)
+572:                                {
+573:                                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+574:                                        Здесь нужен только рабочий результат: комментарий, итог исполнения и при необходимости сформированный системой файл.
+575:                                    </div>
+576:                                }
+577:
+578:                                @if (Model.CanSaveExecutionProgress)
+579:                                {
+580:                                    <form method="post" action="/Documents/@Model.Id/execution" class="space-y-4">
+581:                                        @Html.AntiForgeryToken()
+582:                                        <div>
+583:                                            <label asp-for="ExecutionComment" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Комментарий исполнителя</label>
+584:                                            <textarea asp-for="ExecutionComment" rows="4" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5" placeholder="Кратко опишите, что уже сделано по документу"></textarea>
+585:                                        </div>
+586:                                        <div>
+587:                                            <label asp-for="ExecutionResult" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Результат исполнения</label>
+588:                                            <select asp-for="ExecutionResult" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5">
+589:                                                <option value="">Выберите результат</option>
+590:                                                @foreach (var option in Model.ExecutionResultOptions)
+591:                                                {
+592:                                                    <option value="@option">@option</option>
+593:                                                }
+594:                                            </select>
+595:                                        </div>
+596:                                        <button type="submit" class="w-full rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900">
+597:                                            Сохранить ход исполнения
+598:                                        </button>
+599:                                    </form>
+600:
+601:                                    @if (!isEmployeeRole)
+602:                                    {
+603:                                        <form method="post" action="/Documents/@Model.Id/execution-file" enctype="multipart/form-data" class="space-y-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+604:                                            @Html.AntiForgeryToken()
+605:                                            <div>
+606:                                                <label for="executionFile" class="block text-xs uppercase tracking-wider font-bold text-slate-500">Итоговый файл</label>
+607:                                                <input id="executionFile" name="executionFile" type="file" accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg" class="mt-1 w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5" />
+608:                                                <div class="mt-1 text-xs text-slate-500">Поддерживаются PDF, DOCX, XLSX, PNG и JPEG до 25MB.</div>
+609:                                            </div>
+610:                                            <button type="submit" class="w-full rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 ring-1 ring-slate-300 hover:bg-slate-100">
+611:                                                Загрузить итоговый файл
+612:                                            </button>
+613:                                        </form>
+614:                                    }
+615:
+616:                                    <form method="post" action="/Documents/@Model.Id/execution-print-file" class="space-y-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-4">
+617:                                        @Html.AntiForgeryToken()
+618:                                        <div class="text-sm text-blue-900">
+619:                                            Система сформирует официальный итоговый файл исполнения из карточки документа и сохранит его автоматически.
+620:                                        </div>
+621:                                        <button type="submit" class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
+622:                                            Сформировать итоговый файл
+623:                                        </button>
+624:                                    </form>
+625:                                }
+626:                                else
+627:                                {
+628:                                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+629:                                        Блок исполнения доступен для просмотра. Изменять его может только назначенный исполнитель во время работы над документом.
+630:                                    </div>
+631:                                }
+632:
+633:                                <div class="rounded-xl bg-slate-50 px-4 py-3">
+634:                                    <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Текущий результат</div>
+635:                                    <div class="mt-1 font-medium text-slate-900">@(string.IsNullOrWhiteSpace(Model.ExecutionResult) ? "Пока не выбран" : Model.ExecutionResult)</div>
+636:                                </div>
+637:
+638:                                <div class="rounded-xl bg-slate-50 px-4 py-3">
+639:                                    <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Комментарий исполнителя</div>
+640:                                    <div class="mt-1 text-sm leading-6 text-slate-700">@(string.IsNullOrWhiteSpace(Model.ExecutionComment) ? "Комментарий пока не добавлен." : Model.ExecutionComment)</div>
+641:                                </div>
+642:
+643:                                @if (showDedicatedExecutionFileBlock)
+644:                                {
+645:                                    <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+646:                                        <div class="text-xs font-bold uppercase tracking-wider text-blue-700">Итоговый файл</div>
+647:                                        <div class="mt-2 flex items-center justify-between gap-3">
+648:                                            <div class="text-sm text-slate-700">@(string.IsNullOrWhiteSpace(Model.ExecutionFileName) ? "Файл исполнения" : Model.ExecutionFileName)</div>
+649:                                            <a href="@Model.ExecutionFileUrl" target="_blank" class="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100">Открыть</a>
+650:                                        </div>
+651:                                        <div class="mt-2 text-xs text-blue-700 break-all">Путь в БД: @Model.ExecutionFileUrl</div>
+652:                                        @if (string.Equals(Model.ExecutionFileKind, "image", StringComparison.OrdinalIgnoreCase))
+653:                                        {
+654:                                            <div class="mt-3 rounded-lg border border-blue-100 bg-white p-3">
+655:                                                <img class="max-h-72 max-w-full object-contain rounded" src="@Model.ExecutionFileUrl" alt="Превью итогового файла" />
+656:                                            </div>
+657:                                        }
+658:                                        else if (string.Equals(Model.ExecutionFileKind, "pdf", StringComparison.OrdinalIgnoreCase))
+659:                                        {
+660:                                            <div class="mt-3 rounded-lg border border-blue-100 bg-white p-2">
+661:                                                <iframe class="h-72 w-full rounded" src="@Model.ExecutionFileUrl"></iframe>
+662:                                            </div>
+663:                                        }
+664:                                        else if (string.Equals(Model.ExecutionFileKind, "html", StringComparison.OrdinalIgnoreCase))
+665:                                        {
+666:                                            <div class="mt-3 rounded-lg border border-blue-100 bg-white p-2">
+667:                                                <iframe class="h-72 w-full rounded" src="@Model.ExecutionFileUrl"></iframe>
+668:                                            </div>
+669:                                        }
+670:                                    </div>
+671:                                }
+672:                                else if (hasExecutionFile)
+673:                                {
+674:                                    <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+675:                                        Итоговый файл уже доступен в блоке просмотра ниже.
+676:                                    </div>
+677:                                }
+678:                            </div>
+679:                        </section>
+680:                    }
+681:
+682:                    <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+683:                        <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+684:                            <div class="text-sm font-semibold text-slate-700">Маршрут согласования</div>
+685:                        </div>
+686:                        <div class="p-4 space-y-4">
+687:                            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+688:                                <div class="rounded-xl bg-slate-50 px-4 py-3">
+689:                                    <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Текущий шаблон</div>
+690:                                    <div class="mt-1 font-medium text-slate-900">@(string.IsNullOrWhiteSpace(Model.RouteTemplateName) ? "Не выбран" : Model.RouteTemplateName)</div>
+691:                                </div>
+692:                                <div class="rounded-xl bg-slate-50 px-4 py-3">
+693:                                    <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Прогресс маршрута</div>
+694:                                    <div class="mt-1 font-medium text-slate-900">@routeProgressText</div>
+695:                                    <div class="mt-2 text-xs text-slate-500">@(approvalStepsCount == 0 ? "Шаги ещё не подготовлены." : $"Согласовано шагов: {completedApprovalSteps} из {approvalStepsCount}")</div>
+696:                                </div>
+697:                            </div>
+698:
+699:                            @if (routeNeedsSetup)
+700:                            {
+701:                                <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+702:                                    Маршрут ещё не подготовлен. Выберите шаблон и сформируйте шаги, чтобы документ можно было отправить на согласование.
+703:                                </div>
+704:                            }
+705:
+706:                            @if (Model.CanConfigureApprovalRoute)
+707:                            {
+708:                                <form method="post" action="/Documents/@Model.Id/approval-route" class="space-y-3">
+709:                                    @Html.AntiForgeryToken()
+710:                                    <label class="block text-xs uppercase tracking-wider font-bold text-slate-500">Шаблон маршрута</label>
+711:                                    <select name="routeTemplateId" class="w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5">
+712:                                        <option value="">Выберите шаблон</option>
+713:                                        @foreach (var routeTemplate in Model.RouteTemplateOptions)
+714:                                        {
+715:                                            <option value="@routeTemplate.Id" selected="@(Model.RouteTemplateId == routeTemplate.Id)">
+716:                                                @routeTemplate.Name
+717:                                            </option>
+718:                                        }
+719:                                    </select>
+720:                                    <div class="text-xs text-slate-500">Подготовьте маршрут перед отправкой документа на согласование. После отправки шаги блокируются.</div>
+721:                                    <button type="submit" class="w-full rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900">Подготовить маршрут</button>
+722:                                </form>
+723:                            }
+724:
+725:                            <div class="space-y-3">
+726:                                @if (Model.ApprovalRouteSteps.Count == 0)
+727:                                {
+728:                                    <div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600">
+729:                                        После подготовки маршрута здесь появятся шаги согласования, роли и текущий ответственный.
+730:                                    </div>
+731:                                }
+732:                                else
+733:                                {
+734:                                    @foreach (var step in Model.ApprovalRouteSteps.OrderBy(x => x.Order))
+735:                                    {
+736:                                        var rawStepStatus = (step.Status ?? string.Empty).Trim();
+737:                                        var isApprovedStep = string.Equals(rawStepStatus, "Approved", StringComparison.OrdinalIgnoreCase);
+738:                                        var isPendingStep = string.Equals(rawStepStatus, "Pending", StringComparison.OrdinalIgnoreCase);
+739:                                        var isReworkedStep = string.Equals(rawStepStatus, "Reworked", StringComparison.OrdinalIgnoreCase);
+740:                                        var stepBorder = step.IsCurrent
+741:                                            ? "border-blue-300 bg-blue-50/60"
+742:                                            : isApprovedStep
+743:                                                ? "border-emerald-200 bg-emerald-50/70"
+744:                                                : isReworkedStep
+745:                                                    ? "border-rose-200 bg-rose-50/70"
+746:                                                    : "border-slate-200 bg-white";
+747:                                        var markerAccent = step.IsCurrent
+748:                                            ? "bg-blue-600 text-white ring-blue-100"
+749:                                            : isApprovedStep
+750:                                                ? "bg-emerald-600 text-white ring-emerald-100"
+751:                                                : isReworkedStep
+752:                                                    ? "bg-rose-600 text-white ring-rose-100"
+753:                                                    : isPendingStep
+754:                                                        ? "bg-slate-300 text-slate-700 ring-slate-100"
+755:                                                        : "bg-slate-200 text-slate-600 ring-slate-100";
+756:                                        var statusBadge = step.IsCurrent ? "Текущий шаг" : routeStatusLabel(step.Status);
+757:                                        var statusAccent = step.IsCurrent ? "bg-blue-100 text-blue-800 ring-blue-200" : routeStatusAccent(step.Status);
+758:                                        <div class="rounded-xl border p-4 @stepBorder">
+759:                                            <div class="flex items-start gap-4">
+760:                                                <div class="flex flex-col items-center">
+761:                                                    <div class="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold ring-4 @markerAccent">@step.Order</div>
+762:                                                    @if (step.Order < approvalStepsCount)
+763:                                                    {
+764:                                                        <div class="mt-2 h-10 w-px bg-slate-200"></div>
+765:                                                    }
+766:                                                </div>
+767:                                                <div class="min-w-0 flex-1 space-y-3">
+768:                                                    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+769:                                                        <div class="min-w-0">
+770:                                                            <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Шаг @step.Order</div>
+771:                                                            <div class="mt-1 text-base font-semibold text-slate-900">@step.Title</div>
+772:                                                            <div class="mt-2 text-sm leading-6 text-slate-600">
+773:                                                                @step.ApproverRole · @step.ApproverSpecializationLabel
+774:                                                                @if (!string.IsNullOrWhiteSpace(step.ApproverDisplayName) && !string.Equals(step.ApproverDisplayName, "Не назначен", StringComparison.OrdinalIgnoreCase))
+775:                                                                {
+776:                                                                    <span> · @step.ApproverDisplayName</span>
+777:                                                                }
+778:                                                            </div>
+779:                                                        </div>
+780:                                                        <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 @statusAccent">@statusBadge</span>
+781:                                                    </div>
+782:
+783:                                                    @if (step.IsCurrent)
+784:                                                    {
+785:                                                        <div class="rounded-xl border border-blue-200 bg-white/80 px-4 py-3 text-sm text-blue-900">
+786:                                                            Сейчас документ ожидает решение именно на этом шаге.
+787:                                                        </div>
+788:                                                    }
+789:
+790:                                                    @if (Model.CanConfigureApprovalRoute && step.DocumentApprovalStepId.HasValue)
+791:                                                    {
+792:                                                        <form method="post" action="/Documents/@Model.Id/approval-route/step" class="rounded-xl border border-slate-200 bg-white/80 p-3">
+793:                                                            @Html.AntiForgeryToken()
+794:                                                            <input type="hidden" name="documentApprovalStepId" value="@step.DocumentApprovalStepId" />
+795:                                                            <div class="space-y-2">
+796:                                                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500">Переопределить согласующего</label>
+797:                                                                <select name="approverUserId" class="w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-3 py-2">
+798:                                                                    <option value="">Автоназначение по бизнес-роли</option>
+799:                                                                    @foreach (var approver in Model.RouteApproverOptions.Where(option =>
+800:                                                                    string.IsNullOrWhiteSpace(step.ApproverSpecialization) ||
+801:                                                                    string.Equals(option.ApprovalSpecialization, step.ApproverSpecialization, StringComparison.OrdinalIgnoreCase)))
+802:                                                                    {
+803:                                                                        <option value="@approver.UserId" selected="@(step.ApproverUserId == approver.UserId)">@approver.DisplayName (@approver.RoleName, @approver.ApprovalSpecializationLabel)</option>
+804:                                                                    }
+805:                                                                </select>
+806:                                                                <button type="submit" class="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">Сохранить согласующего</button>
+807:                                                            </div>
+808:                                                        </form>
+809:                                                    }
+810:                                                </div>
+811:                                            </div>
+812:                                        </div>
+813:                                    }
+814:                                }
+815:                            </div>
+816:                        </div>
+817:                    </section>
+818:
+819:                    @if (isEmployeeRole)
+820:                    {
+821:                        <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+822:                            <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+823:                                <div class="text-sm font-semibold text-slate-700">Служебная информация</div>
+824:                            </div>
+825:                            <div class="p-4 space-y-4">
+826:                                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+827:                                    <div class="rounded-xl bg-slate-50 px-4 py-3">
+828:                                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Исполнитель</div>
+829:                                        <div class="mt-1 text-sm font-medium text-slate-900">@(hasAssignedExecutor ? Model.Assignment.AssignedUserName : "Не назначен")</div>
+830:                                    </div>
+831:                                    <div class="rounded-xl bg-slate-50 px-4 py-3">
+832:                                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Номенклатура</div>
+833:                                        <div class="mt-1 text-sm font-medium text-slate-900">@(hasNomenclature ? Model.NomenclatureCaseLabel : "Не привязано")</div>
+834:                                    </div>
+835:                                </div>
+836:                            </div>
+837:                        </section>
+838:                    }
+839:                    else
+840:                    {
+841:                        @if (showAssignmentSection)
+842:                        {
+843:                            <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+844:                                <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+845:                                    <div class="text-sm font-semibold text-slate-700">Назначение исполнителя</div>
+846:                                </div>
+847:                                <div class="p-4 space-y-4">
+848:                                    <div class="rounded-xl bg-slate-50 px-4 py-3">
+849:                                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Текущий исполнитель</div>
+850:                                        <div class="mt-1 font-medium text-slate-900">@(hasAssignedExecutor ? Model.Assignment.AssignedUserName : "Не назначен")</div>
+851:                                        <div class="mt-2 text-xs text-slate-500">@(hasAssignedExecutor ? "Исполнитель увидит документ в своих задачах и сможет начать работу." : "После утверждения выберите сотрудника, который будет выполнять документ.")</div>
+852:                                    </div>
+853:
+854:                                    @if (canAssignExecutor && Model.Assignment.CanAssign)
+855:                                    {
+856:                                        <form method="post" action="/Documents/@Model.Id/assign" class="space-y-3">
+857:                                            @Html.AntiForgeryToken()
+858:                                            <label class="block text-xs uppercase tracking-wider font-bold text-slate-500">Назначить исполнителя</label>
+859:                                            <select name="assignedUserId" class="w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5">
+860:                                                <option value="">Выберите исполнителя</option>
+861:                                                @foreach (var executor in Model.Assignment.Executors)
+862:                                                {
+863:                                                    <option value="@executor.UserId" selected="@(Model.Assignment.AssignedUserId == executor.UserId)">@executor.DisplayName (@executor.Email)</option>
+864:                                                }
+865:                                            </select>
+866:                                            <button type="submit" class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Сохранить назначение</button>
+867:                                        </form>
+868:                                    }
+869:                                    else if (canAssignExecutor)
+870:                                    {
+871:                                        <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+872:                                            Назначение станет доступно после завершения согласования и перевода документа в утверждённый статус.
+873:                                        </div>
+874:                                    }
+875:                                </div>
+876:                            </section>
+877:                        }
+878:
+879:                        @if (showNomenclatureSection)
+880:                        {
+881:                            <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+882:                                <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+883:                                    <div class="text-sm font-semibold text-slate-700">Номенклатура дела</div>
+884:                                </div>
+885:                                <div class="p-4 space-y-4">
+886:                                    <div class="rounded-xl bg-slate-50 px-4 py-3">
+887:                                        <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Текущее дело</div>
+888:                                        <div class="mt-1 font-medium text-slate-900">@(hasNomenclature ? Model.NomenclatureCaseLabel : "Не привязано")</div>
+889:                                        <div class="mt-2 text-xs text-slate-500">@(hasNomenclature ? "Документ уже привязан к делу и сможет быть отправлен в архив." : "Без привязки к делу документ нельзя архивировать.")</div>
+890:                                    </div>
+891:
+892:                                    @if (canAssignExecutor)
+893:                                    {
+894:                                        <form method="post" action="/Documents/@Model.Id/nomenclature" class="space-y-3">
+895:                                            @Html.AntiForgeryToken()
+896:                                            <label class="block text-xs uppercase tracking-wider font-bold text-slate-500">Привязать к делу номенклатуры</label>
+897:                                            <select name="nomenclatureCaseId" class="w-full rounded-lg border-slate-300 bg-slate-50 text-sm px-4 py-2.5">
+898:                                                <option value="">Не выбрано</option>
+899:                                                @foreach (var item in Model.NomenclatureCaseOptions)
+900:                                                {
+901:                                                    <option value="@item.Id" selected="@(Model.NomenclatureCaseId == item.Id)">@item.Label</option>
+902:                                                }
+903:                                            </select>
+904:                                            <div class="text-xs text-slate-500">Перед архивированием документ должен быть привязан к делу номенклатуры.</div>
+905:                                            <button type="submit" class="w-full rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900">Сохранить номенклатуру</button>
+906:                                        </form>
+907:                                    }
+908:                                </div>
+909:                            </section>
+910:                        }
+911:                    }
+912:
+913:                    <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+914:                        <div class="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+915:                            <div>
+916:                                <div class="text-sm font-semibold text-slate-700">@previewTitle</div>
+917:                                @if (!hasSourceFile && hasExecutionFile)
+918:                                {
+919:                                    <div class="mt-1 text-xs text-slate-500">Исходный файл не прикреплен, поэтому показан файл результата исполнения.</div>
+920:                                }
+921:                            </div>
+922:                            @if (!string.IsNullOrWhiteSpace(previewUrl))
+923:                            {
+924:                                <a class="text-xs text-slate-500 hover:text-blue-600" href="@previewUrl" target="_blank">Открыть</a>
+925:                            }
+926:                        </div>
+927:                        <div class="bg-slate-100 p-3">
+928:                            @if (string.IsNullOrWhiteSpace(previewUrl))
+929:                            {
+930:                                <div class="flex min-h-[220px] items-center justify-center px-6 text-center">
+931:                                    <div class="max-w-sm space-y-3 text-sm text-slate-500">
+932:                                        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-400 shadow-sm">
+933:                                            <span class="material-symbols-outlined">visibility_off</span>
+934:                                        </div>
+935:                                        <div class="font-medium text-slate-700">Пока нет файла для просмотра</div>
+936:                                        <div>
+937:                                            Документ создан по карточке без исходного вложения. Превью появится после загрузки исходного документа или итогового файла исполнения.
+938:                                        </div>
+939:                                    </div>
+940:                                </div>
+941:                            }
+942:                            else if (string.Equals(previewKind, "image", StringComparison.OrdinalIgnoreCase))
+943:                            {
+944:                                <div class="h-[520px] rounded-lg border border-slate-200 bg-white flex items-center justify-center p-3 overflow-auto">
+945:                                    <img class="max-h-full max-w-full object-contain rounded" src="@previewUrl" alt="Превью документа" />
+946:                                </div>
+947:                            }
+948:                            else if (string.Equals(previewKind, "pdf", StringComparison.OrdinalIgnoreCase))
+949:                            {
+950:                                <iframe class="w-full h-[520px] rounded-lg border border-slate-200 bg-white" src="@previewUrl"></iframe>
+951:                            }
+952:                            else if (string.Equals(previewKind, "html", StringComparison.OrdinalIgnoreCase))
+953:                            {
+954:                                <iframe class="w-full h-[520px] rounded-lg border border-slate-200 bg-white" src="@previewUrl"></iframe>
+955:                            }
+956:                            else
+957:                            {
+958:                                <div class="h-[520px] flex items-center justify-center text-sm text-slate-500 text-center px-4">Превью недоступно для этого типа файла. Нажмите «Открыть», чтобы скачать или просмотреть файл.</div>
+959:                            }
+960:                        </div>
+961:                    </section>
+962:                </div>
+963:            </div>
+964:        </div>
+965:    </main>
+966:
+967:    <script>
+968:        (function () {
+969:            function setValue(selector, value) {
+970:                const el = document.querySelector(selector);
+971:                if (!el) return;
+972:                el.value = value;
+973:                el.dispatchEvent(new Event("input", { bubbles: true }));
+974:                el.dispatchEvent(new Event("change", { bubbles: true }));
+975:                el.focus();
+976:            }
+977:
+978:            document.querySelectorAll("[data-ai-apply]").forEach((btn) => {
+979:                btn.addEventListener("click", () => {
+980:                    const field = btn.getAttribute("data-field");
