@@ -31,7 +31,9 @@
         DocumentType.Report => "Отчет",
         DocumentType.Order => "Приказ",
         DocumentType.Application => "Заявление",
-        DocumentType.Act => "Акт",
+        DocumentType.Act => "Акт выполненных работ",
+        DocumentType.ServiceMemo => "Служебная записка",
+        DocumentType.PurchaseRequest => "Заявка на закупку",
         _ => "Документ"
     };
 
@@ -196,12 +198,44 @@
         }
         else if (Model.Type == DocumentType.Act)
         {
-            <div class="doc-title">Акт № @Model.Id</div>
+            <div class="doc-title">Акт выполненных работ № @Field("Номер акта", Model.Id.ToString())</div>
             <div class="doc-subtitle">@Model.Title</div>
-            <div class="row"><span>г. Санкт-Петербург</span><span>@DateOnly(Model.DueDate)</span></div>
-            <div class="section-title">Содержание акта</div>
-            <div class="text">@ValueOrDefault(Model.Description, "Содержание акта не заполнено.")</div>
+            <div class="row"><span>Контрагент: @Field("Контрагент", "Не указан")</span><span>@Field("Дата акта", DateOnly(Model.DueDate))</span></div>
+            <section class="grid">
+                <div class="field"><div class="label">Основание</div><div class="value">@Field("Основание")</div></div>
+                <div class="field"><div class="label">Сумма акта</div><div class="value">@Field("Сумма акта", Field("Сумма", "Не указано"))</div></div>
+                <div class="field wide"><div class="label">Описание работ</div><div class="value">@Field("Описание работ", ValueOrDefault(Model.Description, "Содержание акта не заполнено."))</div></div>
+            </section>
             <section class="signatures"><div class="signature-block"><strong>Ответственный</strong><div class="line"></div><div class="hint">подпись</div></div><div class="signature-block"><strong>Исполнитель</strong><div class="line"></div><div class="hint">подпись</div></div></section>
+        }
+        else if (Model.Type == DocumentType.ServiceMemo)
+        {
+            <div class="row"><span></span><span>Руководителю подразделения<br />от @Field("Инициатор", "сотрудника")</span></div>
+            <div class="doc-title">Служебная записка</div>
+            <div class="doc-subtitle">@Field("Тема записки", Model.Title)</div>
+            <section class="grid">
+                <div class="field"><div class="label">Номер записки</div><div class="value">@Field("Номер записки", Model.Id.ToString())</div></div>
+                <div class="field"><div class="label">Дата записки</div><div class="value">@Field("Дата записки", DateOnly(Model.DueDate))</div></div>
+                <div class="field wide"><div class="label">Подразделение</div><div class="value">@Field("Подразделение")</div></div>
+            </section>
+            <div class="section-title">Содержание</div>
+            <div class="text">@Field("Содержание записки", ValueOrDefault(Model.Description, "Текст записки не заполнен."))</div>
+            <section class="signatures"><div class="signature-block"><strong>Инициатор</strong><div class="line"></div><div class="hint">подпись</div></div><div class="signature-block"><strong>Руководитель</strong><div class="line"></div><div class="hint">резолюция</div></div></section>
+        }
+        else if (Model.Type == DocumentType.PurchaseRequest)
+        {
+            <div class="doc-title">Заявка на закупку № @Field("Номер заявки", Model.Id.ToString())</div>
+            <div class="doc-subtitle">@Field("Предмет закупки", Model.Title)</div>
+            <div class="row"><span>Инициатор: @Field("Инициатор", "Не указан")</span><span>@Field("Дата заявки", DateOnly(Model.DueDate))</span></div>
+            <section class="grid">
+                <div class="field"><div class="label">Подразделение</div><div class="value">@Field("Подразделение")</div></div>
+                <div class="field"><div class="label">Количество</div><div class="value">@Field("Количество")</div></div>
+                <div class="field"><div class="label">Плановая сумма</div><div class="value">@Field("Плановая сумма", Field("Сумма", "Не указано"))</div></div>
+                <div class="field"><div class="label">Статус</div><div class="value">@statusLabel</div></div>
+            </section>
+            <div class="section-title">Обоснование закупки</div>
+            <div class="text">@Field("Обоснование закупки", ValueOrDefault(Model.Description, "Обоснование не заполнено."))</div>
+            <section class="signatures"><div class="signature-block"><strong>Инициатор</strong><div class="line"></div><div class="hint">подпись</div></div><div class="signature-block"><strong>Финансовое согласование</strong><div class="line"></div><div class="hint">подпись</div></div></section>
         }
         else
         {

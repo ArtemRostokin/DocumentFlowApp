@@ -17,7 +17,7 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex NameRegex = new(
-        @"\b(?<value>[А-ЯЁ][а-яё-]+\s+[А-ЯЁ][а-яё-]+\s+[А-ЯЁ][а-яё-]+)\b",
+        @"\b(?<value>[Р В РЎвЂ™-Р В Р вЂЎР В Р С“][Р В Р’В°-Р РЋР РЏР РЋРІР‚В-]+\s+[Р В РЎвЂ™-Р В Р вЂЎР В Р С“][Р В Р’В°-Р РЋР РЏР РЋРІР‚В-]+\s+[Р В РЎвЂ™-Р В Р вЂЎР В Р С“][Р В Р’В°-Р РЋР РЏР РЋРІР‚В-]+)\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public DocumentFieldExtractionResult Extract(DocumentType documentType, string? extractedText, string? fileName = null)
@@ -37,6 +37,9 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
             DocumentType.Contract => ExtractContractFields(text),
             DocumentType.Invoice => ExtractInvoiceFields(text),
             DocumentType.Application => ExtractApplicationFields(text),
+            DocumentType.ServiceMemo => ExtractServiceMemoFields(text),
+            DocumentType.PurchaseRequest => ExtractPurchaseRequestFields(text),
+            DocumentType.Act => ExtractActFields(text),
             _ => []
         };
 
@@ -50,32 +53,67 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
     private static IReadOnlyList<ExtractedFieldResult> ExtractContractFields(string text)
     {
         return BuildFields(
-            TryExtractNumber(text, "contract_number", "Номер договора", ["договор №", "договор n", "номер договора", "contract no", "contract #"]),
-            TryExtractDate(text, "contract_date", "Дата договора", ["дата договора", "договор от", "date"]),
-            TryExtractLineValue(text, "counterparty", "Контрагент", ["контрагент", "заказчик", "покупатель", "исполнитель"]),
-            TryExtractAmount(text, "amount", "Сумма договора", ["сумма договора", "стоимость договора", "цена договора", "сумма", "total"]),
-            TryExtractLineValue(text, "subject", "Предмет договора", ["предмет договора", "предмет", "наименование договора", "содержание договора"], allowLongValue: true));
+            TryExtractNumber(text, "contract_number", "Р В РЎСљР В РЎвЂўР В РЎВР В Р’ВµР РЋР вЂљ Р В РўвЂР В РЎвЂўР В РЎвЂ“Р В РЎвЂўР В Р вЂ Р В РЎвЂўР РЋР вЂљР В Р’В°", ["Р В РўвЂР В РЎвЂўР В РЎвЂ“Р В РЎвЂўР В Р вЂ Р В РЎвЂўР РЋР вЂљ Р Р†РІР‚С›РІР‚вЂњ", "Р В РўвЂР В РЎвЂўР В РЎвЂ“Р В РЎвЂўР В Р вЂ Р В РЎвЂўР РЋР вЂљ n", "Р В Р вЂ¦Р В РЎвЂўР В РЎВР В Р’ВµР РЋР вЂљ Р В РўвЂР В РЎвЂўР В РЎвЂ“Р В РЎвЂўР В Р вЂ Р В РЎвЂўР РЋР вЂљР В Р’В°", "contract no", "contract #"]),
+            TryExtractDate(text, "contract_date", "Р В РІР‚СњР В Р’В°Р РЋРІР‚С™Р В Р’В° Р В РўвЂР В РЎвЂўР В РЎвЂ“Р В РЎвЂўР В Р вЂ Р В РЎвЂўР РЋР вЂљР В Р’В°", ["Р В РўвЂР В Р’В°Р РЋРІР‚С™Р В Р’В° Р В РўвЂР В РЎвЂўР В РЎвЂ“Р В РЎвЂўР В Р вЂ Р В РЎвЂўР РЋР вЂљР В Р’В°", "Р В РўвЂР В РЎвЂўР В РЎвЂ“Р В РЎвЂўР В Р вЂ Р В РЎвЂўР РЋР вЂљ Р В РЎвЂўР РЋРІР‚С™", "date"]),
+            TryExtractLineValue(text, "counterparty", "Р В РЎв„ўР В РЎвЂўР В Р вЂ¦Р РЋРІР‚С™Р РЋР вЂљР В Р’В°Р В РЎвЂ“Р В Р’ВµР В Р вЂ¦Р РЋРІР‚С™", ["Р В РЎвЂќР В РЎвЂўР В Р вЂ¦Р РЋРІР‚С™Р РЋР вЂљР В Р’В°Р В РЎвЂ“Р В Р’ВµР В Р вЂ¦Р РЋРІР‚С™", "Р В Р’В·Р В Р’В°Р В РЎвЂќР В Р’В°Р В Р’В·Р РЋРІР‚РЋР В РЎвЂР В РЎвЂќ", "Р В РЎвЂ”Р В РЎвЂўР В РЎвЂќР РЋРЎвЂњР В РЎвЂ”Р В Р’В°Р РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР Р‰", "Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В РЎвЂР РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР Р‰"]),
+            TryExtractAmount(text, "amount", "Р В Р Р‹Р РЋРЎвЂњР В РЎВР В РЎВР В Р’В° Р В РўвЂР В РЎвЂўР В РЎвЂ“Р В РЎвЂўР В Р вЂ Р В РЎвЂўР РЋР вЂљР В Р’В°", ["Р РЋР С“Р РЋРЎвЂњР В РЎВР В РЎВР В Р’В° Р В РўвЂР В РЎвЂўР В РЎвЂ“Р В РЎвЂўР В Р вЂ Р В РЎвЂўР РЋР вЂљР В Р’В°", "Р РЋР С“Р РЋРІР‚С™Р В РЎвЂўР В РЎвЂР В РЎВР В РЎвЂўР РЋР С“Р РЋРІР‚С™Р РЋР Р‰ Р В РўвЂР В РЎвЂўР В РЎвЂ“Р В РЎвЂўР В Р вЂ Р В РЎвЂўР РЋР вЂљР В Р’В°", "Р РЋРІР‚В Р В Р’ВµР В Р вЂ¦Р В Р’В° Р В РўвЂР В РЎвЂўР В РЎвЂ“Р В РЎвЂўР В Р вЂ Р В РЎвЂўР РЋР вЂљР В Р’В°", "Р РЋР С“Р РЋРЎвЂњР В РЎВР В РЎВР В Р’В°", "total"]),
+            TryExtractLineValue(text, "subject", "Р В РЎСџР РЋР вЂљР В Р’ВµР В РўвЂР В РЎВР В Р’ВµР РЋРІР‚С™ Р В РўвЂР В РЎвЂўР В РЎвЂ“Р В РЎвЂўР В Р вЂ Р В РЎвЂўР РЋР вЂљР В Р’В°", ["Р В РЎвЂ”Р РЋР вЂљР В Р’ВµР В РўвЂР В РЎВР В Р’ВµР РЋРІР‚С™ Р В РўвЂР В РЎвЂўР В РЎвЂ“Р В РЎвЂўР В Р вЂ Р В РЎвЂўР РЋР вЂљР В Р’В°", "Р В РЎвЂ”Р РЋР вЂљР В Р’ВµР В РўвЂР В РЎВР В Р’ВµР РЋРІР‚С™", "Р В Р вЂ¦Р В Р’В°Р В РЎвЂР В РЎВР В Р’ВµР В Р вЂ¦Р В РЎвЂўР В Р вЂ Р В Р’В°Р В Р вЂ¦Р В РЎвЂР В Р’Вµ Р В РўвЂР В РЎвЂўР В РЎвЂ“Р В РЎвЂўР В Р вЂ Р В РЎвЂўР РЋР вЂљР В Р’В°", "Р РЋР С“Р В РЎвЂўР В РўвЂР В Р’ВµР РЋР вЂљР В Р’В¶Р В Р’В°Р В Р вЂ¦Р В РЎвЂР В Р’Вµ Р В РўвЂР В РЎвЂўР В РЎвЂ“Р В РЎвЂўР В Р вЂ Р В РЎвЂўР РЋР вЂљР В Р’В°"], allowLongValue: true));
     }
 
     private static IReadOnlyList<ExtractedFieldResult> ExtractInvoiceFields(string text)
     {
         return BuildFields(
             TryExtractInvoiceNumber(text),
-            TryExtractDate(text, "invoice_date", "Дата счета", ["дата счета", "дата счёта", "счет от", "счёт от", "invoice date"]),
+            TryExtractDate(text, "invoice_date", "Р В РІР‚СњР В Р’В°Р РЋРІР‚С™Р В Р’В° Р РЋР С“Р РЋРІР‚РЋР В Р’ВµР РЋРІР‚С™Р В Р’В°", ["Р В РўвЂР В Р’В°Р РЋРІР‚С™Р В Р’В° Р РЋР С“Р РЋРІР‚РЋР В Р’ВµР РЋРІР‚С™Р В Р’В°", "Р В РўвЂР В Р’В°Р РЋРІР‚С™Р В Р’В° Р РЋР С“Р РЋРІР‚РЋР РЋРІР‚ВР РЋРІР‚С™Р В Р’В°", "Р РЋР С“Р РЋРІР‚РЋР В Р’ВµР РЋРІР‚С™ Р В РЎвЂўР РЋРІР‚С™", "Р РЋР С“Р РЋРІР‚РЋР РЋРІР‚ВР РЋРІР‚С™ Р В РЎвЂўР РЋРІР‚С™", "invoice date"]),
             TryExtractSupplier(text),
             TryExtractInvoiceAmount(text),
-            TryExtractDate(text, "payment_due", "Срок оплаты", ["срок оплаты", "оплатить до", "дата оплаты", "payment due"], allowFallback: false));
+            TryExtractDate(text, "payment_due", "Р В Р Р‹Р РЋР вЂљР В РЎвЂўР В РЎвЂќ Р В РЎвЂўР В РЎвЂ”Р В Р’В»Р В Р’В°Р РЋРІР‚С™Р РЋРІР‚в„–", ["Р РЋР С“Р РЋР вЂљР В РЎвЂўР В РЎвЂќ Р В РЎвЂўР В РЎвЂ”Р В Р’В»Р В Р’В°Р РЋРІР‚С™Р РЋРІР‚в„–", "Р В РЎвЂўР В РЎвЂ”Р В Р’В»Р В Р’В°Р РЋРІР‚С™Р В РЎвЂР РЋРІР‚С™Р РЋР Р‰ Р В РўвЂР В РЎвЂў", "Р В РўвЂР В Р’В°Р РЋРІР‚С™Р В Р’В° Р В РЎвЂўР В РЎвЂ”Р В Р’В»Р В Р’В°Р РЋРІР‚С™Р РЋРІР‚в„–", "payment due"], allowFallback: false));
     }
 
     private static IReadOnlyList<ExtractedFieldResult> ExtractApplicationFields(string text)
     {
         return BuildFields(
-            TryExtractName(text, "employee_name", "ФИО сотрудника", ["фио сотрудника", "заявитель", "от"]),
-            TryExtractLineValue(text, "department", "Подразделение", ["подразделение", "отдел", "департамент"]),
-            TryExtractLineValue(text, "application_topic", "Тема обращения", ["тема обращения", "тема", "предмет обращения", "о чем", "о чём"], allowLongValue: true),
-            TryExtractApplicationText(text, "application_text", "Текст заявления"));
+            TryExtractName(text, "employee_name", "Р В Р’В¤Р В Р’ВР В РЎвЂє Р РЋР С“Р В РЎвЂўР РЋРІР‚С™Р РЋР вЂљР РЋРЎвЂњР В РўвЂР В Р вЂ¦Р В РЎвЂР В РЎвЂќР В Р’В°", ["Р РЋРІР‚С›Р В РЎвЂР В РЎвЂў Р РЋР С“Р В РЎвЂўР РЋРІР‚С™Р РЋР вЂљР РЋРЎвЂњР В РўвЂР В Р вЂ¦Р В РЎвЂР В РЎвЂќР В Р’В°", "Р В Р’В·Р В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂР РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР Р‰", "Р В РЎвЂўР РЋРІР‚С™"]),
+            TryExtractLineValue(text, "department", "Р В РЎСџР В РЎвЂўР В РўвЂР РЋР вЂљР В Р’В°Р В Р’В·Р В РўвЂР В Р’ВµР В Р’В»Р В Р’ВµР В Р вЂ¦Р В РЎвЂР В Р’Вµ", ["Р В РЎвЂ”Р В РЎвЂўР В РўвЂР РЋР вЂљР В Р’В°Р В Р’В·Р В РўвЂР В Р’ВµР В Р’В»Р В Р’ВµР В Р вЂ¦Р В РЎвЂР В Р’Вµ", "Р В РЎвЂўР РЋРІР‚С™Р В РўвЂР В Р’ВµР В Р’В»", "Р В РўвЂР В Р’ВµР В РЎвЂ”Р В Р’В°Р РЋР вЂљР РЋРІР‚С™Р В Р’В°Р В РЎВР В Р’ВµР В Р вЂ¦Р РЋРІР‚С™"]),
+            TryExtractLineValue(text, "application_topic", "Р В РЎС›Р В Р’ВµР В РЎВР В Р’В° Р В РЎвЂўР В Р’В±Р РЋР вЂљР В Р’В°Р РЋРІР‚В°Р В Р’ВµР В Р вЂ¦Р В РЎвЂР РЋР РЏ", ["Р РЋРІР‚С™Р В Р’ВµР В РЎВР В Р’В° Р В РЎвЂўР В Р’В±Р РЋР вЂљР В Р’В°Р РЋРІР‚В°Р В Р’ВµР В Р вЂ¦Р В РЎвЂР РЋР РЏ", "Р РЋРІР‚С™Р В Р’ВµР В РЎВР В Р’В°", "Р В РЎвЂ”Р РЋР вЂљР В Р’ВµР В РўвЂР В РЎВР В Р’ВµР РЋРІР‚С™ Р В РЎвЂўР В Р’В±Р РЋР вЂљР В Р’В°Р РЋРІР‚В°Р В Р’ВµР В Р вЂ¦Р В РЎвЂР РЋР РЏ", "Р В РЎвЂў Р РЋРІР‚РЋР В Р’ВµР В РЎВ", "Р В РЎвЂў Р РЋРІР‚РЋР РЋРІР‚ВР В РЎВ"], allowLongValue: true),
+            TryExtractApplicationText(text, "application_text", "Р В РЎС›Р В Р’ВµР В РЎвЂќР РЋР С“Р РЋРІР‚С™ Р В Р’В·Р В Р’В°Р РЋР РЏР В Р вЂ Р В Р’В»Р В Р’ВµР В Р вЂ¦Р В РЎвЂР РЋР РЏ"));
     }
 
+
+    private static IReadOnlyList<ExtractedFieldResult> ExtractServiceMemoFields(string text)
+    {
+        return BuildFields(
+            TryExtractNumber(text, "memo_number", "Р СњР С•Р СР ВµРЎР‚ Р В·Р В°Р С—Р С‘РЎРѓР С”Р С‘", ["РЎРѓР В»РЎС“Р В¶Р ВµР В±Р Р…Р В°РЎРЏ Р В·Р В°Р С—Р С‘РЎРѓР С”Р В° РІвЂћвЂ“", "Р В·Р В°Р С—Р С‘РЎРѓР С”Р В° РІвЂћвЂ“", "Р Р…Р С•Р СР ВµРЎР‚ Р В·Р В°Р С—Р С‘РЎРѓР С”Р С‘", "memo #", "memo no"]),
+            TryExtractDate(text, "memo_date", "Р вЂќР В°РЎвЂљР В° Р В·Р В°Р С—Р С‘РЎРѓР С”Р С‘", ["Р Т‘Р В°РЎвЂљР В° Р В·Р В°Р С—Р С‘РЎРѓР С”Р С‘", "РЎРѓР В»РЎС“Р В¶Р ВµР В±Р Р…Р В°РЎРЏ Р В·Р В°Р С—Р С‘РЎРѓР С”Р В° Р С•РЎвЂљ", "memo date"]),
+            TryExtractName(text, "initiator", "Р ВР Р…Р С‘РЎвЂ Р С‘Р В°РЎвЂљР С•РЎР‚", ["Р С‘Р Р…Р С‘РЎвЂ Р С‘Р В°РЎвЂљР С•РЎР‚", "Р С—Р С•Р Т‘Р С–Р С•РЎвЂљР С•Р Р†Р С‘Р В»", "Р В°Р Р†РЎвЂљР С•РЎР‚", "Р С•РЎвЂљ"]),
+            TryExtractLineValue(text, "department", "Р СџР С•Р Т‘РЎР‚Р В°Р В·Р Т‘Р ВµР В»Р ВµР Р…Р С‘Р Вµ", ["Р С—Р С•Р Т‘РЎР‚Р В°Р В·Р Т‘Р ВµР В»Р ВµР Р…Р С‘Р Вµ", "Р С•РЎвЂљР Т‘Р ВµР В»", "Р Т‘Р ВµР С—Р В°РЎР‚РЎвЂљР В°Р СР ВµР Р…РЎвЂљ"]),
+            TryExtractLineValue(text, "memo_topic", "Р СћР ВµР СР В° Р В·Р В°Р С—Р С‘РЎРѓР С”Р С‘", ["РЎвЂљР ВµР СР В° Р В·Р В°Р С—Р С‘РЎРѓР С”Р С‘", "РЎвЂљР ВµР СР В°", "Р С—РЎР‚Р ВµР Т‘Р СР ВµРЎвЂљ"], allowLongValue: true),
+            TryExtractApplicationText(text, "memo_text", "Р РЋР С•Р Т‘Р ВµРЎР‚Р В¶Р В°Р Р…Р С‘Р Вµ Р В·Р В°Р С—Р С‘РЎРѓР С”Р С‘"));
+    }
+
+    private static IReadOnlyList<ExtractedFieldResult> ExtractPurchaseRequestFields(string text)
+    {
+        return BuildFields(
+            TryExtractNumber(text, "request_number", "Р СњР С•Р СР ВµРЎР‚ Р В·Р В°РЎРЏР Р†Р С”Р С‘", ["Р В·Р В°РЎРЏР Р†Р С”Р В° Р Р…Р В° Р В·Р В°Р С”РЎС“Р С—Р С”РЎС“ РІвЂћвЂ“", "Р В·Р В°РЎРЏР Р†Р С”Р В° РІвЂћвЂ“", "Р Р…Р С•Р СР ВµРЎР‚ Р В·Р В°РЎРЏР Р†Р С”Р С‘", "purchase request #", "purchase request no"]),
+            TryExtractDate(text, "request_date", "Р вЂќР В°РЎвЂљР В° Р В·Р В°РЎРЏР Р†Р С”Р С‘", ["Р Т‘Р В°РЎвЂљР В° Р В·Р В°РЎРЏР Р†Р С”Р С‘", "Р В·Р В°РЎРЏР Р†Р С”Р В° Р Р…Р В° Р В·Р В°Р С”РЎС“Р С—Р С”РЎС“ Р С•РЎвЂљ", "purchase request date"]),
+            TryExtractName(text, "initiator", "Р ВР Р…Р С‘РЎвЂ Р С‘Р В°РЎвЂљР С•РЎР‚", ["Р С‘Р Р…Р С‘РЎвЂ Р С‘Р В°РЎвЂљР С•РЎР‚", "Р В·Р В°РЎРЏР Р†Р С‘РЎвЂљР ВµР В»РЎРЉ", "Р С—Р С•Р Т‘Р С–Р С•РЎвЂљР С•Р Р†Р С‘Р В»", "Р С•РЎвЂљ"]),
+            TryExtractLineValue(text, "department", "Р СџР С•Р Т‘РЎР‚Р В°Р В·Р Т‘Р ВµР В»Р ВµР Р…Р С‘Р Вµ", ["Р С—Р С•Р Т‘РЎР‚Р В°Р В·Р Т‘Р ВµР В»Р ВµР Р…Р С‘Р Вµ", "Р С•РЎвЂљР Т‘Р ВµР В»", "Р Т‘Р ВµР С—Р В°РЎР‚РЎвЂљР В°Р СР ВµР Р…РЎвЂљ"]),
+            TryExtractLineValue(text, "purchase_subject", "Р СџРЎР‚Р ВµР Т‘Р СР ВµРЎвЂљ Р В·Р В°Р С”РЎС“Р С—Р С”Р С‘", ["Р С—РЎР‚Р ВµР Т‘Р СР ВµРЎвЂљ Р В·Р В°Р С”РЎС“Р С—Р С”Р С‘", "Р С•Р В±РЎР‰Р ВµР С”РЎвЂљ Р В·Р В°Р С”РЎС“Р С—Р С”Р С‘", "Р Р…Р В°Р С‘Р СР ВµР Р…Р С•Р Р†Р В°Р Р…Р С‘Р Вµ Р В·Р В°Р С”РЎС“Р С—Р С”Р С‘"], allowLongValue: true),
+            TryExtractAmount(text, "planned_amount", "Р СџР В»Р В°Р Р…Р С•Р Р†Р В°РЎРЏ РЎРѓРЎС“Р СР СР В°", ["Р С—Р В»Р В°Р Р…Р С•Р Р†Р В°РЎРЏ РЎРѓРЎС“Р СР СР В°", "РЎРѓРЎС“Р СР СР В° Р В·Р В°Р С”РЎС“Р С—Р С”Р С‘", "РЎРѓРЎС“Р СР СР В°", "Р В±РЎР‹Р Т‘Р В¶Р ВµРЎвЂљ"]),
+            TryExtractLineValue(text, "quantity", "Р С™Р С•Р В»Р С‘РЎвЂЎР ВµРЎРѓРЎвЂљР Р†Р С•", ["Р С”Р С•Р В»Р С‘РЎвЂЎР ВµРЎРѓРЎвЂљР Р†Р С•", "Р С•Р В±РЎР‰Р ВµР С", "Р С•Р В±РЎР‰РЎвЂР С"]),
+            TryExtractApplicationText(text, "purchase_justification", "Р С›Р В±Р С•РЎРѓР Р…Р С•Р Р†Р В°Р Р…Р С‘Р Вµ Р В·Р В°Р С”РЎС“Р С—Р С”Р С‘"));
+    }
+
+    private static IReadOnlyList<ExtractedFieldResult> ExtractActFields(string text)
+    {
+        return BuildFields(
+            TryExtractNumber(text, "act_number", "Р СњР С•Р СР ВµРЎР‚ Р В°Р С”РЎвЂљР В°", ["Р В°Р С”РЎвЂљ РІвЂћвЂ“", "Р В°Р С”РЎвЂљ Р Р†РЎвЂ№Р С—Р С•Р В»Р Р…Р ВµР Р…Р Р…РЎвЂ№РЎвЂ¦ РЎР‚Р В°Р В±Р С•РЎвЂљ РІвЂћвЂ“", "Р Р…Р С•Р СР ВµРЎР‚ Р В°Р С”РЎвЂљР В°", "act #", "act no"]),
+            TryExtractDate(text, "act_date", "Р вЂќР В°РЎвЂљР В° Р В°Р С”РЎвЂљР В°", ["Р Т‘Р В°РЎвЂљР В° Р В°Р С”РЎвЂљР В°", "Р В°Р С”РЎвЂљ Р С•РЎвЂљ", "act date"]),
+            TryExtractLineValue(text, "counterparty", "Р С™Р С•Р Р…РЎвЂљРЎР‚Р В°Р С–Р ВµР Р…РЎвЂљ", ["Р С”Р С•Р Р…РЎвЂљРЎР‚Р В°Р С–Р ВµР Р…РЎвЂљ", "Р В·Р В°Р С”Р В°Р В·РЎвЂЎР С‘Р С”", "Р С‘РЎРѓР С—Р С•Р В»Р Р…Р С‘РЎвЂљР ВµР В»РЎРЉ"]),
+            TryExtractLineValue(text, "basis", "Р С›РЎРѓР Р…Р С•Р Р†Р В°Р Р…Р С‘Р Вµ", ["Р С•РЎРѓР Р…Р С•Р Р†Р В°Р Р…Р С‘Р Вµ", "Р С—Р С• Р Т‘Р С•Р С–Р С•Р Р†Р С•РЎР‚РЎС“", "Р Т‘Р С•Р С–Р С•Р Р†Р С•РЎР‚"], allowLongValue: true),
+            TryExtractAmount(text, "amount", "Р РЋРЎС“Р СР СР В° Р В°Р С”РЎвЂљР В°", ["РЎРѓРЎС“Р СР СР В° Р В°Р С”РЎвЂљР В°", "РЎРѓРЎвЂљР С•Р С‘Р СР С•РЎРѓРЎвЂљРЎРЉ РЎР‚Р В°Р В±Р С•РЎвЂљ", "РЎРѓРЎвЂљР С•Р С‘Р СР С•РЎРѓРЎвЂљРЎРЉ РЎС“РЎРѓР В»РЎС“Р С–", "РЎРѓРЎС“Р СР СР В°"]),
+            TryExtractApplicationText(text, "work_description", "Р С›Р С—Р С‘РЎРѓР В°Р Р…Р С‘Р Вµ РЎР‚Р В°Р В±Р С•РЎвЂљ"));
+    }
     private static IReadOnlyList<ExtractedFieldResult> BuildFields(params ExtractedFieldResult?[] fields)
         => fields.Where(static field => field is not null).Cast<ExtractedFieldResult>().ToList();
 
@@ -86,7 +124,7 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
             if (!ContainsAny(line, anchors))
                 continue;
 
-            var index = line.IndexOf('№');
+            var index = line.IndexOf("№", StringComparison.Ordinal);
             if (index >= 0)
             {
                 var value = CleanValue(line[(index + 1)..]);
@@ -94,7 +132,7 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
                     return BuildField(fieldKey, label, TrimTo(value, 80), 0.88m);
             }
 
-            var tokenMatch = Regex.Match(line, @"(?:№|#|номер|no\.?)\s*(?<value>[A-Za-zА-Яа-яЁё0-9/-]+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            var tokenMatch = Regex.Match(line, @"(?:Р Р†РІР‚С›РІР‚вЂњ|#|Р В Р вЂ¦Р В РЎвЂўР В РЎВР В Р’ВµР РЋР вЂљ|no\.?)\s*(?<value>[A-Za-zР В РЎвЂ™-Р В Р вЂЎР В Р’В°-Р РЋР РЏР В Р С“Р РЋРІР‚В0-9/-]+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             if (tokenMatch.Success)
                 return BuildField(fieldKey, label, CleanValue(tokenMatch.Groups["value"].Value), 0.84m);
         }
@@ -145,16 +183,16 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
     {
         foreach (var line in EnumerateLines(text))
         {
-            if (!line.Contains("счет", StringComparison.OrdinalIgnoreCase) &&
-                !line.Contains("счёт", StringComparison.OrdinalIgnoreCase) &&
+            if (!line.Contains("Р РЋР С“Р РЋРІР‚РЋР В Р’ВµР РЋРІР‚С™", StringComparison.OrdinalIgnoreCase) &&
+                !line.Contains("Р РЋР С“Р РЋРІР‚РЋР РЋРІР‚ВР РЋРІР‚С™", StringComparison.OrdinalIgnoreCase) &&
                 !line.Contains("invoice", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            if (ContainsAny(line, ["расчетный счет", "расчётный счёт", "корр", "корр.", "банк получателя", "бик"]) &&
-                !line.Contains("счет №", StringComparison.OrdinalIgnoreCase) &&
-                !line.Contains("счёт №", StringComparison.OrdinalIgnoreCase) &&
+            if (ContainsAny(line, ["Р РЋР вЂљР В Р’В°Р РЋР С“Р РЋРІР‚РЋР В Р’ВµР РЋРІР‚С™Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ Р РЋР С“Р РЋРІР‚РЋР В Р’ВµР РЋРІР‚С™", "Р РЋР вЂљР В Р’В°Р РЋР С“Р РЋРІР‚РЋР РЋРІР‚ВР РЋРІР‚С™Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ Р РЋР С“Р РЋРІР‚РЋР РЋРІР‚ВР РЋРІР‚С™", "Р В РЎвЂќР В РЎвЂўР РЋР вЂљР РЋР вЂљ", "Р В РЎвЂќР В РЎвЂўР РЋР вЂљР РЋР вЂљ.", "Р В Р’В±Р В Р’В°Р В Р вЂ¦Р В РЎвЂќ Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р РЋРЎвЂњР РЋРІР‚РЋР В Р’В°Р РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР РЏ", "Р В Р’В±Р В РЎвЂР В РЎвЂќ"]) &&
+                !line.Contains("Р РЋР С“Р РЋРІР‚РЋР В Р’ВµР РЋРІР‚С™ Р Р†РІР‚С›РІР‚вЂњ", StringComparison.OrdinalIgnoreCase) &&
+                !line.Contains("Р РЋР С“Р РЋРІР‚РЋР РЋРІР‚ВР РЋРІР‚С™ Р Р†РІР‚С›РІР‚вЂњ", StringComparison.OrdinalIgnoreCase) &&
                 !line.Contains("invoice", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
@@ -162,26 +200,26 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
 
             var explicitMatch = Regex.Match(
                 line,
-                @"(?:сч[её]т(?:\s+на\s+оплату)?|invoice)(?:\s*(?:№|#|no\.?|номер)\s*)(?<value>[A-Za-zА-Яа-яЁё0-9/-]{3,30})",
+                @"(?:Р РЋР С“Р РЋРІР‚РЋ[Р В Р’ВµР РЋРІР‚В]Р РЋРІР‚С™(?:\s+Р В Р вЂ¦Р В Р’В°\s+Р В РЎвЂўР В РЎвЂ”Р В Р’В»Р В Р’В°Р РЋРІР‚С™Р РЋРЎвЂњ)?|invoice)(?:\s*(?:Р Р†РІР‚С›РІР‚вЂњ|#|no\.?|Р В Р вЂ¦Р В РЎвЂўР В РЎВР В Р’ВµР РЋР вЂљ)\s*)(?<value>[A-Za-zР В РЎвЂ™-Р В Р вЂЎР В Р’В°-Р РЋР РЏР В Р С“Р РЋРІР‚В0-9/-]{3,30})",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
             if (explicitMatch.Success)
             {
                 var candidate = CleanValue(explicitMatch.Groups["value"].Value);
                 if (!IsLikelyBankAccount(candidate) && !LooksLikeAmount(candidate))
-                    return BuildField("invoice_number", "Номер счета", candidate, 0.88m);
+                    return BuildField("invoice_number", "Р В РЎСљР В РЎвЂўР В РЎВР В Р’ВµР РЋР вЂљ Р РЋР С“Р РЋРІР‚РЋР В Р’ВµР РЋРІР‚С™Р В Р’В°", candidate, 0.88m);
             }
 
-            foreach (var token in Regex.Matches(line, @"[A-Za-zА-Яа-яЁё0-9/-]{3,30}").Select(match => CleanValue(match.Value)))
+            foreach (var token in Regex.Matches(line, @"[A-Za-zР В РЎвЂ™-Р В Р вЂЎР В Р’В°-Р РЋР РЏР В Р С“Р РЋРІР‚В0-9/-]{3,30}").Select(match => CleanValue(match.Value)))
             {
                 if (string.IsNullOrWhiteSpace(token) || IsLikelyBankAccount(token) || LooksLikeAmount(token))
                     continue;
 
-                if (token.StartsWith("сч", StringComparison.OrdinalIgnoreCase) ||
+                if (token.StartsWith("Р РЋР С“Р РЋРІР‚РЋ", StringComparison.OrdinalIgnoreCase) ||
                     token.Contains('-', StringComparison.Ordinal) ||
                     token.Contains('/', StringComparison.Ordinal))
                 {
-                    return BuildField("invoice_number", "Номер счета", token, 0.74m);
+                    return BuildField("invoice_number", "Р В РЎСљР В РЎвЂўР В РЎВР В Р’ВµР РЋР вЂљ Р РЋР С“Р РЋРІР‚РЋР В Р’ВµР РЋРІР‚С™Р В Р’В°", token, 0.74m);
                 }
             }
         }
@@ -191,11 +229,11 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
 
     private static ExtractedFieldResult? TryExtractSupplier(string text)
     {
-        var field = TryExtractLineValue(text, "supplier", "Поставщик", ["поставщик", "получатель", "исполнитель", "supplier"]);
+        var field = TryExtractLineValue(text, "supplier", "Р В РЎСџР В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р В Р вЂ Р РЋРІР‚В°Р В РЎвЂР В РЎвЂќ", ["Р В РЎвЂ”Р В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р В Р вЂ Р РЋРІР‚В°Р В РЎвЂР В РЎвЂќ", "Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р РЋРЎвЂњР РЋРІР‚РЋР В Р’В°Р РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР Р‰", "Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В РЎвЂР РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР Р‰", "supplier"]);
         if (field is null)
             return null;
 
-        var value = TrimByKeywords(field.SuggestedValue, ["инн", "кпп", "адрес", "тел", "телефон", "р/с", "р/c"]);
+        var value = TrimByKeywords(field.SuggestedValue, ["Р В РЎвЂР В Р вЂ¦Р В Р вЂ¦", "Р В РЎвЂќР В РЎвЂ”Р В РЎвЂ”", "Р В Р’В°Р В РўвЂР РЋР вЂљР В Р’ВµР РЋР С“", "Р РЋРІР‚С™Р В Р’ВµР В Р’В»", "Р РЋРІР‚С™Р В Р’ВµР В Р’В»Р В Р’ВµР РЋРІР‚С›Р В РЎвЂўР В Р вЂ¦", "Р РЋР вЂљ/Р РЋР С“", "Р РЋР вЂљ/c"]);
         return string.IsNullOrWhiteSpace(value)
             ? null
             : new ExtractedFieldResult
@@ -211,12 +249,12 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
     private static ExtractedFieldResult? TryExtractInvoiceAmount(string text)
     {
         decimal? bestAmount = null;
-        var priorityAnchors = new[] { "к оплате", "итого", "всего к оплате", "итого к оплате" };
-        var fallbackAnchors = new[] { "сумма", "всего", "total", "amount" };
+        var priorityAnchors = new[] { "Р В РЎвЂќ Р В РЎвЂўР В РЎвЂ”Р В Р’В»Р В Р’В°Р РЋРІР‚С™Р В Р’Вµ", "Р В РЎвЂР РЋРІР‚С™Р В РЎвЂўР В РЎвЂ“Р В РЎвЂў", "Р В Р вЂ Р РЋР С“Р В Р’ВµР В РЎвЂ“Р В РЎвЂў Р В РЎвЂќ Р В РЎвЂўР В РЎвЂ”Р В Р’В»Р В Р’В°Р РЋРІР‚С™Р В Р’Вµ", "Р В РЎвЂР РЋРІР‚С™Р В РЎвЂўР В РЎвЂ“Р В РЎвЂў Р В РЎвЂќ Р В РЎвЂўР В РЎвЂ”Р В Р’В»Р В Р’В°Р РЋРІР‚С™Р В Р’Вµ" };
+        var fallbackAnchors = new[] { "Р РЋР С“Р РЋРЎвЂњР В РЎВР В РЎВР В Р’В°", "Р В Р вЂ Р РЋР С“Р В Р’ВµР В РЎвЂ“Р В РЎвЂў", "total", "amount" };
 
         foreach (var line in EnumerateLines(text))
         {
-            if (ContainsAny(line, ["счет №", "счёт №", "сч. №", "бик", "расчетный счет", "расчётный счёт", "кпп", "инн"]))
+            if (ContainsAny(line, ["Р РЋР С“Р РЋРІР‚РЋР В Р’ВµР РЋРІР‚С™ Р Р†РІР‚С›РІР‚вЂњ", "Р РЋР С“Р РЋРІР‚РЋР РЋРІР‚ВР РЋРІР‚С™ Р Р†РІР‚С›РІР‚вЂњ", "Р РЋР С“Р РЋРІР‚РЋ. Р Р†РІР‚С›РІР‚вЂњ", "Р В Р’В±Р В РЎвЂР В РЎвЂќ", "Р РЋР вЂљР В Р’В°Р РЋР С“Р РЋРІР‚РЋР В Р’ВµР РЋРІР‚С™Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ Р РЋР С“Р РЋРІР‚РЋР В Р’ВµР РЋРІР‚С™", "Р РЋР вЂљР В Р’В°Р РЋР С“Р РЋРІР‚РЋР РЋРІР‚ВР РЋРІР‚С™Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ Р РЋР С“Р РЋРІР‚РЋР РЋРІР‚ВР РЋРІР‚С™", "Р В РЎвЂќР В РЎвЂ”Р В РЎвЂ”", "Р В РЎвЂР В Р вЂ¦Р В Р вЂ¦"]))
                 continue;
 
             if (!ContainsAny(line, priorityAnchors))
@@ -229,7 +267,7 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
         {
             foreach (var line in EnumerateLines(text))
             {
-                if (ContainsAny(line, ["счет №", "счёт №", "сч. №", "бик", "расчетный счет", "расчётный счёт", "кпп", "инн"]))
+                if (ContainsAny(line, ["Р РЋР С“Р РЋРІР‚РЋР В Р’ВµР РЋРІР‚С™ Р Р†РІР‚С›РІР‚вЂњ", "Р РЋР С“Р РЋРІР‚РЋР РЋРІР‚ВР РЋРІР‚С™ Р Р†РІР‚С›РІР‚вЂњ", "Р РЋР С“Р РЋРІР‚РЋ. Р Р†РІР‚С›РІР‚вЂњ", "Р В Р’В±Р В РЎвЂР В РЎвЂќ", "Р РЋР вЂљР В Р’В°Р РЋР С“Р РЋРІР‚РЋР В Р’ВµР РЋРІР‚С™Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ Р РЋР С“Р РЋРІР‚РЋР В Р’ВµР РЋРІР‚С™", "Р РЋР вЂљР В Р’В°Р РЋР С“Р РЋРІР‚РЋР РЋРІР‚ВР РЋРІР‚С™Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ Р РЋР С“Р РЋРІР‚РЋР РЋРІР‚ВР РЋРІР‚С™", "Р В РЎвЂќР В РЎвЂ”Р В РЎвЂ”", "Р В РЎвЂР В Р вЂ¦Р В Р вЂ¦"]))
                     continue;
 
                 if (!ContainsAny(line, fallbackAnchors))
@@ -241,7 +279,7 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
 
         if (bestAmount is null)
         {
-            foreach (Match match in Regex.Matches(text, @"(?<value>\d+[.,]\d{2})\s*(?:руб|р\.|₽)?", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            foreach (Match match in Regex.Matches(text, @"(?<value>\d+[.,]\d{2})\s*(?:Р РЋР вЂљР РЋРЎвЂњР В Р’В±|Р РЋР вЂљ\.|Р Р†РІР‚С™Р вЂ¦)?", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
             {
                 if (!TryParseAmount(match.Groups["value"].Value, out var parsed))
                     continue;
@@ -257,7 +295,7 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
         if (bestAmount is null || bestAmount <= 0m)
             return null;
 
-        return BuildField("amount", "Сумма", bestAmount.Value.ToString("0.##", CultureInfo.InvariantCulture), bestAmount >= 1000m ? 0.86m : 0.62m);
+        return BuildField("amount", "Р В Р Р‹Р РЋРЎвЂњР В РЎВР В РЎВР В Р’В°", bestAmount.Value.ToString("0.##", CultureInfo.InvariantCulture), bestAmount >= 1000m ? 0.86m : 0.62m);
     }
 
     private static decimal? MaxAmountFromLine(string line, decimal? currentBest)
@@ -326,7 +364,7 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
     {
         foreach (var line in EnumerateLines(text))
         {
-            if (!line.Contains("прошу", StringComparison.OrdinalIgnoreCase))
+            if (!line.Contains("Р В РЎвЂ”Р РЋР вЂљР В РЎвЂўР РЋРІвЂљВ¬Р РЋРЎвЂњ", StringComparison.OrdinalIgnoreCase))
                 continue;
 
             var value = CleanValue(line);
@@ -336,7 +374,7 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
 
         foreach (var line in EnumerateLines(text))
         {
-            if (!line.Contains("заявление", StringComparison.OrdinalIgnoreCase))
+            if (!line.Contains("Р В Р’В·Р В Р’В°Р РЋР РЏР В Р вЂ Р В Р’В»Р В Р’ВµР В Р вЂ¦Р В РЎвЂР В Р’Вµ", StringComparison.OrdinalIgnoreCase))
                 continue;
 
             var value = CleanValue(line);
@@ -390,7 +428,7 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
                 value = line[(index + anchor.Length)..];
         }
 
-        foreach (var separator in new[] { ":", "—", "-", "–" })
+        foreach (var separator in new[] { ":", "Р Р†Р вЂљРІР‚Сњ", "-", "Р Р†Р вЂљРІР‚Сљ" })
         {
             var separatorIndex = value.IndexOf(separator, StringComparison.Ordinal);
             if (separatorIndex < 0)
@@ -467,6 +505,6 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
         if (value.Length <= maxLength)
             return value;
 
-        return $"{value[..Math.Max(0, maxLength - 1)].Trim()}…";
+        return $"{value[..Math.Max(0, maxLength - 1)].Trim()}Р Р†Р вЂљР’В¦";
     }
 }

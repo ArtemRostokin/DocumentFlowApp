@@ -26,7 +26,8 @@ public class DocumentsController : Controller
         DocumentType.Contract,
         DocumentType.Invoice,
         DocumentType.Order,
-        DocumentType.Act
+        DocumentType.Act,
+        DocumentType.PurchaseRequest
     ];
 
     private readonly IDocumentService _documentService;
@@ -2092,7 +2093,9 @@ public class DocumentsController : Controller
             DocumentType.Invoice => "Что проверить по счету",
             DocumentType.Application => "Что проверить по заявлению",
             DocumentType.Order => "Что проверить по приказу",
-            DocumentType.Act => "Что проверить по акту",
+            DocumentType.Act => "Что проверить по акту выполненных работ",
+            DocumentType.ServiceMemo => "Что проверить по служебной записке",
+            DocumentType.PurchaseRequest => "Что проверить по заявке на закупку",
             _ => "Что проверить при исполнении"
         };
 
@@ -2127,6 +2130,18 @@ public class DocumentsController : Controller
                 "Проверьте основание акта и описанную выполненную работу.",
                 "Убедитесь, что результат можно подтвердить документально.",
                 "При необходимости приложите подписанный акт или скан."
+            ],
+            DocumentType.ServiceMemo =>
+            [
+                "Проверьте инициатора, подразделение и тему служебной записки.",
+                "Убедитесь, что предложение или пояснение сформулировано однозначно.",
+                "При необходимости приложите подтверждающие материалы или ответ руководителя."
+            ],
+            DocumentType.PurchaseRequest =>
+            [
+                "Проверьте предмет закупки, плановую сумму и обоснование.",
+                "Сверьте необходимость закупки с текущими задачами подразделения.",
+                "При необходимости приложите коммерческое предложение или расчет."
             ],
             _ =>
             [
@@ -2493,11 +2508,27 @@ public class DocumentsController : Controller
                 <p>{description}</p>
                 """,
             DocumentType.Act => $"""
-                <div class="doc-title">Акт № {document.DocumentId}</div>
+                <div class="doc-title">Акт выполненных работ № {Field("Номер акта", document.DocumentId.ToString())}</div>
                 <div class="doc-subtitle">{title}</div>
-                <div class="row"><span>г. Санкт-Петербург</span><span>{DateOnly(document.DueDate)}</span></div>
-                <h2>Содержание акта</h2>
-                <p>{description}</p>
+                <div class="row"><span>Контрагент: {Field("Контрагент", "Не указан")}</span><span>{Field("Дата акта", DateOnly(document.DueDate))}</span></div>
+                <div class="grid"><div><b>Основание</b><br>{Field("Основание", "Не указано")}</div><div><b>Сумма акта</b><br>{Field("Сумма акта", Field("Сумма", "Не указано"))}</div></div>
+                <h2>Описание работ</h2>
+                <p>{Field("Описание работ", description)}</p>
+                """,
+            DocumentType.ServiceMemo => $"""
+                <div class="recipient">Руководителю подразделения<br>от {Field("Инициатор", "сотрудника")}</div>
+                <div class="doc-title">Служебная записка № {Field("Номер записки", document.DocumentId.ToString())}</div>
+                <div class="doc-subtitle">{Field("Тема записки", title)}</div>
+                <div class="row"><span>Подразделение: {Field("Подразделение", "Не указано")}</span><span>{Field("Дата записки", DateOnly(document.DueDate))}</span></div>
+                <p>{Field("Содержание записки", description)}</p>
+                """,
+            DocumentType.PurchaseRequest => $"""
+                <div class="doc-title">Заявка на закупку № {Field("Номер заявки", document.DocumentId.ToString())}</div>
+                <div class="doc-subtitle">{Field("Предмет закупки", title)}</div>
+                <div class="row"><span>Инициатор: {Field("Инициатор", "Не указан")}</span><span>{Field("Дата заявки", DateOnly(document.DueDate))}</span></div>
+                <div class="grid"><div><b>Подразделение</b><br>{Field("Подразделение", "Не указано")}</div><div><b>Плановая сумма</b><br>{Field("Плановая сумма", Field("Сумма", "Не указано"))}</div><div><b>Количество</b><br>{Field("Количество", "Не указано")}</div><div><b>Статус</b><br>{statusLabel}</div></div>
+                <h2>Обоснование закупки</h2>
+                <p>{Field("Обоснование закупки", description)}</p>
                 """,
             _ => $"""
                 <div class="doc-title">{typeLabel} № {document.DocumentId}</div>
@@ -2930,8 +2961,10 @@ public class DocumentsController : Controller
         DocumentType.Report => "Отчет",
         DocumentType.Order => "Приказ",
         DocumentType.Application => "Заявление",
-        DocumentType.Act => "Акт",
-        _ => "Прочее"
+        DocumentType.Act => "Акт выполненных работ",
+        DocumentType.ServiceMemo => "Служебная записка",
+        DocumentType.PurchaseRequest => "Заявка на закупку",
+        _ => "Другое"
     };
 
     private static string GetDocumentStatusLabel(DocumentStatus status) => status switch

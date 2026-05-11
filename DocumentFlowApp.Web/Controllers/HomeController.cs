@@ -183,7 +183,9 @@ public class HomeController : Controller
         DocumentType.Report => "Отчет",
         DocumentType.Order => "Приказ",
         DocumentType.Application => "Заявление",
-        DocumentType.Act => "Акт",
+        DocumentType.Act => "Акт выполненных работ",
+        DocumentType.ServiceMemo => "Служебная записка",
+        DocumentType.PurchaseRequest => "Заявка на закупку",
         _ => "Документ"
     };
 
@@ -194,7 +196,9 @@ public class HomeController : Controller
         DocumentType.Report => "type-report",
         DocumentType.Order => "type-order",
         DocumentType.Application => "type-application",
-        DocumentType.Act => "type-report",
+        DocumentType.Act => "type-act",
+        DocumentType.ServiceMemo => "type-memo",
+        DocumentType.PurchaseRequest => "type-purchase",
         _ => "type-other"
     };
 

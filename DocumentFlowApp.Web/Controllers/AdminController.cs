@@ -1565,7 +1565,9 @@ public class AdminController : Controller
         DocumentType.Report => "Отчет",
         DocumentType.Order => "Приказ",
         DocumentType.Application => "Заявление",
-        DocumentType.Act => "Акт",
+        DocumentType.Act => "Акт выполненных работ",
+        DocumentType.ServiceMemo => "Служебная записка",
+        DocumentType.PurchaseRequest => "Заявка на закупку",
         _ => "Другое"
     };
 

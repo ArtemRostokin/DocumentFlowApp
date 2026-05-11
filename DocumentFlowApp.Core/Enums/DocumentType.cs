@@ -20,10 +20,16 @@ namespace DocumentFlowApp.Core.Enums
         [Display(Name = "Заявление")]
         Application = 5,
 
-        [Display(Name = "Акт")]
+        [Display(Name = "Акт выполненных работ")]
         Act = 6,
 
+        [Display(Name = "Служебная записка")]
+        ServiceMemo = 7,
+
+        [Display(Name = "Заявка на закупку")]
+        PurchaseRequest = 8,
+
         [Display(Name = "Прочее")]
-        Other = 7
+        Other = 9
     }
 }

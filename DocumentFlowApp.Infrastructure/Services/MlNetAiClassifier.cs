@@ -15,42 +15,51 @@ public sealed class MlNetAiClassifier : IAiClassifier
         new Dictionary<DocumentType, TypeProfile>
         {
             [DocumentType.Contract] = new(
-                "Юридический документ. Проверьте номер, дату, контрагента и сумму договора.",
+                "Р®СЂРёРґРёС‡РµСЃРєРёР№ РґРѕРєСѓРјРµРЅС‚. РџСЂРѕРІРµСЂСЊС‚Рµ РЅРѕРјРµСЂ, РґР°С‚Сѓ, РєРѕРЅС‚СЂР°РіРµРЅС‚Р° Рё СЃСѓРјРјСѓ РґРѕРіРѕРІРѕСЂР°.",
                 ["incoming", "contract", "legal"],
-                ["договор", "dogovor", "contract", "agreement"],
-                ["контрагент", "предмет", "сумма", "аренда", "поставки"]),
+                ["РґРѕРіРѕРІРѕСЂ", "dogovor", "contract", "agreement"],
+                ["РєРѕРЅС‚СЂР°РіРµРЅС‚", "РїСЂРµРґРјРµС‚", "СЃСѓРјРјР°", "Р°СЂРµРЅРґР°", "РїРѕСЃС‚Р°РІРєРё"]),
             [DocumentType.Invoice] = new(
-                "Финансовый документ. Проверьте реквизиты оплаты, сумму и поставщика.",
+                "Р¤РёРЅР°РЅСЃРѕРІС‹Р№ РґРѕРєСѓРјРµРЅС‚. РџСЂРѕРІРµСЂСЊС‚Рµ СЂРµРєРІРёР·РёС‚С‹ РѕРїР»Р°С‚С‹, СЃСѓРјРјСѓ Рё РїРѕСЃС‚Р°РІС‰РёРєР°.",
                 ["incoming", "invoice", "finance"],
-                ["счет", "счёт", "invoice", "schet", "bill"],
-                ["оплата", "поставщик", "инн", "кпп", "сумма"]),
+                ["СЃС‡РµС‚", "СЃС‡С‘С‚", "invoice", "schet", "bill"],
+                ["РѕРїР»Р°С‚Р°", "РїРѕСЃС‚Р°РІС‰РёРє", "РёРЅРЅ", "РєРїРї", "СЃСѓРјРјР°"]),
             [DocumentType.Report] = new(
-                "Отчетный документ. Проверьте период, показатели и итоговые значения.",
+                "РћС‚С‡РµС‚РЅС‹Р№ РґРѕРєСѓРјРµРЅС‚. РџСЂРѕРІРµСЂСЊС‚Рµ РїРµСЂРёРѕРґ, РїРѕРєР°Р·Р°С‚РµР»Рё Рё РёС‚РѕРіРѕРІС‹Рµ Р·РЅР°С‡РµРЅРёСЏ.",
                 ["incoming", "report", "analytics"],
-                ["отчет", "отчёт", "report"],
-                ["итоги", "показатели", "результаты", "аналитика"]),
+                ["РѕС‚С‡РµС‚", "РѕС‚С‡С‘С‚", "report"],
+                ["РёС‚РѕРіРё", "РїРѕРєР°Р·Р°С‚РµР»Рё", "СЂРµР·СѓР»СЊС‚Р°С‚С‹", "Р°РЅР°Р»РёС‚РёРєР°"]),
             [DocumentType.Order] = new(
-                "Распорядительный документ. Проверьте дату, номер и предмет приказа.",
+                "Р Р°СЃРїРѕСЂСЏРґРёС‚РµР»СЊРЅС‹Р№ РґРѕРєСѓРјРµРЅС‚. РџСЂРѕРІРµСЂСЊС‚Рµ РґР°С‚Сѓ, РЅРѕРјРµСЂ Рё РїСЂРµРґРјРµС‚ РїСЂРёРєР°Р·Р°.",
                 ["incoming", "order", "internal"],
-                ["приказ", "order"],
-                ["назначить", "утвердить", "распоряжение", "сотрудник"]),
+                ["РїСЂРёРєР°Р·", "order"],
+                ["РЅР°Р·РЅР°С‡РёС‚СЊ", "СѓС‚РІРµСЂРґРёС‚СЊ", "СЂР°СЃРїРѕСЂСЏР¶РµРЅРёРµ", "СЃРѕС‚СЂСѓРґРЅРёРє"]),
             [DocumentType.Application] = new(
-                "Заявление или запрос. Проверьте автора, дату и текст обращения.",
+                "Р—Р°СЏРІР»РµРЅРёРµ РёР»Рё Р·Р°РїСЂРѕСЃ. РџСЂРѕРІРµСЂСЊС‚Рµ Р°РІС‚РѕСЂР°, РґР°С‚Сѓ Рё С‚РµРєСЃС‚ РѕР±СЂР°С‰РµРЅРёСЏ.",
                 ["incoming", "application", "request"],
-                ["заявление", "application", "request"],
-                ["прошу", "заявитель", "отпуск", "сотрудник"]),
+                ["Р·Р°СЏРІР»РµРЅРёРµ", "application", "request"],
+                ["РїСЂРѕС€Сѓ", "Р·Р°СЏРІРёС‚РµР»СЊ", "РѕС‚РїСѓСЃРє", "СЃРѕС‚СЂСѓРґРЅРёРє"]),
+            [DocumentType.ServiceMemo] = new(
+                "РЎР»СѓР¶РµР±РЅР°СЏ Р·Р°РїРёСЃРєР° РІРЅСѓС‚СЂРµРЅРЅРµРіРѕ С…Р°СЂР°РєС‚РµСЂР°. РџСЂРѕРІРµСЂСЊС‚Рµ РёРЅРёС†РёР°С‚РѕСЂР°, РїРѕРґСЂР°Р·РґРµР»РµРЅРёРµ Рё С‚РµРјСѓ Р·Р°РїРёСЃРєРё.",
+                ["incoming", "memo", "internal"],
+                ["СЃР»СѓР¶РµР±РЅР°СЏ", "Р·Р°РїРёСЃРєР°", "memo"],
+                ["РёРЅРёС†РёР°С‚РѕСЂ", "РїРѕРґСЂР°Р·РґРµР»РµРЅРёРµ", "С‚РµРјР° Р·Р°РїРёСЃРєРё", "РїРѕСЏСЃРЅРµРЅРёРµ"]),
+            [DocumentType.PurchaseRequest] = new(
+                "Р—Р°СЏРІРєР° РЅР° Р·Р°РєСѓРїРєСѓ. РџСЂРѕРІРµСЂСЊС‚Рµ РїСЂРµРґРјРµС‚ Р·Р°РєСѓРїРєРё, РїР»Р°РЅРѕРІСѓСЋ СЃСѓРјРјСѓ Рё РѕР±РѕСЃРЅРѕРІР°РЅРёРµ.",
+                ["incoming", "purchase", "finance"],
+                ["Р·Р°РєСѓРїРєР°", "Р·Р°СЏРІРєР°", "purchase request"],
+                ["РѕР±РѕСЃРЅРѕРІР°РЅРёРµ", "РїР»Р°РЅРѕРІР°СЏ СЃСѓРјРјР°", "РїСЂРµРґРјРµС‚ Р·Р°РєСѓРїРєРё", "Р±СЋРґР¶РµС‚"]),
             [DocumentType.Act] = new(
-                "Акт выполненных работ или услуг. Проверьте стороны, дату и сумму.",
+                "РђРєС‚ РІС‹РїРѕР»РЅРµРЅРЅС‹С… СЂР°Р±РѕС‚ РёР»Рё СѓСЃР»СѓРі. РџСЂРѕРІРµСЂСЊС‚Рµ СЃС‚РѕСЂРѕРЅС‹, РґР°С‚Сѓ Рё СЃСѓРјРјСѓ.",
                 ["incoming", "act", "closing"],
-                ["акт", "act"],
-                ["выполненных работ", "оказанных услуг", "приемка", "приемки"]),
+                ["Р°РєС‚", "act"],
+                ["РІС‹РїРѕР»РЅРµРЅРЅС‹С… СЂР°Р±РѕС‚", "РѕРєР°Р·Р°РЅРЅС‹С… СѓСЃР»СѓРі", "РїСЂРёРµРјРєР°", "РїСЂРёРµРјРєРё"]),
             [DocumentType.Other] = new(
-                "Недостаточно уверенного сигнала для автоматической классификации, проверьте тип вручную.",
+                "РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ СѓРІРµСЂРµРЅРЅРѕРіРѕ СЃРёРіРЅР°Р»Р° РґР»СЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРѕР№ РєР»Р°СЃСЃРёС„РёРєР°С†РёРё, РїСЂРѕРІРµСЂСЊС‚Рµ С‚РёРї РІСЂСѓС‡РЅСѓСЋ.",
                 ["incoming", "needs-review", "other"],
-                ["файл", "document", "scan"],
-                ["скан", "вложение", "документ"])
+                ["С„Р°Р№Р»", "document", "scan"],
+                ["СЃРєР°РЅ", "РІР»РѕР¶РµРЅРёРµ", "РґРѕРєСѓРјРµРЅС‚"])
         };
-
     private readonly string _modelPath;
     private readonly Lazy<ModelArtifacts> _artifacts;
 
@@ -65,7 +74,7 @@ public sealed class MlNetAiClassifier : IAiClassifier
         var normalizedText = BuildInputText(fileName, extractedText);
         if (string.IsNullOrWhiteSpace(normalizedText))
         {
-            return BuildLowConfidenceResult("Недостаточно данных для уверенной классификации.");
+            return BuildLowConfidenceResult("Р В РЎСљР В Р’ВµР В РўвЂР В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚С™Р В РЎвЂўР РЋРІР‚РЋР В Р вЂ¦Р В РЎвЂў Р В РўвЂР В Р’В°Р В Р вЂ¦Р В Р вЂ¦Р РЋРІР‚в„–Р РЋРІР‚В¦ Р В РўвЂР В Р’В»Р РЋР РЏ Р РЋРЎвЂњР В Р вЂ Р В Р’ВµР РЋР вЂљР В Р’ВµР В Р вЂ¦Р В Р вЂ¦Р В РЎвЂўР В РІвЂћвЂ“ Р В РЎвЂќР В Р’В»Р В Р’В°Р РЋР С“Р РЋР С“Р В РЎвЂР РЋРІР‚С›Р В РЎвЂР В РЎвЂќР В Р’В°Р РЋРІР‚В Р В РЎвЂР В РЎвЂ.");
         }
 
         var prediction = Predict(normalizedText);
@@ -74,7 +83,7 @@ public sealed class MlNetAiClassifier : IAiClassifier
 
         if (predictedType == DocumentType.Other || confidence < 0.60m)
         {
-            return BuildLowConfidenceResult("Сигналов недостаточно, тип лучше подтвердить вручную.");
+            return BuildLowConfidenceResult("Р В Р Р‹Р В РЎвЂР В РЎвЂ“Р В Р вЂ¦Р В Р’В°Р В Р’В»Р В РЎвЂўР В Р вЂ  Р В Р вЂ¦Р В Р’ВµР В РўвЂР В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚С™Р В РЎвЂўР РЋРІР‚РЋР В Р вЂ¦Р В РЎвЂў, Р РЋРІР‚С™Р В РЎвЂР В РЎвЂ” Р В Р’В»Р РЋРЎвЂњР РЋРІР‚РЋР РЋРІвЂљВ¬Р В Р’Вµ Р В РЎвЂ”Р В РЎвЂўР В РўвЂР РЋРІР‚С™Р В Р вЂ Р В Р’ВµР РЋР вЂљР В РўвЂР В РЎвЂР РЋРІР‚С™Р РЋР Р‰ Р В Р вЂ Р РЋР вЂљР РЋРЎвЂњР РЋРІР‚РЋР В Р вЂ¦Р РЋРЎвЂњР РЋР вЂ№.");
         }
 
         var profile = Profiles[predictedType];
@@ -104,7 +113,7 @@ public sealed class MlNetAiClassifier : IAiClassifier
         }
 
         var title = string.IsNullOrWhiteSpace(document.Title)
-            ? $"Документ #{document.DocumentId}"
+            ? $"Р В РІР‚СњР В РЎвЂўР В РЎвЂќР РЋРЎвЂњР В РЎВР В Р’ВµР В Р вЂ¦Р РЋРІР‚С™ #{document.DocumentId}"
             : document.Title!;
         var description = string.IsNullOrWhiteSpace(document.ExtractedText)
             ? classification.Summary
@@ -122,42 +131,42 @@ public sealed class MlNetAiClassifier : IAiClassifier
             new AiFieldSuggestionResult
             {
                 FieldKey = "type",
-                Label = "Тип",
+                Label = "Р В РЎС›Р В РЎвЂР В РЎвЂ”",
                 SuggestedValue = classification.SuggestedType.ToString(),
                 ConfidenceScore = classification.ConfidenceScore
             },
             new AiFieldSuggestionResult
             {
                 FieldKey = "duedate",
-                Label = "Срок исполнения",
+                Label = "Р В Р Р‹Р РЋР вЂљР В РЎвЂўР В РЎвЂќ Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В Р’ВµР В Р вЂ¦Р В РЎвЂР РЋР РЏ",
                 SuggestedValue = dueDate,
                 ConfidenceScore = Confidence(classification.ShouldAutoAssignType ? 0.84m : 0.67m)
             },
             new AiFieldSuggestionResult
             {
                 FieldKey = "title",
-                Label = "Название",
+                Label = "Р В РЎСљР В Р’В°Р В Р’В·Р В Р вЂ Р В Р’В°Р В Р вЂ¦Р В РЎвЂР В Р’Вµ",
                 SuggestedValue = title,
                 ConfidenceScore = Confidence(0.88m)
             },
             new AiFieldSuggestionResult
             {
                 FieldKey = "description",
-                Label = "Описание",
+                Label = "Р В РЎвЂєР В РЎвЂ”Р В РЎвЂР РЋР С“Р В Р’В°Р В Р вЂ¦Р В РЎвЂР В Р’Вµ",
                 SuggestedValue = description,
                 ConfidenceScore = Confidence(string.IsNullOrWhiteSpace(document.ExtractedText) ? 0.63m : 0.86m)
             },
             new AiFieldSuggestionResult
             {
                 FieldKey = "priority",
-                Label = "Приоритет",
+                Label = "Р В РЎСџР РЋР вЂљР В РЎвЂР В РЎвЂўР РЋР вЂљР В РЎвЂР РЋРІР‚С™Р В Р’ВµР РЋРІР‚С™",
                 SuggestedValue = priority,
                 ConfidenceScore = Confidence(classification.SuggestedType == DocumentType.Invoice ? 0.79m : 0.68m)
             },
             new AiFieldSuggestionResult
             {
                 FieldKey = "tags",
-                Label = "Теги",
+                Label = "Р В РЎС›Р В Р’ВµР В РЎвЂ“Р В РЎвЂ",
                 SuggestedValue = tags,
                 ConfidenceScore = Confidence(0.72m)
             }
@@ -304,8 +313,7 @@ public sealed class MlNetAiClassifier : IAiClassifier
     private DocumentType ResolvePredictedType(string normalizedText, float[]? scores)
     {
         var mlPredictedType = GetPredictedType(scores);
-        if (mlPredictedType != DocumentType.Other)
-            return mlPredictedType;
+        var mlEvidence = mlPredictedType == DocumentType.Other ? 0.42m : CalculateEvidenceScore(normalizedText, mlPredictedType);
 
         var bestType = DocumentType.Other;
         var bestEvidence = 0.42m;
@@ -319,6 +327,12 @@ public sealed class MlNetAiClassifier : IAiClassifier
             bestEvidence = evidence;
             bestType = candidate;
         }
+
+        if (bestType != DocumentType.Other && bestType != mlPredictedType && bestEvidence >= 0.84m && bestEvidence >= mlEvidence + 0.12m)
+            return bestType;
+
+        if (mlPredictedType != DocumentType.Other)
+            return mlPredictedType;
 
         if (bestEvidence >= 0.64m)
             return bestType;
@@ -406,6 +420,18 @@ public sealed class MlNetAiClassifier : IAiClassifier
             new() { Label = nameof(DocumentType.Application), Text = "request form applicant department text of request" },
             new() { Label = nameof(DocumentType.Application), Text = "заявление сотрудника прошу перевести выдать справку" },
 
+            new() { Label = nameof(DocumentType.ServiceMemo), Text = "служебная записка инициатор подразделение тема пояснение" },
+            new() { Label = nameof(DocumentType.ServiceMemo), Text = "memo internal note author department subject" },
+            new() { Label = nameof(DocumentType.ServiceMemo), Text = "служебная записка о согласовании внутреннего вопроса" },
+            new() { Label = nameof(DocumentType.ServiceMemo), Text = "пояснительная записка инициатор тема обращения" },
+            new() { Label = nameof(DocumentType.ServiceMemo), Text = "internal memo department manager explanation" },
+
+            new() { Label = nameof(DocumentType.PurchaseRequest), Text = "заявка на закупку предмет закупки плановая сумма обоснование" },
+            new() { Label = nameof(DocumentType.PurchaseRequest), Text = "purchase request planned amount justification supplier need" },
+            new() { Label = nameof(DocumentType.PurchaseRequest), Text = "заявка на согласование закупки количество бюджет" },
+            new() { Label = nameof(DocumentType.PurchaseRequest), Text = "purchase request department item quantity finance" },
+            new() { Label = nameof(DocumentType.PurchaseRequest), Text = "обоснование закупки товар услуга плановая сумма" },
+
             new() { Label = nameof(DocumentType.Act), Text = "акт выполненных работ оказанных услуг приемка сумма дата" },
             new() { Label = nameof(DocumentType.Act), Text = "act acceptance completed works rendered services total" },
             new() { Label = nameof(DocumentType.Act), Text = "акт приемки оказанных услуг заказчик исполнитель" },
@@ -419,7 +445,6 @@ public sealed class MlNetAiClassifier : IAiClassifier
             new() { Label = nameof(DocumentType.Other), Text = "прочий документ без выраженных признаков типа" }
         ];
     }
-
     private sealed record TypeProfile(
         string Summary,
         string[] Tags,
