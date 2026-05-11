@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Security.Claims;
 using DocumentFlowApp.Core.Entities;
 using DocumentFlowApp.Core.Enums;
@@ -186,6 +186,7 @@ public class HomeController : Controller
         DocumentType.Act => "Акт выполненных работ",
         DocumentType.ServiceMemo => "Служебная записка",
         DocumentType.PurchaseRequest => "Заявка на закупку",
+        DocumentType.OutgoingLetter => "Исходящее письмо",
         _ => "Документ"
     };
 
@@ -199,6 +200,7 @@ public class HomeController : Controller
         DocumentType.Act => "type-act",
         DocumentType.ServiceMemo => "type-memo",
         DocumentType.PurchaseRequest => "type-purchase",
+        DocumentType.OutgoingLetter => "type-letter",
         _ => "type-other"
     };
 

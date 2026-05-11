@@ -143,6 +143,56 @@ public static class ApplicationDbSeeder
             ],
             cancellationToken);
 
+        await EnsureTemplateAsync(
+            context,
+            name: "Шаблон приказа",
+            category: "Order",
+            description: "Используется для оформления внутренних распорядительных документов, назначения ответственных и фиксации обязательных действий.",
+            fields:
+            [
+                new TemplateSeedField { Key = "order_number", Label = "Номер приказа", Placeholder = "ПР-2026-011", Required = true, InputType = "text" },
+                new TemplateSeedField { Key = "order_date", Label = "Дата приказа", Placeholder = string.Empty, Required = true, InputType = "date" },
+                new TemplateSeedField { Key = "order_subject", Label = "Предмет приказа", Placeholder = "О назначении ответственного / об утверждении порядка", Required = true, InputType = "text" },
+                new TemplateSeedField { Key = "responsible_person", Label = "Ответственный", Placeholder = "ФИО ответственного сотрудника", Required = false, InputType = "text" },
+                new TemplateSeedField { Key = "basis_document", Label = "Основание", Placeholder = "Служебная записка / решение руководителя / протокол", Required = false, InputType = "text" },
+                new TemplateSeedField { Key = "order_text", Label = "Текст приказа", Placeholder = "Сформулируйте распорядительную часть приказа", Required = true, InputType = "textarea" }
+            ],
+            cancellationToken);
+
+        await EnsureTemplateAsync(
+            context,
+            name: "Шаблон отчета",
+            category: "Report",
+            description: "Используется для подготовки отчетов по подразделению, проекту или периоду с ключевыми показателями и выводами.",
+            fields:
+            [
+                new TemplateSeedField { Key = "report_number", Label = "Номер отчета", Placeholder = "ОТ-2026-009", Required = false, InputType = "text" },
+                new TemplateSeedField { Key = "report_date", Label = "Дата отчета", Placeholder = string.Empty, Required = true, InputType = "date" },
+                new TemplateSeedField { Key = "report_period", Label = "Период отчета", Placeholder = "Апрель 2026 / 1 квартал 2026", Required = true, InputType = "text" },
+                new TemplateSeedField { Key = "report_author", Label = "Подготовил", Placeholder = "ФИО автора отчета", Required = true, InputType = "text" },
+                new TemplateSeedField { Key = "report_department", Label = "Подразделение", Placeholder = "Например: отдел документооборота", Required = true, InputType = "text" },
+                new TemplateSeedField { Key = "report_metrics", Label = "Ключевые показатели", Placeholder = "Кратко перечислите основные цифры и результаты", Required = true, InputType = "textarea" },
+                new TemplateSeedField { Key = "report_summary", Label = "Выводы", Placeholder = "Сформулируйте итоговые выводы и предложения", Required = true, InputType = "textarea" }
+            ],
+            cancellationToken);
+
+        await EnsureTemplateAsync(
+            context,
+            name: "Шаблон исходящего письма",
+            category: "OutgoingLetter",
+            description: "Используется для регистрации и согласования официальных писем, направляемых внешним адресатам.",
+            fields:
+            [
+                new TemplateSeedField { Key = "letter_number", Label = "Номер письма", Placeholder = "ИСХ-2026-017", Required = true, InputType = "text" },
+                new TemplateSeedField { Key = "letter_date", Label = "Дата письма", Placeholder = string.Empty, Required = true, InputType = "date" },
+                new TemplateSeedField { Key = "recipient", Label = "Адресат", Placeholder = "ООО Партнер / ФИО адресата", Required = true, InputType = "text" },
+                new TemplateSeedField { Key = "sender_department", Label = "Подразделение-инициатор", Placeholder = "Например: юридический отдел", Required = true, InputType = "text" },
+                new TemplateSeedField { Key = "letter_subject", Label = "Тема письма", Placeholder = "О направлении документов / о предоставлении информации", Required = true, InputType = "text" },
+                new TemplateSeedField { Key = "letter_text", Label = "Текст письма", Placeholder = "Основное содержание исходящего письма", Required = true, InputType = "textarea" },
+                new TemplateSeedField { Key = "executor", Label = "Исполнитель", Placeholder = "ФИО сотрудника", Required = false, InputType = "text" }
+            ],
+            cancellationToken);
+
         var contractCase = await EnsureNomenclatureCaseAsync(
             context,
             "01-01",
@@ -197,12 +247,42 @@ public static class ApplicationDbSeeder
             "Бухгалтерия",
             cancellationToken);
 
+        var orderCase = await EnsureNomenclatureCaseAsync(
+            context,
+            "03-04",
+            "Приказы и внутренние распорядительные документы",
+            "5 лет",
+            "Локальная номенклатура организации",
+            "Канцелярия",
+            cancellationToken);
+
+        var reportCase = await EnsureNomenclatureCaseAsync(
+            context,
+            "04-01",
+            "Отчеты по подразделениям и проектам",
+            "5 лет",
+            "Локальная номенклатура организации",
+            "Аналитический отдел",
+            cancellationToken);
+
+        var outgoingLetterCase = await EnsureNomenclatureCaseAsync(
+            context,
+            "04-02",
+            "Исходящая корреспонденция",
+            "5 лет",
+            "Локальная номенклатура организации",
+            "Канцелярия",
+            cancellationToken);
+
         await EnsureNomenclatureRuleAsync(context, contractCase.NomenclatureCaseId, "Contract", null, "Автопривязка для договоров", cancellationToken);
         await EnsureNomenclatureRuleAsync(context, invoiceCase.NomenclatureCaseId, "Invoice", null, "Автопривязка для счетов", cancellationToken);
         await EnsureNomenclatureRuleAsync(context, applicationCase.NomenclatureCaseId, "Application", null, "Автопривязка для заявлений", cancellationToken);
         await EnsureNomenclatureRuleAsync(context, memoCase.NomenclatureCaseId, "ServiceMemo", null, "Автопривязка для служебных записок", cancellationToken);
         await EnsureNomenclatureRuleAsync(context, purchaseRequestCase.NomenclatureCaseId, "PurchaseRequest", null, "Автопривязка для заявок на закупку", cancellationToken);
         await EnsureNomenclatureRuleAsync(context, actCase.NomenclatureCaseId, "Act", null, "Автопривязка для актов выполненных работ", cancellationToken);
+        await EnsureNomenclatureRuleAsync(context, orderCase.NomenclatureCaseId, "Order", null, "Автопривязка для приказов", cancellationToken);
+        await EnsureNomenclatureRuleAsync(context, reportCase.NomenclatureCaseId, "Report", null, "Автопривязка для отчетов", cancellationToken);
+        await EnsureNomenclatureRuleAsync(context, outgoingLetterCase.NomenclatureCaseId, "OutgoingLetter", null, "Автопривязка для исходящих писем", cancellationToken);
 
         await EnsureRouteTemplateAsync(
             context,
@@ -318,6 +398,73 @@ public static class ApplicationDbSeeder
                     ApprovalSpecialization = ApprovalSpecializations.Accountant,
                     ApproverUserId = accountantUser.UserId,
                     ApproverRole = accountantUser.Role?.RoleName ?? AppRoles.Employee
+                }
+            ],
+            cancellationToken);
+
+        await EnsureRouteTemplateAsync(
+            context,
+            "Базовый маршрут приказов",
+            "Order",
+            "Согласование распорядительных документов руководителем и кадровой службой при необходимости кадровых изменений.",
+            [
+                new RouteSeedStep
+                {
+                    StepOrder = 1,
+                    Title = "Согласование руководителем",
+                    ApprovalSpecialization = ApprovalSpecializations.Manager,
+                    ApproverUserId = secondManagerUser.UserId,
+                    ApproverRole = secondManagerUser.Role?.RoleName ?? AppRoles.Manager
+                },
+                new RouteSeedStep
+                {
+                    StepOrder = 2,
+                    Title = "Проверка кадровой службой",
+                    ApprovalSpecialization = ApprovalSpecializations.Hr,
+                    ApproverUserId = hrUser.UserId,
+                    ApproverRole = hrUser.Role?.RoleName ?? AppRoles.Employee
+                }
+            ],
+            cancellationToken);
+
+        await EnsureRouteTemplateAsync(
+            context,
+            "Базовый маршрут отчетов",
+            "Report",
+            "Согласование отчетов руководителем подразделения перед фиксацией итогов.",
+            [
+                new RouteSeedStep
+                {
+                    StepOrder = 1,
+                    Title = "Проверка руководителем",
+                    ApprovalSpecialization = ApprovalSpecializations.Manager,
+                    ApproverUserId = secondManagerUser.UserId,
+                    ApproverRole = secondManagerUser.Role?.RoleName ?? AppRoles.Manager
+                }
+            ],
+            cancellationToken);
+
+        await EnsureRouteTemplateAsync(
+            context,
+            "Базовый маршрут исходящих писем",
+            "OutgoingLetter",
+            "Проверка исходящих писем руководителем и юридической службой перед отправкой внешнему адресату.",
+            [
+                new RouteSeedStep
+                {
+                    StepOrder = 1,
+                    Title = "Согласование руководителем",
+                    ApprovalSpecialization = ApprovalSpecializations.Manager,
+                    ApproverUserId = secondManagerUser.UserId,
+                    ApproverRole = secondManagerUser.Role?.RoleName ?? AppRoles.Manager
+                },
+                new RouteSeedStep
+                {
+                    StepOrder = 2,
+                    Title = "Юридическая проверка",
+                    ApprovalSpecialization = ApprovalSpecializations.Lawyer,
+                    ApproverUserId = lawyerUser.UserId,
+                    ApproverRole = lawyerUser.Role?.RoleName ?? AppRoles.Employee
                 }
             ],
             cancellationToken);

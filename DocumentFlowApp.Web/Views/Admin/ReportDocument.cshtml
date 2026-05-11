@@ -1,4 +1,4 @@
-@model DocumentFlowApp.Web.Models.AdminReportPageViewModel
+﻿@model DocumentFlowApp.Web.Models.AdminReportPageViewModel
 @using DocumentFlowApp.Core.Enums
 @{
     Layout = null;
@@ -13,6 +13,7 @@
         DocumentType.Act => "Акт выполненных работ",
         DocumentType.ServiceMemo => "Служебная записка",
         DocumentType.PurchaseRequest => "Заявка на закупку",
+        DocumentType.OutgoingLetter => "Исходящее письмо",
         _ => "Другое"
     };
 

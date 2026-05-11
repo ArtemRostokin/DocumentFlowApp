@@ -27,7 +27,8 @@ public class DocumentsController : Controller
         DocumentType.Invoice,
         DocumentType.Order,
         DocumentType.Act,
-        DocumentType.PurchaseRequest
+        DocumentType.PurchaseRequest,
+        DocumentType.OutgoingLetter
     ];
 
     private readonly IDocumentService _documentService;
@@ -2096,6 +2097,7 @@ public class DocumentsController : Controller
             DocumentType.Act => "Что проверить по акту выполненных работ",
             DocumentType.ServiceMemo => "Что проверить по служебной записке",
             DocumentType.PurchaseRequest => "Что проверить по заявке на закупку",
+            DocumentType.OutgoingLetter => "Что проверить по исходящему письму",
             _ => "Что проверить при исполнении"
         };
 
@@ -2142,6 +2144,12 @@ public class DocumentsController : Controller
                 "Проверьте предмет закупки, плановую сумму и обоснование.",
                 "Сверьте необходимость закупки с текущими задачами подразделения.",
                 "При необходимости приложите коммерческое предложение или расчет."
+            ],
+            DocumentType.OutgoingLetter =>
+            [
+                "Проверьте адресата, тему письма и корректность исходящих формулировок.",
+                "Убедитесь, что текст письма согласован с подразделением и не содержит противоречий.",
+                "При необходимости приложите подтверждающие материалы или версию письма для отправки."
             ],
             _ =>
             [
@@ -2529,6 +2537,15 @@ public class DocumentsController : Controller
                 <div class="grid"><div><b>Подразделение</b><br>{Field("Подразделение", "Не указано")}</div><div><b>Плановая сумма</b><br>{Field("Плановая сумма", Field("Сумма", "Не указано"))}</div><div><b>Количество</b><br>{Field("Количество", "Не указано")}</div><div><b>Статус</b><br>{statusLabel}</div></div>
                 <h2>Обоснование закупки</h2>
                 <p>{Field("Обоснование закупки", description)}</p>
+                """,
+            DocumentType.OutgoingLetter => $"""
+                <div class="recipient">Адресат: {Field("Адресат", "Не указан")}</div>
+                <div class="doc-title">Исходящее письмо № {Field("Номер письма", document.DocumentId.ToString())}</div>
+                <div class="doc-subtitle">{Field("Тема письма", title)}</div>
+                <div class="row"><span>Подразделение-инициатор: {Field("Подразделение-инициатор", "Не указано")}</span><span>{Field("Дата письма", DateOnly(document.DueDate))}</span></div>
+                <div class="grid"><div><b>Исполнитель</b><br>{Field("Исполнитель", "Не указан")}</div><div><b>Статус</b><br>{statusLabel}</div></div>
+                <h2>Текст письма</h2>
+                <p>{Field("Текст письма", description)}</p>
                 """,
             _ => $"""
                 <div class="doc-title">{typeLabel} № {document.DocumentId}</div>
@@ -2964,6 +2981,7 @@ public class DocumentsController : Controller
         DocumentType.Act => "Акт выполненных работ",
         DocumentType.ServiceMemo => "Служебная записка",
         DocumentType.PurchaseRequest => "Заявка на закупку",
+        DocumentType.OutgoingLetter => "Исходящее письмо",
         _ => "Другое"
     };
 

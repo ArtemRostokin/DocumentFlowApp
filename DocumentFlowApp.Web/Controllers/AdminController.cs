@@ -1568,6 +1568,7 @@ public class AdminController : Controller
         DocumentType.Act => "Акт выполненных работ",
         DocumentType.ServiceMemo => "Служебная записка",
         DocumentType.PurchaseRequest => "Заявка на закупку",
+        DocumentType.OutgoingLetter => "Исходящее письмо",
         _ => "Другое"
     };
 

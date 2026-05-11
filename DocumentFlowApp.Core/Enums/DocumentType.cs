@@ -30,6 +30,9 @@ namespace DocumentFlowApp.Core.Enums
         PurchaseRequest = 8,
 
         [Display(Name = "Прочее")]
-        Other = 9
+        Other = 9,
+
+        [Display(Name = "Исходящее письмо")]
+        OutgoingLetter = 10
     }
 }

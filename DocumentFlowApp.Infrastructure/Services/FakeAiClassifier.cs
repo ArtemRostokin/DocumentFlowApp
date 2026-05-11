@@ -16,6 +16,7 @@ public sealed class FakeAiClassifier : IAiClassifier
         new(DocumentType.Application, ["заявление", "application", "request"], ["прошу", "заявитель", "текст заявления"], "Заявление сотрудника или внешнего заявителя."),
         new(DocumentType.ServiceMemo, ["служебная", "записка", "memo"], ["инициатор", "подразделение", "тема записки"], "Внутренняя служебная записка для пояснений и согласований."),
         new(DocumentType.PurchaseRequest, ["закупка", "заявка", "purchase request"], ["обоснование", "плановая сумма", "предмет закупки"], "Заявка на согласование закупки и планового бюджета."),
+        new(DocumentType.OutgoingLetter, ["исходящее", "письмо", "outgoing letter"], ["адресат", "тема письма", "подразделение-инициатор"], "Внешняя корреспонденция, требуется проверка адресата и текста письма."),
         new(DocumentType.Report, ["отчет", "отчёт", "report"], ["итоги", "показатели", "результаты"], "Отчетный документ с итогами или показателями.")
     ];
 
@@ -40,8 +41,8 @@ public sealed class FakeAiClassifier : IAiClassifier
                 SuggestedType = DocumentType.Other,
                 ConfidenceScore = 0.42m,
                 Summary = string.IsNullOrWhiteSpace(source)
-                    ? "Р СњР ВµР Т‘Р С•РЎРѓРЎвЂљР В°РЎвЂљР С•РЎвЂЎР Р…Р С• Р Т‘Р В°Р Р…Р Р…РЎвЂ№РЎвЂ¦ Р Т‘Р В»РЎРЏ РЎС“Р Р†Р ВµРЎР‚Р ВµР Р…Р Р…Р С•Р в„– Р С”Р В»Р В°РЎРѓРЎРѓР С‘РЎвЂћР С‘Р С”Р В°РЎвЂ Р С‘Р С‘."
-                    : "Р СњР В°Р в„–Р Т‘Р ВµР Р…РЎвЂ№ РЎРѓР В»Р С‘РЎв‚¬Р С”Р С•Р С РЎРѓР В»Р В°Р В±РЎвЂ№Р Вµ Р С—РЎР‚Р С‘Р В·Р Р…Р В°Р С”Р С‘, РЎвЂљР С‘Р С— Р Р…РЎС“Р В¶Р Р…Р С• Р С—Р С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р Т‘Р С‘РЎвЂљРЎРЉ Р Р†РЎР‚РЎС“РЎвЂЎР Р…РЎС“РЎР‹.",
+                    ? "Недостаточно данных для уверенной классификации документа."
+                    : "Найден слабый набор признаков, тип нужно подтвердить вручную.",
                 SuggestedTags = ["incoming", "needs-review", "ai-low-confidence"]
             };
         }
@@ -72,7 +73,7 @@ public sealed class FakeAiClassifier : IAiClassifier
         }
 
         var title = string.IsNullOrWhiteSpace(document.Title)
-            ? $"Р вЂќР С•Р С”РЎС“Р СР ВµР Р…РЎвЂљ #{document.DocumentId}"
+            ? $"Документ #{document.DocumentId}"
             : document.Title!;
         var description = string.IsNullOrWhiteSpace(document.ExtractedText)
             ? classification.Summary
@@ -90,42 +91,42 @@ public sealed class FakeAiClassifier : IAiClassifier
             new AiFieldSuggestionResult
             {
                 FieldKey = "type",
-                Label = "Р СћР С‘Р С—",
+                Label = "Тип",
                 SuggestedValue = classification.SuggestedType.ToString(),
                 ConfidenceScore = classification.ConfidenceScore
             },
             new AiFieldSuggestionResult
             {
                 FieldKey = "duedate",
-                Label = "Р РЋРЎР‚Р С•Р С” Р С‘РЎРѓР С—Р С•Р В»Р Р…Р ВµР Р…Р С‘РЎРЏ",
+                Label = "Срок исполнения",
                 SuggestedValue = dueDate,
                 ConfidenceScore = Confidence(classification.ShouldAutoAssignType ? 0.84m : 0.67m)
             },
             new AiFieldSuggestionResult
             {
                 FieldKey = "title",
-                Label = "Р СњР В°Р В·Р Р†Р В°Р Р…Р С‘Р Вµ",
+                Label = "Название",
                 SuggestedValue = title,
                 ConfidenceScore = Confidence(0.88m)
             },
             new AiFieldSuggestionResult
             {
                 FieldKey = "description",
-                Label = "Р С›Р С—Р С‘РЎРѓР В°Р Р…Р С‘Р Вµ",
+                Label = "Описание",
                 SuggestedValue = description,
                 ConfidenceScore = Confidence(string.IsNullOrWhiteSpace(document.ExtractedText) ? 0.63m : 0.86m)
             },
             new AiFieldSuggestionResult
             {
                 FieldKey = "priority",
-                Label = "Р СџРЎР‚Р С‘Р С•РЎР‚Р С‘РЎвЂљР ВµРЎвЂљ",
+                Label = "Приоритет",
                 SuggestedValue = priority,
                 ConfidenceScore = Confidence(classification.SuggestedType == DocumentType.Invoice ? 0.79m : 0.68m)
             },
             new AiFieldSuggestionResult
             {
                 FieldKey = "tags",
-                Label = "Р СћР ВµР С–Р С‘",
+                Label = "Теги",
                 SuggestedValue = tags,
                 ConfidenceScore = Confidence(0.72m)
             }

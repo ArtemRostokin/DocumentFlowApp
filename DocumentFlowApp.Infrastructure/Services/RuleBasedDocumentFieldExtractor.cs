@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.RegularExpressions;
 using DocumentFlowApp.Core.Enums;
 using DocumentFlowApp.Core.Interfaces;
@@ -40,6 +40,7 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
             DocumentType.ServiceMemo => ExtractServiceMemoFields(text),
             DocumentType.PurchaseRequest => ExtractPurchaseRequestFields(text),
             DocumentType.Act => ExtractActFields(text),
+            DocumentType.OutgoingLetter => ExtractOutgoingLetterFields(text),
             _ => []
         };
 
@@ -114,6 +115,18 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
             TryExtractAmount(text, "amount", "Р РЋРЎС“Р СР СР В° Р В°Р С”РЎвЂљР В°", ["РЎРѓРЎС“Р СР СР В° Р В°Р С”РЎвЂљР В°", "РЎРѓРЎвЂљР С•Р С‘Р СР С•РЎРѓРЎвЂљРЎРЉ РЎР‚Р В°Р В±Р С•РЎвЂљ", "РЎРѓРЎвЂљР С•Р С‘Р СР С•РЎРѓРЎвЂљРЎРЉ РЎС“РЎРѓР В»РЎС“Р С–", "РЎРѓРЎС“Р СР СР В°"]),
             TryExtractApplicationText(text, "work_description", "Р С›Р С—Р С‘РЎРѓР В°Р Р…Р С‘Р Вµ РЎР‚Р В°Р В±Р С•РЎвЂљ"));
     }
+    private static IReadOnlyList<ExtractedFieldResult> ExtractOutgoingLetterFields(string text)
+    {
+        return BuildFields(
+            TryExtractNumber(text, "letter_number", "Номер письма", ["номер письма", "исходящее письмо №", "исх. №", "letter no", "outgoing #"]),
+            TryExtractDate(text, "letter_date", "Дата письма", ["дата письма", "исходящее письмо от", "letter date", "date"]),
+            TryExtractLineValue(text, "recipient", "Адресат", ["адресат", "кому", "получатель", "recipient"], allowLongValue: true),
+            TryExtractLineValue(text, "sender_department", "Подразделение-инициатор", ["подразделение-инициатор", "подразделение", "от отдела", "sender department"], allowLongValue: true),
+            TryExtractLineValue(text, "letter_subject", "Тема письма", ["тема письма", "тема", "subject"], allowLongValue: true),
+            TryExtractName(text, "executor", "Исполнитель", ["исполнитель", "подготовил", "responsible"]),
+            TryExtractApplicationText(text, "letter_text", "Текст письма"));
+    }
+
     private static IReadOnlyList<ExtractedFieldResult> BuildFields(params ExtractedFieldResult?[] fields)
         => fields.Where(static field => field is not null).Cast<ExtractedFieldResult>().ToList();
 

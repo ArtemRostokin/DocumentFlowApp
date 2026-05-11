@@ -34,6 +34,7 @@
         DocumentType.Act => "Акт выполненных работ",
         DocumentType.ServiceMemo => "Служебная записка",
         DocumentType.PurchaseRequest => "Заявка на закупку",
+        DocumentType.OutgoingLetter => "Исходящее письмо",
         _ => "Документ"
     };
 
@@ -236,6 +237,20 @@
             <div class="section-title">Обоснование закупки</div>
             <div class="text">@Field("Обоснование закупки", ValueOrDefault(Model.Description, "Обоснование не заполнено."))</div>
             <section class="signatures"><div class="signature-block"><strong>Инициатор</strong><div class="line"></div><div class="hint">подпись</div></div><div class="signature-block"><strong>Финансовое согласование</strong><div class="line"></div><div class="hint">подпись</div></div></section>
+        }
+        else if (Model.Type == DocumentType.OutgoingLetter)
+        {
+            <div class="row"><span></span><span>Адресат: @Field("Адресат", "Не указан")</span></div>
+            <div class="doc-title">Исходящее письмо № @Field("Номер письма", Model.Id.ToString())</div>
+            <div class="doc-subtitle">@Field("Тема письма", Model.Title)</div>
+            <section class="grid">
+                <div class="field"><div class="label">Дата письма</div><div class="value">@Field("Дата письма", DateOnly(Model.DueDate))</div></div>
+                <div class="field"><div class="label">Подразделение-инициатор</div><div class="value">@Field("Подразделение-инициатор")</div></div>
+                <div class="field wide"><div class="label">Исполнитель</div><div class="value">@Field("Исполнитель", "Не указан")</div></div>
+            </section>
+            <div class="section-title">Текст письма</div>
+            <div class="text">@Field("Текст письма", ValueOrDefault(Model.Description, "Текст письма не заполнен."))</div>
+            <section class="signatures"><div class="signature-block"><strong>Исполнитель</strong><div class="line"></div><div class="hint">подпись</div></div><div class="signature-block"><strong>Согласовано</strong><div class="line"></div><div class="hint">подпись / резолюция</div></div></section>
         }
         else
         {

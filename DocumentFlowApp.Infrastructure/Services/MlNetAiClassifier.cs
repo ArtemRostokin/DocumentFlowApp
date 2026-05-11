@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.RegularExpressions;
 using DocumentFlowApp.Core.Entities;
 using DocumentFlowApp.Core.Enums;
@@ -54,6 +54,11 @@ public sealed class MlNetAiClassifier : IAiClassifier
                 ["incoming", "act", "closing"],
                 ["Р°РєС‚", "act"],
                 ["РІС‹РїРѕР»РЅРµРЅРЅС‹С… СЂР°Р±РѕС‚", "РѕРєР°Р·Р°РЅРЅС‹С… СѓСЃР»СѓРі", "РїСЂРёРµРјРєР°", "РїСЂРёРµРјРєРё"]),
+            [DocumentType.OutgoingLetter] = new(
+                "Исходящее письмо организации. Проверьте адресата, тему письма и текст внешнего сообщения.",
+                ["incoming", "outgoing-letter", "correspondence"],
+                ["исходящее письмо", "outgoing letter", "корреспонденция"],
+                ["адресат", "тема письма", "подразделение-инициатор", "исполнитель"]),
             [DocumentType.Other] = new(
                 "РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ СѓРІРµСЂРµРЅРЅРѕРіРѕ СЃРёРіРЅР°Р»Р° РґР»СЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРѕР№ РєР»Р°СЃСЃРёС„РёРєР°С†РёРё, РїСЂРѕРІРµСЂСЊС‚Рµ С‚РёРї РІСЂСѓС‡РЅСѓСЋ.",
                 ["incoming", "needs-review", "other"],
@@ -437,6 +442,12 @@ public sealed class MlNetAiClassifier : IAiClassifier
             new() { Label = nameof(DocumentType.Act), Text = "акт приемки оказанных услуг заказчик исполнитель" },
             new() { Label = nameof(DocumentType.Act), Text = "act of completed work acceptance certificate amount" },
             new() { Label = nameof(DocumentType.Act), Text = "акт сдачи приемки работ дата номер сумма" },
+
+            new() { Label = nameof(DocumentType.OutgoingLetter), Text = "исходящее письмо адресат тема письма подразделение-инициатор исполнитель текст письма" },
+            new() { Label = nameof(DocumentType.OutgoingLetter), Text = "outgoing letter recipient subject sender department official correspondence" },
+            new() { Label = nameof(DocumentType.OutgoingLetter), Text = "сопроводительное письмо адресат направление документов исходящая корреспонденция" },
+            new() { Label = nameof(DocumentType.OutgoingLetter), Text = "официальное письмо контрагенту тема письма исполнитель дата письма" },
+            new() { Label = nameof(DocumentType.OutgoingLetter), Text = "исходящая корреспонденция ответ на запрос внешнему адресату" },
 
             new() { Label = nameof(DocumentType.Other), Text = "скан документа вложение без явных реквизитов" },
             new() { Label = nameof(DocumentType.Other), Text = "misc file attachment scan image document" },
