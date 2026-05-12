@@ -1,5 +1,9 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
+using System.Security;
+using System.Text;
 using System.Text.Json;
+using System.IO.Compression;
+using System.Diagnostics;
 using DocumentFlowApp.Core.Audit;
 using DocumentFlowApp.Core.Entities;
 using DocumentFlowApp.Core.Enums;
@@ -58,6 +62,23 @@ public class AdminController : Controller
     public async Task<IActionResult> ReportDocument(DateTime? dateFrom, DateTime? dateTo, DocumentType? type, string? status, CancellationToken cancellationToken)
     {
         return View(await BuildReportPageAsync(dateFrom, dateTo, type, status, cancellationToken));
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> ExportReportDocx(DateTime? dateFrom, DateTime? dateTo, DocumentType? type, string? status, CancellationToken cancellationToken)
+    {
+        var model = await BuildReportPageAsync(dateFrom, dateTo, type, status, cancellationToken);
+        var fileName = $"admin-report-{model.DateFrom:yyyyMMdd}-{model.DateTo:yyyyMMdd}.docx";
+        return File(BuildReportDocx(model), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", fileName);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> ExportReportPdf(DateTime? dateFrom, DateTime? dateTo, DocumentType? type, string? status, CancellationToken cancellationToken)
+    {
+        var model = await BuildReportPageAsync(dateFrom, dateTo, type, status, cancellationToken);
+        var fileName = $"admin-report-{model.DateFrom:yyyyMMdd}-{model.DateTo:yyyyMMdd}.pdf";
+        var content = await BuildReportPdfAsync(model, cancellationToken);
+        return File(content, "application/pdf", fileName);
     }
 
     [HttpPost]
@@ -1590,6 +1611,369 @@ public class AdminController : Controller
         AppRoles.Employee => "Исполнители",
         _ => "Прочие роли"
     };
+
+    private static byte[] BuildReportDocx(AdminReportPageViewModel model)
+    {
+        using var memory = new MemoryStream();
+        using (var archive = new ZipArchive(memory, ZipArchiveMode.Create, true))
+        {
+            AddReportZipEntry(archive, "[Content_Types].xml", """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+                  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+                  <Default Extension="xml" ContentType="application/xml"/>
+                  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+                </Types>
+                """);
+            AddReportZipEntry(archive, "_rels/.rels", """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+                </Relationships>
+                """);
+            AddReportZipEntry(archive, "word/document.xml", BuildReportDocxXml(model));
+        }
+
+        return memory.ToArray();
+    }
+
+    private static string BuildReportDocxXml(AdminReportPageViewModel model)
+    {
+        var body = new StringBuilder();
+        AppendReportWordParagraph(body, "ООО «Документооборот»", bold: true, centered: true, fontSize: 28);
+        AppendReportWordParagraph(body, "Административный отчет по документообороту", bold: true, centered: true, fontSize: 30);
+        AppendReportWordParagraph(body, $"Период: {model.DateFrom:dd.MM.yyyy} - {model.DateTo:dd.MM.yyyy}", centered: true, fontSize: 22);
+        AppendReportWordParagraph(body, $"Фильтр: {(model.SelectedType.HasValue ? GetDocumentTypeLabel(model.SelectedType.Value) : "Все типы")} / {GetStatusFilterLabel(model.SelectedStatus)}", centered: true, fontSize: 20);
+        AppendReportWordParagraph(body, string.Empty);
+
+        AppendReportWordSection(body, "Сводные показатели");
+        AppendReportWordTable(body,
+        [
+            ["Показатель", "Значение"],
+            ["Всего документов", model.TotalDocuments.ToString()],
+            ["Завершено", model.CompletedDocuments.ToString()],
+            ["В работе / на согласовании", model.PendingDocuments.ToString()],
+            ["Просрочено", model.OverdueDocuments.ToString()],
+            ["Средний цикл (дн.)", model.AverageCycleDays.ToString("0.0")]
+        ]);
+
+        AppendReportBreakdownSection(body, "Структура по статусам", model.StatusBreakdown);
+        AppendReportBreakdownSection(body, "Структура по типам документов", model.TypeBreakdown);
+        AppendReportCycleSection(body, model.AverageCycleByType);
+        AppendReportDocumentSection(body, "Просроченные документы", model.OverdueItems);
+        AppendReportDocumentSection(body, "Последние документы", model.RecentItems);
+
+        return $"""
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
+                        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                        xmlns:o="urn:schemas-microsoft-com:office:office"
+                        xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+                        xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"
+                        xmlns:v="urn:schemas-microsoft-com:vml"
+                        xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing"
+                        xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+                        xmlns:w10="urn:schemas-microsoft-com:office:word"
+                        xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                        xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
+                        xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"
+                        xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk"
+                        xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml"
+                        xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+                        mc:Ignorable="w14 wp14">
+              <w:body>
+                {body}
+                <w:sectPr>
+                  <w:pgSz w:w="11906" w:h="16838"/>
+                  <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/>
+                </w:sectPr>
+              </w:body>
+            </w:document>
+            """;
+    }
+
+    private static async Task<byte[]> BuildReportPdfAsync(AdminReportPageViewModel model, CancellationToken cancellationToken)
+    {
+        var browserPath = ResolveReportPdfBrowserExecutable();
+        var tempRoot = Path.Combine(Path.GetTempPath(), "DocumentFlowApp", "report-exports");
+        Directory.CreateDirectory(tempRoot);
+
+        var token = Guid.NewGuid().ToString("N");
+        var htmlPath = Path.Combine(tempRoot, $"admin-report-{token}.html");
+        var pdfPath = Path.Combine(tempRoot, $"admin-report-{token}.pdf");
+
+        try
+        {
+            await System.IO.File.WriteAllTextAsync(htmlPath, BuildReportExportHtml(model), new UTF8Encoding(false), cancellationToken);
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = browserPath,
+                Arguments = $"--headless --disable-gpu --allow-file-access-from-files --print-to-pdf-no-header --no-pdf-header-footer --print-to-pdf=\"{pdfPath}\" \"{new Uri(htmlPath).AbsoluteUri}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true
+            };
+
+            using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Не удалось запустить браузер для генерации PDF.");
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(45));
+            await process.WaitForExitAsync(timeoutCts.Token);
+
+            var stdError = await process.StandardError.ReadToEndAsync();
+            if (process.ExitCode != 0 || !System.IO.File.Exists(pdfPath))
+                throw new InvalidOperationException($"Не удалось сформировать PDF-отчет. {stdError}".Trim());
+
+            return await System.IO.File.ReadAllBytesAsync(pdfPath, cancellationToken);
+        }
+        finally
+        {
+            TryDeleteReportFile(htmlPath);
+            TryDeleteReportFile(pdfPath);
+        }
+    }
+
+    private static string BuildReportExportHtml(AdminReportPageViewModel model)
+    {
+        static string Html(string? value) => System.Net.WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(value) ? "Не указано" : value);
+
+        var builder = new StringBuilder();
+        builder.Append("<!DOCTYPE html><html lang=\"ru\"><head><meta charset=\"utf-8\"><title>Админский отчет</title><style>")
+            .Append("body{margin:0;background:#eef2f7;color:#111827;font-family:\"Times New Roman\",serif;}main{width:210mm;min-height:297mm;margin:18px auto;background:#fff;padding:18mm 20mm;box-sizing:border-box;box-shadow:0 12px 32px rgba(15,23,42,.16);}h1,h2{margin:0 0 12px;}h1{text-align:center;font-size:22px;text-transform:uppercase;}h2{margin-top:24px;font-size:16px;border-bottom:1px solid #d1d5db;padding-bottom:4px;}p{margin:0 0 8px;font-size:14px;line-height:1.5}.meta{font-size:13px;color:#475569;text-align:center;margin-bottom:18px}.tbl{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}.tbl th,.tbl td{border:1px solid #cbd5e1;padding:8px 10px;vertical-align:top}.tbl th{background:#f8fafc;text-align:left;font-family:Arial,sans-serif;font-size:11px;text-transform:uppercase}.org{text-align:center;margin-bottom:18px}.org strong{font-size:18px}.section{margin-top:20px}@media print{body{background:#fff;}main{margin:0;box-shadow:none;}}")
+            .Append("</style></head><body><main><div class=\"org\"><strong>ООО «Документооборот»</strong><br>Административная отчетность DocManager</div>")
+            .Append("<h1>Отчет по документообороту</h1><div class=\"meta\">Период: ")
+            .Append(model.DateFrom.ToString("dd.MM.yyyy"))
+            .Append(" - ")
+            .Append(model.DateTo.ToString("dd.MM.yyyy"))
+            .Append("<br>Фильтр: ")
+            .Append(Html(model.SelectedType.HasValue ? GetDocumentTypeLabel(model.SelectedType.Value) : "Все типы"))
+            .Append(" / ")
+            .Append(Html(GetStatusFilterLabel(model.SelectedStatus)))
+            .Append("<br>Сформирован: ")
+            .Append(model.GeneratedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm"))
+            .Append("</div>");
+
+        AppendReportHtmlTable(builder, "Сводные показатели",
+        [
+            ["Показатель", "Значение"],
+            ["Всего документов", model.TotalDocuments.ToString()],
+            ["Завершено", model.CompletedDocuments.ToString()],
+            ["В работе / на согласовании", model.PendingDocuments.ToString()],
+            ["Просрочено", model.OverdueDocuments.ToString()],
+            ["Средний цикл (дн.)", model.AverageCycleDays.ToString("0.0")]
+        ]);
+
+        AppendReportHtmlBreakdown(builder, "Структура по статусам", model.StatusBreakdown);
+        AppendReportHtmlBreakdown(builder, "Структура по типам документов", model.TypeBreakdown);
+        AppendReportHtmlCycle(builder, model.AverageCycleByType);
+        AppendReportHtmlDocuments(builder, "Просроченные документы", model.OverdueItems);
+        AppendReportHtmlDocuments(builder, "Последние документы", model.RecentItems);
+
+        builder.Append("</main></body></html>");
+        return builder.ToString();
+    }
+
+    private static void AppendReportWordParagraph(StringBuilder builder, string text, bool bold = false, bool centered = false, int fontSize = 22)
+    {
+        var safeText = SecurityElement.Escape(text ?? string.Empty) ?? string.Empty;
+        var paragraphStart = centered ? "<w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr>" : "<w:p>";
+        var runProperties = bold
+            ? $"<w:rPr><w:b/><w:sz w:val=\"{fontSize}\"/><w:szCs w:val=\"{fontSize}\"/></w:rPr>"
+            : $"<w:rPr><w:sz w:val=\"{fontSize}\"/><w:szCs w:val=\"{fontSize}\"/></w:rPr>";
+
+        builder.Append(paragraphStart)
+            .Append("<w:r>")
+            .Append(runProperties)
+            .Append("<w:t xml:space=\"preserve\">")
+            .Append(string.IsNullOrEmpty(safeText) ? " " : safeText)
+            .Append("</w:t></w:r></w:p>");
+    }
+
+    private static void AppendReportWordSection(StringBuilder builder, string text)
+    {
+        var safeText = SecurityElement.Escape(text ?? string.Empty) ?? string.Empty;
+        builder.Append($"""
+            <w:p>
+              <w:pPr><w:spacing w:before="180" w:after="80"/><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="D1D5DB"/></w:pBdr></w:pPr>
+              <w:r><w:rPr><w:b/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr><w:t xml:space="preserve">{safeText}</w:t></w:r>
+            </w:p>
+            """);
+    }
+
+    private static void AppendReportWordTable(StringBuilder builder, IReadOnlyList<string[]> rows)
+    {
+        if (rows.Count == 0)
+            return;
+
+        builder.Append("""
+            <w:tbl>
+              <w:tblPr>
+                <w:tblW w:w="0" w:type="auto"/>
+                <w:tblBorders>
+                  <w:top w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                  <w:left w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                  <w:bottom w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                  <w:right w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                  <w:insideH w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                  <w:insideV w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                </w:tblBorders>
+              </w:tblPr>
+            """);
+
+        for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+        {
+            var row = rows[rowIndex];
+            builder.Append("<w:tr>");
+            foreach (var cell in row)
+            {
+                var safeCell = SecurityElement.Escape(cell ?? string.Empty) ?? string.Empty;
+                var isHeader = rowIndex == 0;
+                builder.Append($"""
+                    <w:tc>
+                      <w:tcPr><w:shd w:val="clear" w:fill="{(isHeader ? "F8FAFC" : "FFFFFF")}"/></w:tcPr>
+                      <w:p><w:r><w:rPr>{(isHeader ? "<w:b/>" : string.Empty)}<w:sz w:val="{(isHeader ? "20" : "22")}"/><w:szCs w:val="{(isHeader ? "20" : "22")}"/></w:rPr><w:t xml:space="preserve">{safeCell}</w:t></w:r></w:p>
+                    </w:tc>
+                    """);
+            }
+            builder.Append("</w:tr>");
+        }
+
+        builder.Append("</w:tbl>");
+        AppendReportWordParagraph(builder, string.Empty);
+    }
+
+    private static void AppendReportBreakdownSection(StringBuilder builder, string title, IReadOnlyList<AdminReportBreakdownItemViewModel> items)
+    {
+        AppendReportWordSection(builder, title);
+        var rows = new List<string[]> { new[] { "Показатель", "Количество", "Доля, %" } };
+        rows.AddRange(items.Select(x => new[] { x.Label, x.Count.ToString(), x.SharePercent.ToString("0.0") }));
+        AppendReportWordTable(builder, rows);
+    }
+
+    private static void AppendReportCycleSection(StringBuilder builder, IReadOnlyList<AdminReportCycleByTypeItemViewModel> items)
+    {
+        AppendReportWordSection(builder, "Средний срок исполнения по типам");
+        var rows = new List<string[]> { new[] { "Тип документа", "Завершено", "Средний срок (дн.)", "Просрочено" } };
+        rows.AddRange(items.Select(x => new[] { x.Label, x.CompletedCount.ToString(), x.AverageDays.ToString("0.0"), x.OverdueCount.ToString() }));
+        AppendReportWordTable(builder, rows);
+    }
+
+    private static void AppendReportDocumentSection(StringBuilder builder, string title, IReadOnlyList<AdminReportDocumentRowViewModel> items)
+    {
+        AppendReportWordSection(builder, title);
+        var rows = new List<string[]> { new[] { "ID", "Название", "Тип", "Статус", "Ответственный", "Создан", "Срок" } };
+        rows.AddRange(items.Select(x => new[]
+        {
+            x.Id.ToString(),
+            x.Title,
+            x.TypeLabel,
+            x.StatusLabel,
+            x.OwnerLabel,
+            x.CreatedDateUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm"),
+            x.DueDateUtc?.ToLocalTime().ToString("dd.MM.yyyy") ?? "—"
+        }));
+        AppendReportWordTable(builder, rows);
+    }
+
+    private static void AppendReportHtmlTable(StringBuilder builder, string title, IReadOnlyList<string[]> rows)
+    {
+        builder.Append("<section class=\"section\"><h2>")
+            .Append(System.Net.WebUtility.HtmlEncode(title))
+            .Append("</h2><table class=\"tbl\">");
+
+        for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+        {
+            builder.Append("<tr>");
+            foreach (var cell in rows[rowIndex])
+            {
+                var tag = rowIndex == 0 ? "th" : "td";
+                builder.Append('<').Append(tag).Append('>')
+                    .Append(System.Net.WebUtility.HtmlEncode(cell))
+                    .Append("</").Append(tag).Append('>');
+            }
+            builder.Append("</tr>");
+        }
+
+        builder.Append("</table></section>");
+    }
+
+    private static void AppendReportHtmlBreakdown(StringBuilder builder, string title, IReadOnlyList<AdminReportBreakdownItemViewModel> items)
+    {
+        var rows = new List<string[]> { new[] { "Показатель", "Количество", "Доля, %" } };
+        rows.AddRange(items.Select(x => new[] { x.Label, x.Count.ToString(), x.SharePercent.ToString("0.0") }));
+        AppendReportHtmlTable(builder, title, rows);
+    }
+
+    private static void AppendReportHtmlCycle(StringBuilder builder, IReadOnlyList<AdminReportCycleByTypeItemViewModel> items)
+    {
+        var rows = new List<string[]> { new[] { "Тип документа", "Завершено", "Средний срок (дн.)", "Просрочено" } };
+        rows.AddRange(items.Select(x => new[] { x.Label, x.CompletedCount.ToString(), x.AverageDays.ToString("0.0"), x.OverdueCount.ToString() }));
+        AppendReportHtmlTable(builder, "Средний срок исполнения по типам", rows);
+    }
+
+    private static void AppendReportHtmlDocuments(StringBuilder builder, string title, IReadOnlyList<AdminReportDocumentRowViewModel> items)
+    {
+        var rows = new List<string[]> { new[] { "ID", "Название", "Тип", "Статус", "Ответственный", "Создан", "Срок" } };
+        rows.AddRange(items.Select(x => new[]
+        {
+            x.Id.ToString(),
+            x.Title,
+            x.TypeLabel,
+            x.StatusLabel,
+            x.OwnerLabel,
+            x.CreatedDateUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm"),
+            x.DueDateUtc?.ToLocalTime().ToString("dd.MM.yyyy") ?? "—"
+        }));
+        AppendReportHtmlTable(builder, title, rows);
+    }
+
+    private static string ResolveReportPdfBrowserExecutable()
+    {
+        var candidates = new[]
+        {
+            @"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+            @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            @"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            @"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (System.IO.File.Exists(candidate))
+                return candidate;
+        }
+
+        throw new InvalidOperationException("На компьютере не найден Microsoft Edge или Google Chrome для генерации PDF-отчета.");
+    }
+
+    private static void AddReportZipEntry(ZipArchive archive, string path, string content)
+    {
+        var entry = archive.CreateEntry(path, CompressionLevel.Fastest);
+        using var stream = entry.Open();
+        using var writer = new StreamWriter(stream, new UTF8Encoding(false));
+        writer.Write(content.Trim());
+    }
+
+    private static void TryDeleteReportFile(string path)
+    {
+        try
+        {
+            if (System.IO.File.Exists(path))
+                System.IO.File.Delete(path);
+        }
+        catch
+        {
+            // Временный файл не критичен для пользовательского сценария.
+        }
+    }
+
+    private static string GetStatusFilterLabel(string? status)
+    {
+        return Enum.TryParse<DocumentStatus>(status, true, out var statusValue)
+            ? GetStatusLabel(statusValue)
+            : "Все статусы";
+    }
 
     private static AdminReportDocumentRowViewModel MapReportRow(Document document)
     {

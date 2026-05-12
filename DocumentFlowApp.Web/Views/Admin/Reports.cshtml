@@ -461,6 +461,22 @@
                 <p class="text-muted mb-0">Рабочая аналитическая панель по документам, срокам исполнения и загрузке пользователей.</p>
             </div>
             <div class="d-flex gap-2 flex-wrap">
+                <a asp-action="ExportReportDocx"
+                   asp-route-dateFrom="@Model.DateFrom.ToString("yyyy-MM-dd")"
+                   asp-route-dateTo="@Model.DateTo.ToString("yyyy-MM-dd")"
+                   asp-route-type="@Model.SelectedType"
+                   asp-route-status="@Model.SelectedStatus"
+                   class="btn btn-outline-success">
+                    Экспорт DOCX
+                </a>
+                <a asp-action="ExportReportPdf"
+                   asp-route-dateFrom="@Model.DateFrom.ToString("yyyy-MM-dd")"
+                   asp-route-dateTo="@Model.DateTo.ToString("yyyy-MM-dd")"
+                   asp-route-type="@Model.SelectedType"
+                   asp-route-status="@Model.SelectedStatus"
+                   class="btn btn-outline-danger">
+                    Экспорт PDF
+                </a>
                 <a asp-action="ReportDocument"
                    asp-route-dateFrom="@Model.DateFrom.ToString("yyyy-MM-dd")"
                    asp-route-dateTo="@Model.DateTo.ToString("yyyy-MM-dd")"

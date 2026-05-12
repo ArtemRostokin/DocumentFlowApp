@@ -261,6 +261,16 @@
 </head>
 <body>
     <div class="toolbar">
+        <a asp-action="ExportReportDocx"
+           asp-route-dateFrom="@Model.DateFrom.ToString("yyyy-MM-dd")"
+           asp-route-dateTo="@Model.DateTo.ToString("yyyy-MM-dd")"
+           asp-route-type="@Model.SelectedType"
+           asp-route-status="@Model.SelectedStatus">Экспорт DOCX</a>
+        <a asp-action="ExportReportPdf"
+           asp-route-dateFrom="@Model.DateFrom.ToString("yyyy-MM-dd")"
+           asp-route-dateTo="@Model.DateTo.ToString("yyyy-MM-dd")"
+           asp-route-type="@Model.SelectedType"
+           asp-route-status="@Model.SelectedStatus">Экспорт PDF</a>
         <button type="button" onclick="window.print()">Печать</button>
         <a asp-action="Reports"
            asp-route-dateFrom="@Model.DateFrom.ToString("yyyy-MM-dd")"
