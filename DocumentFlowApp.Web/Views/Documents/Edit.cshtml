@@ -145,6 +145,8 @@
             <div class="flex items-center gap-3">
                 <a href="@Url.Action("Index", "Home")" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900">Назад к доске</a>
                 <a asp-controller="Account" asp-action="Profile" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 ring-1 ring-slate-200 hover:text-slate-900 hover:bg-slate-50">Мой профиль</a>
+                <a href="/Documents/@Model.Id/export/docx" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 ring-1 ring-slate-200 hover:text-slate-900 hover:bg-slate-50">Скачать DOCX</a>
+                <a href="/Documents/@Model.Id/export/pdf" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 ring-1 ring-slate-200 hover:text-slate-900 hover:bg-slate-50">Скачать PDF</a>
                 @if (!isEmployeeRole)
                 {
                     <a href="/Documents/@Model.Id/print-form" target="_blank" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 ring-1 ring-slate-200 hover:text-slate-900 hover:bg-slate-50">Печатная форма</a>

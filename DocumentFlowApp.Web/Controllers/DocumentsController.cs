@@ -1,4 +1,7 @@
-﻿using System.Security.Claims;
+using System.Diagnostics;
+using System.IO.Compression;
+using System.Security;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -319,6 +322,46 @@ public class DocumentsController : Controller
         ApplyExecutionHints(model);
 
         return View(model);
+    }
+
+    [HttpGet]
+    [Authorize(Policy = AuthorizationPolicies.EmployeeOrHigher)]
+    [Route("Documents/{id:int}/export/docx")]
+    public async Task<IActionResult> ExportDocx(int id, CancellationToken cancellationToken)
+    {
+        var document = await LoadDocumentForGeneratedFileAsync(id);
+        if (document.Result is not null)
+            return document.Result;
+
+        var exportDefinition = BuildDocumentExportDefinition(document.Document!);
+        var fileName = BuildDocumentExportFileName(document.Document!, "docx");
+        var bytes = BuildDocxDocument(exportDefinition);
+
+        return File(bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", fileName);
+    }
+
+    [HttpGet]
+    [Authorize(Policy = AuthorizationPolicies.EmployeeOrHigher)]
+    [Route("Documents/{id:int}/export/pdf")]
+    public async Task<IActionResult> ExportPdf(int id, CancellationToken cancellationToken)
+    {
+        var document = await LoadDocumentForGeneratedFileAsync(id);
+        if (document.Result is not null)
+            return document.Result;
+
+        try
+        {
+            var exportDefinition = BuildDocumentExportDefinition(document.Document!);
+            var fileName = BuildDocumentExportFileName(document.Document!, "pdf");
+            var bytes = await BuildPdfDocumentAsync(exportDefinition, cancellationToken);
+            return File(bytes, "application/pdf", fileName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось сформировать PDF для документа {DocumentId}", id);
+            TempData["ErrorMessage"] = "Не удалось сформировать PDF-файл. Проверьте, что на компьютере доступен Microsoft Edge, и повторите попытку.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
     }
 
     [HttpPost]
@@ -3182,6 +3225,885 @@ public class DocumentsController : Controller
         model.Assignment = await BuildAssignmentPanelAsync(doc, CancellationToken.None);
         ApplyExecutionHints(model);
         ApplyEditAccessState(model, doc);
+    }
+
+    private async Task<(Document? Document, IActionResult? Result)> LoadDocumentForGeneratedFileAsync(int id)
+    {
+        var document = await _documentService.GetDocumentByIdAsync(id);
+        if (document is null)
+            return (null, NotFound());
+
+        var currentUserId = GetCurrentUserId();
+        if (!IsManagerOrAdmin() && document.UserId != currentUserId)
+            return (null, RedirectAccessDenied("У вас нет доступа к файлам этого документа."));
+
+        return (document, null);
+    }
+
+    private static string BuildDocumentExportFileName(Document document, string extension)
+    {
+        var type = TryParseEnum<DocumentType>(document.DocumentType) ?? DocumentType.Other;
+        return $"{type.ToString().ToLowerInvariant()}-{document.DocumentId}-{DateTime.Now:yyyyMMddHHmmss}.{extension}";
+    }
+
+    private static DocumentExportDefinition BuildDocumentExportDefinition(Document document)
+    {
+        var type = TryParseEnum<DocumentType>(document.DocumentType) ?? DocumentType.Other;
+        var status = ParseDocumentStatus(document.Status);
+
+        string ValueOrDefault(string? value, string fallback = "Не указано") => string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+        string Field(string label, string fallback = "Не указано") => ValueOrDefault(GetTemplateFieldValue(document.ExtractedText, label, fallback), fallback);
+        string DateOnly(DateTime? value) => value.HasValue ? value.Value.ToLocalTime().ToString("dd.MM.yyyy") : "Не указано";
+
+        var headerFields = new List<DocumentExportField>
+        {
+            new("Тип документа", GetDocumentTypeLabel(type)),
+            new("Статус", GetDocumentStatusLabel(status)),
+            new("Номер карточки", document.DocumentId.ToString()),
+            new("Дата создания", document.CreatedDate.ToLocalTime().ToString("dd.MM.yyyy HH:mm"))
+        };
+
+        if (document.DueDate.HasValue)
+            headerFields.Add(new("Срок / дата документа", DateOnly(document.DueDate)));
+
+        if (document.Priority.HasValue)
+            headerFields.Add(new("Приоритет", document.Priority.Value.ToString()));
+
+        if (!string.IsNullOrWhiteSpace(document.Tags))
+            headerFields.Add(new("Теги", document.Tags));
+
+        var sections = new List<DocumentExportSection>();
+        string title;
+        string? subtitle = null;
+
+        switch (type)
+        {
+            case DocumentType.Contract:
+                title = $"Договор № {Field("Номер договора", document.DocumentId.ToString())}";
+                subtitle = Field("Предмет договора", ValueOrDefault(document.Title, "Предмет договора"));
+                sections.Add(new DocumentExportSection(
+                    "Реквизиты договора",
+                    fields:
+                    [
+                        new("Дата договора", Field("Дата договора", DateOnly(document.DueDate))),
+                        new("Контрагент", Field("Контрагент")),
+                        new("Сумма договора", Field("Сумма договора")),
+                        new("Срок исполнения", DateOnly(document.DueDate))
+                    ]));
+                sections.Add(new DocumentExportSection("Предмет договора", text: Field("Предмет договора", ValueOrDefault(document.Title))));
+                sections.Add(new DocumentExportSection("Дополнительные сведения", text: ValueOrDefault(document.ExtractedText, "Дополнительные сведения отсутствуют.")));
+                break;
+            case DocumentType.Invoice:
+                title = $"Счет на оплату № {Field("Номер счета", document.DocumentId.ToString())}";
+                sections.Add(new DocumentExportSection(
+                    "Реквизиты счета",
+                    fields:
+                    [
+                        new("Поставщик", Field("Поставщик", "ООО «Документооборот»")),
+                        new("Дата счета", Field("Дата счета", DateOnly(document.DueDate))),
+                        new("Сумма", Field("Сумма")),
+                        new("Срок оплаты", Field("Срок оплаты", DateOnly(document.DueDate))),
+                        new("Основание", ValueOrDefault(document.Title))
+                    ]));
+                sections.Add(new DocumentExportSection("Содержание", text: ValueOrDefault(document.ExtractedText, ValueOrDefault(document.Title))));
+                break;
+            case DocumentType.Application:
+                title = "Заявление";
+                subtitle = Field("Тема обращения", ValueOrDefault(document.Title, "Тема обращения"));
+                sections.Add(new DocumentExportSection(
+                    "Сведения о заявителе",
+                    fields:
+                    [
+                        new("ФИО сотрудника", Field("ФИО сотрудника")),
+                        new("Подразделение", Field("Подразделение"))
+                    ]));
+                sections.Add(new DocumentExportSection("Текст заявления", text: Field("Текст заявления", ValueOrDefault(document.ExtractedText, "Текст заявления не заполнен."))));
+                break;
+            case DocumentType.Order:
+                title = $"Приказ № {Field("Номер приказа", document.DocumentId.ToString())}";
+                subtitle = Field("Предмет приказа", ValueOrDefault(document.Title, "Приказ"));
+                sections.Add(new DocumentExportSection(
+                    "Реквизиты приказа",
+                    fields:
+                    [
+                        new("Дата приказа", Field("Дата приказа", DateOnly(document.DueDate))),
+                        new("Основание", Field("Основание", ValueOrDefault(document.Title))),
+                        new("Ответственный", Field("Ответственный", "Не указан"))
+                    ]));
+                sections.Add(new DocumentExportSection("Текст приказа", text: Field("Текст приказа", ValueOrDefault(document.ExtractedText, "Содержание приказа не заполнено."))));
+                break;
+            case DocumentType.Act:
+                title = $"Акт выполненных работ № {Field("Номер акта", document.DocumentId.ToString())}";
+                subtitle = ValueOrDefault(document.Title, "Акт выполненных работ");
+                sections.Add(new DocumentExportSection(
+                    "Реквизиты акта",
+                    fields:
+                    [
+                        new("Дата акта", Field("Дата акта", DateOnly(document.DueDate))),
+                        new("Контрагент", Field("Контрагент", "Не указан")),
+                        new("Основание", Field("Основание")),
+                        new("Сумма акта", Field("Сумма акта", Field("Сумма", "Не указано")))
+                    ]));
+                sections.Add(new DocumentExportSection("Описание работ", text: Field("Описание работ", ValueOrDefault(document.ExtractedText, "Содержание акта не заполнено."))));
+                break;
+            case DocumentType.ServiceMemo:
+                title = $"Служебная записка № {Field("Номер записки", document.DocumentId.ToString())}";
+                subtitle = Field("Тема записки", ValueOrDefault(document.Title, "Служебная записка"));
+                sections.Add(new DocumentExportSection(
+                    "Реквизиты записки",
+                    fields:
+                    [
+                        new("Инициатор", Field("Инициатор", "Сотрудник")),
+                        new("Подразделение", Field("Подразделение")),
+                        new("Дата записки", Field("Дата записки", DateOnly(document.DueDate)))
+                    ]));
+                sections.Add(new DocumentExportSection("Содержание", text: Field("Содержание записки", ValueOrDefault(document.ExtractedText, "Текст записки не заполнен."))));
+                break;
+            case DocumentType.PurchaseRequest:
+                title = $"Заявка на закупку № {Field("Номер заявки", document.DocumentId.ToString())}";
+                subtitle = Field("Предмет закупки", ValueOrDefault(document.Title, "Заявка на закупку"));
+                sections.Add(new DocumentExportSection(
+                    "Реквизиты заявки",
+                    fields:
+                    [
+                        new("Инициатор", Field("Инициатор", "Не указан")),
+                        new("Подразделение", Field("Подразделение")),
+                        new("Дата заявки", Field("Дата заявки", DateOnly(document.DueDate))),
+                        new("Количество", Field("Количество")),
+                        new("Плановая сумма", Field("Плановая сумма", Field("Сумма", "Не указано")))
+                    ]));
+                sections.Add(new DocumentExportSection("Обоснование закупки", text: Field("Обоснование закупки", ValueOrDefault(document.ExtractedText, "Обоснование не заполнено."))));
+                break;
+            case DocumentType.OutgoingLetter:
+                title = $"Исходящее письмо № {Field("Номер письма", document.DocumentId.ToString())}";
+                subtitle = Field("Тема письма", ValueOrDefault(document.Title, "Исходящее письмо"));
+                sections.Add(new DocumentExportSection(
+                    "Реквизиты письма",
+                    fields:
+                    [
+                        new("Адресат", Field("Адресат", "Не указан")),
+                        new("Дата письма", Field("Дата письма", DateOnly(document.DueDate))),
+                        new("Подразделение-инициатор", Field("Подразделение-инициатор")),
+                        new("Исполнитель", Field("Исполнитель", "Не указан"))
+                    ]));
+                sections.Add(new DocumentExportSection("Текст письма", text: Field("Текст письма", ValueOrDefault(document.ExtractedText, "Текст письма не заполнен."))));
+                break;
+            case DocumentType.Report:
+                title = ValueOrDefault(document.Title, $"Отчет № {document.DocumentId}");
+                sections.Add(new DocumentExportSection(
+                    "Реквизиты отчета",
+                    fields:
+                    [
+                        new("Номер отчета", Field("Номер отчета", document.DocumentId.ToString())),
+                        new("Дата отчета", Field("Дата отчета", DateOnly(document.DueDate))),
+                        new("Период отчета", Field("Период отчета")),
+                        new("Подготовил", Field("Подготовил", "Не указано")),
+                        new("Подразделение", Field("Подразделение", "Не указано"))
+                    ]));
+                sections.Add(new DocumentExportSection("Ключевые показатели", text: Field("Ключевые показатели", ValueOrDefault(document.ExtractedText, "Ключевые показатели не заполнены."))));
+                sections.Add(new DocumentExportSection("Выводы", text: Field("Выводы", "Не указано")));
+                break;
+            default:
+                title = ValueOrDefault(document.Title, $"{GetDocumentTypeLabel(type)} № {document.DocumentId}");
+                sections.Add(new DocumentExportSection("Содержание", text: ValueOrDefault(document.ExtractedText, "Содержание не заполнено.")));
+                break;
+        }
+
+        sections.Add(new DocumentExportSection("Служебные данные карточки", fields: headerFields));
+
+        return new DocumentExportDefinition(
+            $"{type.ToString().ToLowerInvariant()}-{document.DocumentId}",
+            title,
+            subtitle,
+            headerFields,
+            sections);
+    }
+
+    private static byte[] BuildDocxDocument(DocumentExportDefinition definition)
+    {
+        using var memory = new MemoryStream();
+        using (var archive = new ZipArchive(memory, ZipArchiveMode.Create, true))
+        {
+            AddZipEntry(archive, "[Content_Types].xml", """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+                  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+                  <Default Extension="xml" ContentType="application/xml"/>
+                  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+                </Types>
+                """);
+            AddZipEntry(archive, "_rels/.rels", """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+                </Relationships>
+                """);
+            AddZipEntry(archive, "word/document.xml", BuildDocxDocumentXml(definition));
+        }
+
+        return memory.ToArray();
+    }
+
+    private static string BuildDocxDocumentXml(DocumentExportDefinition definition)
+    {
+        var body = new StringBuilder();
+        AppendWordParagraph(body, "ООО «Документооборот»", bold: true, centered: true, fontSize: 28);
+        AppendWordParagraph(body, "190000, г. Санкт-Петербург, Невский проспект, д. 1", centered: true, fontSize: 20);
+        AppendWordParagraph(body, "ИНН 7800000000 / КПП 780001001", centered: true, fontSize: 20);
+        AppendWordParagraph(body, "Электронная система документационного обеспечения управления", centered: true, fontSize: 20);
+        AppendWordSeparator(body);
+        AppendWordParagraph(body, string.Empty);
+        AppendWordParagraph(body, definition.Title, bold: true, centered: true, fontSize: 30);
+
+        if (!string.IsNullOrWhiteSpace(definition.Subtitle))
+            AppendWordParagraph(body, definition.Subtitle!, bold: true, centered: true, fontSize: 24);
+
+        AppendWordParagraph(body, string.Empty);
+
+        var typeKey = GetExportTypeKey(definition);
+        if (typeKey is "contract" or "invoice" or "application")
+        {
+            AppendCustomWordBody(body, definition, typeKey);
+        }
+        else
+        {
+            foreach (var section in definition.Sections)
+            {
+                AppendWordParagraph(body, section.Title, bold: true, fontSize: 24);
+
+                if (section.Fields.Count > 0)
+                    AppendWordTable(body, section.Fields);
+
+                if (!string.IsNullOrWhiteSpace(section.Text))
+                    AppendWordParagraph(body, section.Text!, fontSize: 22);
+
+                AppendWordParagraph(body, string.Empty);
+            }
+        }
+
+        AppendWordParagraph(body, "Подписи", bold: true, fontSize: 24);
+        AppendWordSignatureTable(body, BuildSignatureLabels(definition));
+        AppendWordParagraph(body, "М.П.: ____________________", fontSize: 22);
+
+        return $"""
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
+                        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                        xmlns:o="urn:schemas-microsoft-com:office:office"
+                        xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+                        xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"
+                        xmlns:v="urn:schemas-microsoft-com:vml"
+                        xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing"
+                        xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+                        xmlns:w10="urn:schemas-microsoft-com:office:word"
+                        xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                        xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
+                        xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"
+                        xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk"
+                        xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml"
+                        xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+                        mc:Ignorable="w14 wp14">
+              <w:body>
+                {body}
+                <w:sectPr>
+                  <w:pgSz w:w="11906" w:h="16838"/>
+                  <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/>
+                </w:sectPr>
+              </w:body>
+            </w:document>
+            """;
+    }
+
+    private static void AppendWordParagraph(StringBuilder builder, string text, bool bold = false, bool centered = false, int fontSize = 22)
+    {
+        var safeText = SecurityElement.Escape(text ?? string.Empty) ?? string.Empty;
+        var paragraphStart = centered
+            ? "<w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr>"
+            : "<w:p>";
+        var runProperties = bold
+            ? $"<w:rPr><w:b/><w:sz w:val=\"{fontSize}\"/><w:szCs w:val=\"{fontSize}\"/></w:rPr>"
+            : $"<w:rPr><w:sz w:val=\"{fontSize}\"/><w:szCs w:val=\"{fontSize}\"/></w:rPr>";
+
+        if (string.IsNullOrEmpty(safeText))
+        {
+            builder.Append(paragraphStart)
+                .Append("<w:r>")
+                .Append(runProperties)
+                .Append("<w:t xml:space=\"preserve\"> </w:t></w:r></w:p>");
+            return;
+        }
+
+        var parts = safeText.Replace("\r", string.Empty).Split('\n');
+        builder.Append(paragraphStart);
+        for (var index = 0; index < parts.Length; index++)
+        {
+            if (index > 0)
+                builder.Append("<w:r>").Append(runProperties).Append("<w:br/></w:r>");
+
+            builder.Append("<w:r>")
+                .Append(runProperties)
+                .Append("<w:t xml:space=\"preserve\">")
+                .Append(parts[index])
+                .Append("</w:t></w:r>");
+        }
+
+        builder.Append("</w:p>");
+    }
+
+    private static void AppendWordSeparator(StringBuilder builder)
+    {
+        builder.Append("""
+            <w:p>
+              <w:pPr>
+                <w:pBdr>
+                  <w:bottom w:val="single" w:sz="12" w:space="1" w:color="000000"/>
+                </w:pBdr>
+              </w:pPr>
+            </w:p>
+            """);
+    }
+
+    private static void AppendWordSectionHeading(StringBuilder builder, string text)
+    {
+        var safeText = SecurityElement.Escape(text ?? string.Empty) ?? string.Empty;
+        builder.Append($"""
+            <w:p>
+              <w:pPr>
+                <w:spacing w:before="180" w:after="100"/>
+                <w:pBdr>
+                  <w:bottom w:val="single" w:sz="6" w:space="1" w:color="D1D5DB"/>
+                </w:pBdr>
+              </w:pPr>
+              <w:r>
+                <w:rPr><w:b/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>
+                <w:t xml:space="preserve">{safeText}</w:t>
+              </w:r>
+            </w:p>
+            """);
+    }
+
+    private static void AppendWordMetaTable(StringBuilder builder, string leftLabel, string leftValue, string rightLabel, string rightValue)
+    {
+        var safeLeftLabel = SecurityElement.Escape(leftLabel) ?? string.Empty;
+        var safeLeftValue = SecurityElement.Escape(leftValue) ?? string.Empty;
+        var safeRightLabel = SecurityElement.Escape(rightLabel) ?? string.Empty;
+        var safeRightValue = SecurityElement.Escape(rightValue) ?? string.Empty;
+
+        builder.Append($"""
+            <w:tbl>
+              <w:tblPr>
+                <w:tblW w:w="0" w:type="auto"/>
+                <w:tblBorders>
+                  <w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/>
+                </w:tblBorders>
+              </w:tblPr>
+              <w:tr>
+                <w:tc>
+                  <w:tcPr><w:tcW w:w="5000" w:type="dxa"/></w:tcPr>
+                  <w:p>
+                    <w:r><w:rPr><w:b/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t xml:space="preserve">{safeLeftLabel}: </w:t></w:r>
+                    <w:r><w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve">{safeLeftValue}</w:t></w:r>
+                  </w:p>
+                </w:tc>
+                <w:tc>
+                  <w:tcPr><w:tcW w:w="5000" w:type="dxa"/></w:tcPr>
+                  <w:p>
+                    <w:pPr><w:jc w:val="right"/></w:pPr>
+                    <w:r><w:rPr><w:b/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t xml:space="preserve">{safeRightLabel}: </w:t></w:r>
+                    <w:r><w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve">{safeRightValue}</w:t></w:r>
+                  </w:p>
+                </w:tc>
+              </w:tr>
+            </w:tbl>
+            """);
+    }
+
+    private static void AppendWordRecipientBlock(StringBuilder builder, string recipient, string sender)
+    {
+        var safeRecipient = SecurityElement.Escape(recipient) ?? string.Empty;
+        var safeSender = SecurityElement.Escape(sender) ?? string.Empty;
+        builder.Append($"""
+            <w:tbl>
+              <w:tblPr>
+                <w:tblW w:w="0" w:type="auto"/>
+                <w:jc w:val="right"/>
+                <w:tblBorders>
+                  <w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/>
+                </w:tblBorders>
+              </w:tblPr>
+              <w:tr>
+                <w:tc>
+                  <w:tcPr><w:tcW w:w="4600" w:type="dxa"/></w:tcPr>
+                  <w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t xml:space="preserve">Кому: </w:t></w:r><w:r><w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve">{safeRecipient}</w:t></w:r></w:p>
+                  <w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t xml:space="preserve">От: </w:t></w:r><w:r><w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve">{safeSender}</w:t></w:r></w:p>
+                </w:tc>
+              </w:tr>
+            </w:tbl>
+            """);
+    }
+
+    private static void AppendWordInvoiceItemsTable(StringBuilder builder, string itemName, string quantity, string amount, string dueDate)
+    {
+        var safeItem = SecurityElement.Escape(itemName) ?? string.Empty;
+        var safeQuantity = SecurityElement.Escape(quantity) ?? string.Empty;
+        var safeAmount = SecurityElement.Escape(amount) ?? string.Empty;
+        var safeDueDate = SecurityElement.Escape(dueDate) ?? string.Empty;
+
+        builder.Append($"""
+            <w:tbl>
+              <w:tblPr>
+                <w:tblW w:w="0" w:type="auto"/>
+                <w:tblBorders>
+                  <w:top w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                  <w:left w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                  <w:bottom w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                  <w:right w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                  <w:insideH w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                  <w:insideV w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                </w:tblBorders>
+              </w:tblPr>
+              <w:tr>
+                <w:tc><w:tcPr><w:tcW w:w="4200" w:type="dxa"/><w:shd w:val="clear" w:fill="F8FAFC"/></w:tcPr><w:p><w:r><w:rPr><w:b/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t>Наименование</w:t></w:r></w:p></w:tc>
+                <w:tc><w:tcPr><w:tcW w:w="1300" w:type="dxa"/><w:shd w:val="clear" w:fill="F8FAFC"/></w:tcPr><w:p><w:r><w:rPr><w:b/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t>Кол-во</w:t></w:r></w:p></w:tc>
+                <w:tc><w:tcPr><w:tcW w:w="1900" w:type="dxa"/><w:shd w:val="clear" w:fill="F8FAFC"/></w:tcPr><w:p><w:r><w:rPr><w:b/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t>Сумма</w:t></w:r></w:p></w:tc>
+                <w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/><w:shd w:val="clear" w:fill="F8FAFC"/></w:tcPr><w:p><w:r><w:rPr><w:b/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t>Срок оплаты</w:t></w:r></w:p></w:tc>
+              </w:tr>
+              <w:tr>
+                <w:tc><w:tcPr><w:tcW w:w="4200" w:type="dxa"/></w:tcPr><w:p><w:r><w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve">{safeItem}</w:t></w:r></w:p></w:tc>
+                <w:tc><w:tcPr><w:tcW w:w="1300" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve">{safeQuantity}</w:t></w:r></w:p></w:tc>
+                <w:tc><w:tcPr><w:tcW w:w="1900" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve">{safeAmount}</w:t></w:r></w:p></w:tc>
+                <w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve">{safeDueDate}</w:t></w:r></w:p></w:tc>
+              </w:tr>
+            </w:tbl>
+            """);
+    }
+
+    private static void AppendWordNote(StringBuilder builder, string text)
+    {
+        var safeText = SecurityElement.Escape(text ?? string.Empty) ?? string.Empty;
+        builder.Append($"""
+            <w:p>
+              <w:pPr><w:spacing w:before="80"/></w:pPr>
+              <w:r>
+                <w:rPr><w:i/><w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="6B7280"/></w:rPr>
+                <w:t xml:space="preserve">{safeText}</w:t>
+              </w:r>
+            </w:p>
+            """);
+    }
+
+    private static void AppendWordTable(StringBuilder builder, IReadOnlyList<DocumentExportField> fields)
+    {
+        builder.Append("""
+            <w:tbl>
+              <w:tblPr>
+                <w:tblW w:w="0" w:type="auto"/>
+                <w:tblBorders>
+                  <w:top w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                  <w:left w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                  <w:bottom w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                  <w:right w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                  <w:insideH w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                  <w:insideV w:val="single" w:sz="8" w:space="0" w:color="BFC7D1"/>
+                </w:tblBorders>
+              </w:tblPr>
+            """);
+
+        foreach (var field in fields)
+        {
+            var label = SecurityElement.Escape(field.Label) ?? string.Empty;
+            var value = SecurityElement.Escape(field.Value) ?? string.Empty;
+            builder.Append($"""
+                <w:tr>
+                  <w:tc>
+                    <w:tcPr><w:tcW w:w="3400" w:type="dxa"/><w:shd w:val="clear" w:fill="F8FAFC"/></w:tcPr>
+                    <w:p><w:r><w:rPr><w:b/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t xml:space="preserve">{label}</w:t></w:r></w:p>
+                  </w:tc>
+                  <w:tc>
+                    <w:tcPr><w:tcW w:w="7000" w:type="dxa"/></w:tcPr>
+                    <w:p><w:r><w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve">{value}</w:t></w:r></w:p>
+                  </w:tc>
+                </w:tr>
+                """);
+        }
+
+        builder.Append("</w:tbl>");
+    }
+
+    private static void AppendWordSignatureTable(StringBuilder builder, IReadOnlyList<string> signatures)
+    {
+        builder.Append("""
+            <w:tbl>
+              <w:tblPr>
+                <w:tblW w:w="0" w:type="auto"/>
+                <w:tblBorders>
+                  <w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/>
+                </w:tblBorders>
+              </w:tblPr>
+            """);
+
+        foreach (var signature in signatures)
+        {
+            var safe = SecurityElement.Escape(signature) ?? string.Empty;
+            builder.Append($"""
+                <w:tr>
+                  <w:tc>
+                    <w:tcPr><w:tcW w:w="3600" w:type="dxa"/></w:tcPr>
+                    <w:p><w:r><w:rPr><w:b/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve">{safe}</w:t></w:r></w:p>
+                  </w:tc>
+                  <w:tc>
+                    <w:tcPr><w:tcW w:w="6400" w:type="dxa"/></w:tcPr>
+                    <w:p><w:r><w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve">_______________________________</w:t></w:r></w:p>
+                    <w:p><w:r><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/><w:color w:val="6B7280"/></w:rPr><w:t xml:space="preserve">подпись / расшифровка</w:t></w:r></w:p>
+                  </w:tc>
+                </w:tr>
+                """);
+        }
+
+        builder.Append("</w:tbl>");
+    }
+
+    private static string GetExportTypeKey(DocumentExportDefinition definition)
+    {
+        return definition.FileNameBase.Split('-', StringSplitOptions.RemoveEmptyEntries)[0];
+    }
+
+    private static string FindExportValue(DocumentExportDefinition definition, string label, string fallback = "Не указано")
+    {
+        foreach (var section in definition.Sections)
+        {
+            var field = section.Fields.FirstOrDefault(x => string.Equals(x.Label, label, StringComparison.OrdinalIgnoreCase));
+            if (field is not null && !string.IsNullOrWhiteSpace(field.Value))
+                return field.Value;
+        }
+
+        return fallback;
+    }
+
+    private static string FindExportSectionText(DocumentExportDefinition definition, string sectionTitle, string fallback = "Не указано")
+    {
+        var section = definition.Sections.FirstOrDefault(x => string.Equals(x.Title, sectionTitle, StringComparison.OrdinalIgnoreCase));
+        return string.IsNullOrWhiteSpace(section?.Text) ? fallback : section.Text!;
+    }
+
+    private static void AppendWordParagraphWithAlignment(StringBuilder builder, string text, string alignment, bool bold = false, int fontSize = 22)
+    {
+        var safeText = SecurityElement.Escape(text ?? string.Empty) ?? string.Empty;
+        var runProperties = bold
+            ? $"<w:rPr><w:b/><w:sz w:val=\"{fontSize}\"/><w:szCs w:val=\"{fontSize}\"/></w:rPr>"
+            : $"<w:rPr><w:sz w:val=\"{fontSize}\"/><w:szCs w:val=\"{fontSize}\"/></w:rPr>";
+
+        builder.Append($"<w:p><w:pPr><w:jc w:val=\"{alignment}\"/></w:pPr><w:r>{runProperties}<w:t xml:space=\"preserve\">{safeText}</w:t></w:r></w:p>");
+    }
+
+    private static void AppendCustomWordBody(StringBuilder body, DocumentExportDefinition definition, string typeKey)
+    {
+        switch (typeKey)
+        {
+            case "contract":
+                AppendWordMetaTable(body, "Место составления", "г. Санкт-Петербург", "Дата", FindExportValue(definition, "Дата договора"));
+                AppendWordParagraph(body, $"ООО «Документооборот», именуемое в дальнейшем «Сторона 1», и {FindExportValue(definition, "Контрагент", "Контрагент не указан")}, именуемое в дальнейшем «Сторона 2», заключили настоящий договор о нижеследующем.", fontSize: 22);
+                AppendWordSectionHeading(body, "1. Предмет договора");
+                AppendWordParagraph(body, FindExportSectionText(definition, "Предмет договора", definition.Subtitle ?? "Не указано"), fontSize: 22);
+                AppendWordSectionHeading(body, "2. Основные условия");
+                AppendWordTable(body,
+                [
+                    new("Контрагент", FindExportValue(definition, "Контрагент")),
+                    new("Сумма договора", FindExportValue(definition, "Сумма договора")),
+                    new("Срок исполнения", FindExportValue(definition, "Срок исполнения", FindExportValue(definition, "Дата договора"))),
+                    new("Статус в системе", FindExportValue(definition, "Статус"))
+                ]);
+                AppendWordSectionHeading(body, "3. Дополнительные сведения");
+                AppendWordParagraph(body, FindExportSectionText(definition, "Дополнительные сведения", "Дополнительные сведения отсутствуют."), fontSize: 22);
+                AppendWordNote(body, "Документ подготовлен как печатный экземпляр для подписания сторонами и последующего архивного хранения.");
+                AppendWordParagraph(body, string.Empty);
+                break;
+            case "invoice":
+                AppendWordMetaTable(body, "Поставщик", FindExportValue(definition, "Поставщик", "ООО «Документооборот»"), "Дата", FindExportValue(definition, "Дата счета"));
+                AppendWordSectionHeading(body, "Основание");
+                AppendWordParagraph(body, FindExportValue(definition, "Основание", definition.Subtitle ?? "Не указано"), fontSize: 22);
+                AppendWordParagraph(body, string.Empty);
+                AppendWordSectionHeading(body, "Перечень к оплате");
+                AppendWordInvoiceItemsTable(
+                    body,
+                    FindExportValue(definition, "Основание", definition.Subtitle ?? "Не указано"),
+                    "1",
+                    FindExportValue(definition, "Сумма"),
+                    FindExportValue(definition, "Срок оплаты"));
+                AppendWordParagraph(body, "Итого к оплате: " + FindExportValue(definition, "Сумма"), bold: true, fontSize: 24);
+                AppendWordNote(body, "Счет сформирован на основании данных карточки документа и может использоваться как печатный внутренний экземпляр.");
+                AppendWordParagraph(body, string.Empty);
+                break;
+            case "application":
+                AppendWordRecipientBlock(body, "Руководителю организации", FindExportValue(definition, "ФИО сотрудника", "сотрудника"));
+                AppendWordParagraph(body, string.Empty);
+                AppendWordSectionHeading(body, "Содержание заявления");
+                AppendWordParagraph(body, FindExportSectionText(definition, "Текст заявления", "Текст заявления не заполнен."), fontSize: 22);
+                AppendWordParagraph(body, string.Empty);
+                AppendWordSectionHeading(body, "Сведения о заявителе");
+                AppendWordTable(body,
+                [
+                    new("Сотрудник", FindExportValue(definition, "ФИО сотрудника")),
+                    new("Подразделение", FindExportValue(definition, "Подразделение")),
+                    new("Тема обращения", definition.Subtitle ?? "Не указано")
+                ]);
+                AppendWordNote(body, "Заявление подготовлено для визирования руководителем и регистрации в системе.");
+                AppendWordParagraph(body, string.Empty);
+                break;
+        }
+    }
+private static void AddZipEntry(ZipArchive archive, string path, string content)
+    {
+        var entry = archive.CreateEntry(path, CompressionLevel.Fastest);
+        using var stream = entry.Open();
+        using var writer = new StreamWriter(stream, new UTF8Encoding(false));
+        writer.Write(content.Trim());
+    }
+
+    private static async Task<byte[]> BuildPdfDocumentAsync(DocumentExportDefinition definition, CancellationToken cancellationToken)
+    {
+        var browserPath = ResolvePdfBrowserExecutable();
+        var tempRoot = Path.Combine(Path.GetTempPath(), "DocumentFlowApp", "exports");
+        Directory.CreateDirectory(tempRoot);
+
+        var token = Guid.NewGuid().ToString("N");
+        var htmlPath = Path.Combine(tempRoot, $"{definition.FileNameBase}-{token}.html");
+        var pdfPath = Path.Combine(tempRoot, $"{definition.FileNameBase}-{token}.pdf");
+
+        try
+        {
+            await System.IO.File.WriteAllTextAsync(htmlPath, BuildExportHtml(definition), new UTF8Encoding(false), cancellationToken);
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = browserPath,
+                Arguments = $"--headless --disable-gpu --allow-file-access-from-files --print-to-pdf-no-header --no-pdf-header-footer --print-to-pdf=\"{pdfPath}\" \"{new Uri(htmlPath).AbsoluteUri}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true
+            };
+
+            using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Не удалось запустить браузер для генерации PDF.");
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(45));
+            await process.WaitForExitAsync(timeoutCts.Token);
+
+            var stdError = await process.StandardError.ReadToEndAsync();
+            if (process.ExitCode != 0 || !System.IO.File.Exists(pdfPath))
+                throw new InvalidOperationException($"Генерация PDF завершилась с ошибкой. Код: {process.ExitCode}. {stdError}".Trim());
+
+            return await System.IO.File.ReadAllBytesAsync(pdfPath, cancellationToken);
+        }
+        finally
+        {
+            TryDeleteFile(htmlPath);
+            TryDeleteFile(pdfPath);
+        }
+    }
+
+    private static string ResolvePdfBrowserExecutable()
+    {
+        string[] candidates =
+        [
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft", "Edge", "Application", "msedge.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Microsoft", "Edge", "Application", "msedge.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Google", "Chrome", "Application", "chrome.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Google", "Chrome", "Application", "chrome.exe")
+        ];
+
+        foreach (var candidate in candidates)
+        {
+            if (System.IO.File.Exists(candidate))
+                return candidate;
+        }
+
+        throw new InvalidOperationException("На компьютере не найден Microsoft Edge или Google Chrome для генерации PDF.");
+    }
+
+    private static string BuildExportHtml(DocumentExportDefinition definition)
+    {
+        static string Html(string? value) => System.Net.WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(value) ? "Не указано" : value);
+        var signatures = BuildSignatureLabels(definition);
+        var typeKey = GetExportTypeKey(definition);
+
+        var builder = new StringBuilder();
+        builder.Append("<!DOCTYPE html><html lang=\"ru\"><head><meta charset=\"utf-8\"><title>")
+            .Append(Html(definition.Title))
+            .Append("</title><style>")
+            .Append("body{margin:0;background:#eef2f7;color:#111827;font-family:\"Times New Roman\",serif;}main{width:210mm;min-height:297mm;margin:18px auto;background:#fff;padding:18mm 20mm;box-sizing:border-box;box-shadow:0 12px 32px rgba(15,23,42,.16);} .org{display:grid;grid-template-columns:1fr auto;gap:24px;border-bottom:2px solid #111827;padding-bottom:12px;margin-bottom:22px;} .org-name{font-size:18px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;} .org-meta{margin-top:5px;font-size:12px;line-height:1.45;color:#374151;font-family:Arial,sans-serif;} .stamp{width:84px;height:84px;border:2px solid #9ca3af;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:11px;text-align:center;transform:rotate(-8deg);font-family:Arial,sans-serif;} h1{margin:26px 0 8px;text-align:center;font-size:20px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;} h2{margin:24px 0 10px;font-size:14px;font-weight:700;text-transform:uppercase;border-bottom:1px solid #d1d5db;padding-bottom:4px;} p{margin:0;font-size:14px;line-height:1.6;text-align:justify;white-space:pre-wrap;overflow-wrap:anywhere;} .subtitle{font-size:15px;text-align:center;font-weight:700;margin-bottom:18px;} .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:16px 0 0;} .field{border:1px solid #d1d5db;padding:10px 12px;min-height:48px;} .label{font-size:10px;font-weight:700;color:#4b5563;text-transform:uppercase;letter-spacing:.08em;font-family:Arial,sans-serif;} .value{margin-top:6px;font-size:14px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;} .section{margin-top:22px;} .meta-row{display:flex;justify-content:space-between;gap:16px;margin-bottom:14px;font-size:14px;} .app-head{margin:0 0 18px auto;max-width:72%;text-align:right;font-size:14px;line-height:1.55;} .doc-table{width:100%;border-collapse:collapse;margin-top:14px;font-size:14px;} .doc-table th,.doc-table td{border:1px solid #cbd5e1;padding:9px 10px;vertical-align:top;} .doc-table th{background:#f8fafc;text-align:left;font-family:Arial,sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:.06em;} .doc-note{margin-top:14px;font-size:13px;font-style:italic;color:#4b5563;} .signatures{margin-top:34px;display:grid;grid-template-columns:1fr 1fr;gap:42px;} .signature-block{min-height:76px;} .line{border-bottom:1px solid #111827;height:34px;margin-top:10px;} .hint{margin-top:4px;color:#6b7280;font-size:11px;font-family:Arial,sans-serif;text-align:center;} .footer{margin-top:28px;padding-top:8px;border-top:1px solid #d1d5db;color:#6b7280;font-size:11px;font-family:Arial,sans-serif;} @media print{body{background:#fff;}main{margin:0;box-shadow:none;}}")
+            .Append("</style></head><body><main><header class=\"org\"><div><div class=\"org-name\">ООО «Документооборот»</div><div class=\"org-meta\">190000, г. Санкт-Петербург, Невский проспект, д. 1<br>ИНН 7800000000 / КПП 780001001<br>Электронная система документационного обеспечения управления</div></div><div class=\"stamp\">Место<br>печати</div></header><h1>")
+            .Append(Html(definition.Title))
+            .Append("</h1>");
+
+        if (!string.IsNullOrWhiteSpace(definition.Subtitle))
+            builder.Append("<div class=\"subtitle\">").Append(Html(definition.Subtitle)).Append("</div>");
+
+        if (typeKey is "contract" or "invoice" or "application")
+        {
+            builder.Append(BuildCustomExportHtmlBody(definition, typeKey));
+        }
+        else
+        {
+            foreach (var section in definition.Sections)
+            {
+                builder.Append("<section class=\"section\"><h2>")
+                    .Append(Html(section.Title))
+                    .Append("</h2>");
+
+                if (section.Fields.Count > 0)
+                {
+                    builder.Append("<div class=\"grid\">");
+                    foreach (var field in section.Fields)
+                    {
+                        builder.Append("<div class=\"field\"><div class=\"label\">")
+                            .Append(Html(field.Label))
+                            .Append("</div><div class=\"value\">")
+                            .Append(Html(field.Value))
+                            .Append("</div></div>");
+                    }
+
+                    builder.Append("</div>");
+                }
+
+                if (!string.IsNullOrWhiteSpace(section.Text))
+                    builder.Append("<p>").Append(Html(section.Text)).Append("</p>");
+
+                builder.Append("</section>");
+            }
+        }
+
+        builder.Append("<section class=\"signatures\">");
+        foreach (var signature in signatures)
+        {
+            builder.Append("<div class=\"signature-block\"><strong>")
+                .Append(Html(signature))
+                .Append("</strong><div class=\"line\"></div><div class=\"hint\">подпись / расшифровка</div></div>");
+        }
+
+        if (signatures.Count == 1)
+            builder.Append("<div class=\"signature-block\"><strong>М.П.</strong><div class=\"line\"></div><div class=\"hint\">место печати</div></div>");
+
+        builder.Append("</section>");
+        builder.Append("<div class=\"footer\">Файл сформирован автоматически из электронной карточки документа. Подготовлено в DocManager.</div>");
+        builder.Append("</main></body></html>");
+        return builder.ToString();
+    }
+
+    private static string BuildCustomExportHtmlBody(DocumentExportDefinition definition, string typeKey)
+    {
+        static string Html(string? value) => System.Net.WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(value) ? "Не указано" : value);
+
+        var builder = new StringBuilder();
+
+        switch (typeKey)
+        {
+            case "contract":
+                builder.Append("<div class=\"meta-row\"><span><strong>Место составления:</strong> г. Санкт-Петербург</span><span><strong>Дата:</strong> ")
+                    .Append(Html(FindExportValue(definition, "Дата договора")))
+                    .Append("</span></div>")
+                    .Append("<p>ООО «Документооборот», именуемое в дальнейшем «Сторона 1», и ")
+                    .Append(Html(FindExportValue(definition, "Контрагент", "Контрагент не указан")))
+                    .Append(", именуемое в дальнейшем «Сторона 2», заключили настоящий договор о нижеследующем.</p>")
+                    .Append("<section class=\"section\"><h2>1. Предмет договора</h2><p>")
+                    .Append(Html(FindExportSectionText(definition, "Предмет договора", definition.Subtitle ?? "Не указано")))
+                    .Append("</p></section>")
+                    .Append("<section class=\"section\"><h2>2. Основные условия</h2><table class=\"doc-table\"><tbody>")
+                    .Append("<tr><th>Контрагент</th><td>").Append(Html(FindExportValue(definition, "Контрагент"))).Append("</td></tr>")
+                    .Append("<tr><th>Сумма договора</th><td>").Append(Html(FindExportValue(definition, "Сумма договора"))).Append("</td></tr>")
+                    .Append("<tr><th>Срок исполнения</th><td>").Append(Html(FindExportValue(definition, "Срок исполнения", FindExportValue(definition, "Дата договора")))).Append("</td></tr>")
+                    .Append("<tr><th>Статус документа</th><td>").Append(Html(FindExportValue(definition, "Статус"))).Append("</td></tr>")
+                    .Append("</tbody></table></section>")
+                    .Append("<section class=\"section\"><h2>3. Дополнительные сведения</h2><p>")
+                    .Append(Html(FindExportSectionText(definition, "Дополнительные сведения", "Дополнительные сведения отсутствуют.")))
+                    .Append("</p><div class=\"doc-note\">Документ предназначен для подписания сторонами и последующего хранения в системе электронного документооборота.</div></section>");
+                break;
+
+            case "invoice":
+                builder.Append("<div class=\"meta-row\"><span><strong>Поставщик:</strong> ")
+                    .Append(Html(FindExportValue(definition, "Поставщик", "ООО «Документооборот»")))
+                    .Append("</span><span><strong>Дата:</strong> ")
+                    .Append(Html(FindExportValue(definition, "Дата счета")))
+                    .Append("</span></div>")
+                    .Append("<section class=\"section\"><h2>Основание выставления счета</h2><p>")
+                    .Append(Html(FindExportValue(definition, "Основание", definition.Subtitle ?? "Не указано")))
+                    .Append("</p></section>")
+                    .Append("<section class=\"section\"><h2>Перечень к оплате</h2><table class=\"doc-table\"><thead><tr><th>Наименование</th><th>Кол-во</th><th>Сумма</th><th>Срок оплаты</th></tr></thead><tbody><tr><td>")
+                    .Append(Html(FindExportValue(definition, "Основание", definition.Subtitle ?? "Не указано")))
+                    .Append("</td><td>1</td><td>")
+                    .Append(Html(FindExportValue(definition, "Сумма")))
+                    .Append("</td><td>")
+                    .Append(Html(FindExportValue(definition, "Срок оплаты")))
+                    .Append("</td></tr></tbody></table></section>")
+                    .Append("<section class=\"section\"><h2>Итого</h2><p><strong>К оплате: ")
+                    .Append(Html(FindExportValue(definition, "Сумма")))
+                    .Append("</strong></p><div class=\"doc-note\">Счет сформирован на основании данных карточки документа и может быть использован как внутренний печатный экземпляр.</div></section>");
+                break;
+
+            case "application":
+                builder.Append("<div class=\"app-head\"><strong>Кому:</strong> Руководителю организации<br><strong>От:</strong> ")
+                    .Append(Html(FindExportValue(definition, "ФИО сотрудника", "сотрудника")))
+                    .Append("</div>")
+                    .Append("<section class=\"section\"><h2>Содержание заявления</h2><p>")
+                    .Append(Html(FindExportSectionText(definition, "Текст заявления", "Текст заявления не заполнен.")))
+                    .Append("</p></section>")
+                    .Append("<section class=\"section\"><h2>Сведения о заявителе</h2><table class=\"doc-table\"><tbody>")
+                    .Append("<tr><th>ФИО сотрудника</th><td>").Append(Html(FindExportValue(definition, "ФИО сотрудника"))).Append("</td></tr>")
+                    .Append("<tr><th>Подразделение</th><td>").Append(Html(FindExportValue(definition, "Подразделение"))).Append("</td></tr>")
+                    .Append("<tr><th>Тема обращения</th><td>").Append(Html(definition.Subtitle ?? "Не указано")).Append("</td></tr>")
+                    .Append("</tbody></table></section>")
+                    .Append("<div class=\"doc-note\">Заявление подготовлено для визирования руководителем и дальнейшей регистрации в системе.</div>");
+                break;
+        }
+
+        return builder.ToString();
+    }
+
+    private static IReadOnlyList<string> BuildSignatureLabels(DocumentExportDefinition definition)
+    {
+        var typeKey = definition.FileNameBase.Split('-', StringSplitOptions.RemoveEmptyEntries)[0];
+        return typeKey switch
+        {
+            "contract" => ["Сторона 1", "Сторона 2"],
+            "invoice" => ["Руководитель", "Бухгалтер"],
+            "application" => ["Заявитель", "Руководитель"],
+            "order" => ["Руководитель"],
+            "act" => ["Ответственный", "Исполнитель"],
+            "servicememo" => ["Инициатор", "Руководитель"],
+            "purchaserequest" => ["Инициатор", "Финансовое согласование"],
+            "outgoingletter" => ["Исполнитель", "Согласовано"],
+            "report" => ["Подготовил", "Утвердил"],
+            _ => ["Ответственный", "Согласовано"]
+        };
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (System.IO.File.Exists(path))
+                System.IO.File.Delete(path);
+        }
+        catch
+        {
+            // Временные файлы не критичны; если удалить сразу не удалось, не роняем пользовательский сценарий.
+        }
+    }
+
+    private sealed record DocumentExportDefinition(string FileNameBase, string Title, string? Subtitle, IReadOnlyList<DocumentExportField> HeaderFields, IReadOnlyList<DocumentExportSection> Sections);
+    private sealed record DocumentExportField(string Label, string Value);
+    private sealed class DocumentExportSection
+    {
+        public DocumentExportSection(string title, string? text = null, IReadOnlyList<DocumentExportField>? fields = null)
+        {
+            Title = title;
+            Text = text;
+            Fields = fields ?? [];
+        }
+
+        public string Title { get; }
+        public string? Text { get; }
+        public IReadOnlyList<DocumentExportField> Fields { get; }
     }
 
     private static string GetFileKind(string? fileUrl)
