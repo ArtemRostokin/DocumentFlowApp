@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using DocumentFlowApp.Core.Interfaces;
 using DocumentFlowApp.Core.Models;
 using Microsoft.Extensions.Logging;
@@ -50,6 +51,19 @@ public sealed class WindowsOcrService : IOcrService
 
         try
         {
+            var inProcessText = await TryExtractTextWithWindowsRuntimeAsync(physicalPath, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(inProcessText))
+            {
+                return new OcrExtractionResult
+                {
+                    IsSuccessful = true,
+                    Provider = "windows-ocr-inprocess",
+                    ExtractedText = inProcessText,
+                    ConfidenceScore = EstimateConfidence(inProcessText),
+                    Summary = "Текст извлечён из изображения встроенным Windows OCR."
+                };
+            }
+
             var scriptPath = Path.Combine(AppContext.BaseDirectory, "Scripts", "ocr-image.ps1");
             if (!File.Exists(scriptPath))
             {
@@ -60,7 +74,7 @@ public sealed class WindowsOcrService : IOcrService
             var startInfo = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
-                Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\" -ImagePath \"{physicalPath}\"",
+                Arguments = $"-Sta -NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\" -ImagePath \"{physicalPath}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -104,6 +118,103 @@ public sealed class WindowsOcrService : IOcrService
         }
     }
 
+    private async Task<string?> TryExtractTextWithWindowsRuntimeAsync(string physicalPath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var storageFileType = Type.GetType("Windows.Storage.StorageFile, Windows.Storage, ContentType=WindowsRuntime");
+            var fileAccessModeType = Type.GetType("Windows.Storage.FileAccessMode, Windows.Storage, ContentType=WindowsRuntime");
+            var bitmapDecoderType = Type.GetType("Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics.Imaging, ContentType=WindowsRuntime");
+            var softwareBitmapType = Type.GetType("Windows.Graphics.Imaging.SoftwareBitmap, Windows.Graphics.Imaging, ContentType=WindowsRuntime");
+            var bitmapPixelFormatType = Type.GetType("Windows.Graphics.Imaging.BitmapPixelFormat, Windows.Graphics.Imaging, ContentType=WindowsRuntime");
+            var bitmapAlphaModeType = Type.GetType("Windows.Graphics.Imaging.BitmapAlphaMode, Windows.Graphics.Imaging, ContentType=WindowsRuntime");
+            var ocrEngineType = Type.GetType("Windows.Media.Ocr.OcrEngine, Windows.Media.Ocr, ContentType=WindowsRuntime");
+            var languageType = Type.GetType("Windows.Globalization.Language, Windows.Globalization, ContentType=WindowsRuntime");
+
+            if (storageFileType is null ||
+                fileAccessModeType is null ||
+                bitmapDecoderType is null ||
+                softwareBitmapType is null ||
+                bitmapPixelFormatType is null ||
+                bitmapAlphaModeType is null ||
+                ocrEngineType is null)
+            {
+                return null;
+            }
+
+            dynamic fileOperation = storageFileType
+                .GetMethod("GetFileFromPathAsync", [typeof(string)])!
+                .Invoke(null, [physicalPath])!;
+            dynamic storageFile = await AwaitWinRtAsync(fileOperation, cancellationToken);
+
+            var readMode = Enum.Parse(fileAccessModeType, "Read");
+            dynamic openOperation = storageFile.OpenAsync((dynamic)readMode);
+            dynamic stream = await AwaitWinRtAsync(openOperation, cancellationToken);
+
+            dynamic decoderOperation = bitmapDecoderType
+                .GetMethod("CreateAsync")!
+                .Invoke(null, [stream])!;
+            dynamic decoder = await AwaitWinRtAsync(decoderOperation, cancellationToken);
+
+            dynamic bitmapOperation = decoder.GetSoftwareBitmapAsync();
+            dynamic bitmap = await AwaitWinRtAsync(bitmapOperation, cancellationToken);
+
+            var bgra8 = Enum.Parse(bitmapPixelFormatType, "Bgra8");
+            var premultiplied = Enum.Parse(bitmapAlphaModeType, "Premultiplied");
+            bitmap = softwareBitmapType
+                .GetMethod("Convert", [softwareBitmapType, bitmapPixelFormatType, bitmapAlphaModeType])!
+                .Invoke(null, [bitmap, bgra8, premultiplied])!;
+
+            dynamic? engine = ocrEngineType
+                .GetMethod("TryCreateFromUserProfileLanguages")!
+                .Invoke(null, null);
+
+            if (engine is null && languageType is not null)
+            {
+                var language = Activator.CreateInstance(languageType, "ru-RU");
+                engine = ocrEngineType
+                    .GetMethod("TryCreateFromLanguage", [languageType])!
+                    .Invoke(null, [language]);
+            }
+
+            if (engine is null)
+                return null;
+
+            dynamic recognitionOperation = engine.RecognizeAsync(bitmap);
+            dynamic recognitionResult = await AwaitWinRtAsync(recognitionOperation, cancellationToken);
+            var rawText = recognitionResult.Text as string;
+            var normalized = NormalizeWhitespace(rawText);
+
+            return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "In-process WinRT OCR failed for {PhysicalPath}", physicalPath);
+            return null;
+        }
+    }
+
+    private static async Task<dynamic?> AwaitWinRtAsync(dynamic operation, CancellationToken cancellationToken)
+    {
+        var extensionsType = Type.GetType("System.WindowsRuntimeSystemExtensions, System.Runtime.WindowsRuntime");
+        if (extensionsType is null)
+            throw new InvalidOperationException("System.Runtime.WindowsRuntime is unavailable.");
+
+        var asTaskMethod = extensionsType
+            .GetMethods()
+            .FirstOrDefault(method =>
+                method.Name == "AsTask" &&
+                method.GetParameters().Length == 2 &&
+                method.GetParameters()[1].ParameterType == typeof(CancellationToken));
+
+        if (asTaskMethod is null)
+            throw new InvalidOperationException("WinRT AsTask overload was not found.");
+
+        dynamic task = asTaskMethod.Invoke(null, [operation, cancellationToken])!;
+        await task;
+        return task.GetAwaiter().GetResult();
+    }
+
     private static OcrExtractionResult BuildFallbackResult(string originalFileName, string provider)
     {
         var extractedText = NormalizeFileName(originalFileName);
@@ -145,6 +256,14 @@ public sealed class WindowsOcrService : IOcrService
             normalized = normalized.Replace("  ", " ", StringComparison.Ordinal);
 
         return normalized;
+    }
+
+    private static string NormalizeWhitespace(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        return Regex.Replace(value, @"\s+", " ").Trim();
     }
 
     private static decimal EstimateConfidence(string extractedText)

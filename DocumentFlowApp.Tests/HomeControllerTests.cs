@@ -19,7 +19,7 @@ public class HomeControllerTests
         var service = new FakeDocumentService();
         var controller = CreateController(service, CreatePrincipal(("df_role", "Employee")));
 
-        var result = await controller.Index(null, null);
+        var result = await controller.Index(null, null, null, null, null);
 
         var redirect = Assert.IsType<RedirectToActionResult>(result);
         Assert.Equal("Login", redirect.ActionName);
@@ -40,7 +40,7 @@ public class HomeControllerTests
 
         var controller = CreateController(service, CreatePrincipal(("df_role", "Employee"), (ClaimTypes.NameIdentifier, "10")));
 
-        var result = await controller.Index(null, null);
+        var result = await controller.Index(null, null, null, null, null);
 
         var view = Assert.IsType<ViewResult>(result);
         Assert.Equal("Kanban", view.ViewName);
@@ -65,7 +65,7 @@ public class HomeControllerTests
 
         var controller = CreateController(service, CreatePrincipal(("df_role", "Manager"), (ClaimTypes.NameIdentifier, "10")));
 
-        var result = await controller.Index(null, null);
+        var result = await controller.Index(null, null, null, null, null);
 
         var view = Assert.IsType<ViewResult>(result);
         var model = Assert.IsType<KanbanBoardPageViewModel>(view.Model);

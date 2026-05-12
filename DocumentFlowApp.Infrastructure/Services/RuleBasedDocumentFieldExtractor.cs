@@ -74,10 +74,10 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
     private static IReadOnlyList<ExtractedFieldResult> ExtractApplicationFields(string text)
     {
         return BuildFields(
-            TryExtractName(text, "employee_name", "Р В Р’В¤Р В Р’ВР В РЎвЂє Р РЋР С“Р В РЎвЂўР РЋРІР‚С™Р РЋР вЂљР РЋРЎвЂњР В РўвЂР В Р вЂ¦Р В РЎвЂР В РЎвЂќР В Р’В°", ["Р РЋРІР‚С›Р В РЎвЂР В РЎвЂў Р РЋР С“Р В РЎвЂўР РЋРІР‚С™Р РЋР вЂљР РЋРЎвЂњР В РўвЂР В Р вЂ¦Р В РЎвЂР В РЎвЂќР В Р’В°", "Р В Р’В·Р В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂР РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР Р‰", "Р В РЎвЂўР РЋРІР‚С™"]),
-            TryExtractLineValue(text, "department", "Р В РЎСџР В РЎвЂўР В РўвЂР РЋР вЂљР В Р’В°Р В Р’В·Р В РўвЂР В Р’ВµР В Р’В»Р В Р’ВµР В Р вЂ¦Р В РЎвЂР В Р’Вµ", ["Р В РЎвЂ”Р В РЎвЂўР В РўвЂР РЋР вЂљР В Р’В°Р В Р’В·Р В РўвЂР В Р’ВµР В Р’В»Р В Р’ВµР В Р вЂ¦Р В РЎвЂР В Р’Вµ", "Р В РЎвЂўР РЋРІР‚С™Р В РўвЂР В Р’ВµР В Р’В»", "Р В РўвЂР В Р’ВµР В РЎвЂ”Р В Р’В°Р РЋР вЂљР РЋРІР‚С™Р В Р’В°Р В РЎВР В Р’ВµР В Р вЂ¦Р РЋРІР‚С™"]),
-            TryExtractLineValue(text, "application_topic", "Р В РЎС›Р В Р’ВµР В РЎВР В Р’В° Р В РЎвЂўР В Р’В±Р РЋР вЂљР В Р’В°Р РЋРІР‚В°Р В Р’ВµР В Р вЂ¦Р В РЎвЂР РЋР РЏ", ["Р РЋРІР‚С™Р В Р’ВµР В РЎВР В Р’В° Р В РЎвЂўР В Р’В±Р РЋР вЂљР В Р’В°Р РЋРІР‚В°Р В Р’ВµР В Р вЂ¦Р В РЎвЂР РЋР РЏ", "Р РЋРІР‚С™Р В Р’ВµР В РЎВР В Р’В°", "Р В РЎвЂ”Р РЋР вЂљР В Р’ВµР В РўвЂР В РЎВР В Р’ВµР РЋРІР‚С™ Р В РЎвЂўР В Р’В±Р РЋР вЂљР В Р’В°Р РЋРІР‚В°Р В Р’ВµР В Р вЂ¦Р В РЎвЂР РЋР РЏ", "Р В РЎвЂў Р РЋРІР‚РЋР В Р’ВµР В РЎВ", "Р В РЎвЂў Р РЋРІР‚РЋР РЋРІР‚ВР В РЎВ"], allowLongValue: true),
-            TryExtractApplicationText(text, "application_text", "Р В РЎС›Р В Р’ВµР В РЎвЂќР РЋР С“Р РЋРІР‚С™ Р В Р’В·Р В Р’В°Р РЋР РЏР В Р вЂ Р В Р’В»Р В Р’ВµР В Р вЂ¦Р В РЎвЂР РЋР РЏ"));
+            TryExtractApplicationEmployeeName(text),
+            TryExtractApplicationDepartment(text),
+            TryExtractApplicationTopic(text),
+            TryExtractApplicationBody(text));
     }
 
 
@@ -404,6 +404,101 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
             : BuildField(fieldKey, label, snippet, 0.58m);
     }
 
+    private static ExtractedFieldResult? TryExtractApplicationEmployeeName(string text)
+    {
+        var explicitValue = TryExtractSection(
+            text,
+            ["фио сотрудника", "от сотрудника", "от кого"],
+            ["подразделение", "отдел", "тема обращения", "тема", "заявление", "кому", "прошу", "в связи", "настоящим", "довожу"]);
+
+        if (!string.IsNullOrWhiteSpace(explicitValue))
+            return BuildField("employee_name", "ФИО сотрудника", TrimTo(explicitValue, 120), 0.89m);
+
+        return TryExtractName(text, "employee_name", "ФИО сотрудника", ["фио сотрудника", "от сотрудника", "от кого"]);
+    }
+
+    private static ExtractedFieldResult? TryExtractApplicationDepartment(string text)
+    {
+        var explicitValue = TryExtractSection(
+            text,
+            ["подразделение", "отдел"],
+            ["тема обращения", "тема", "заявление", "от кого", "фио сотрудника", "прошу", "в связи", "настоящим", "довожу"]);
+
+        if (string.IsNullOrWhiteSpace(explicitValue))
+            return null;
+
+        return BuildField("department", "Подразделение", TrimTo(explicitValue, 160), 0.86m);
+    }
+
+    private static ExtractedFieldResult? TryExtractApplicationTopic(string text)
+    {
+        var explicitValue = TryExtractSection(
+            text,
+            ["тема обращения", "тема"],
+            ["настоящим", "прошу", "в связи", "довожу", "сообщаю", "дата подачи", "подпись"]);
+
+        if (!string.IsNullOrWhiteSpace(explicitValue))
+            return BuildField("application_topic", "Тема обращения", TrimTo(explicitValue, 180), 0.87m);
+
+        var headingMatch = Regex.Match(
+            text,
+            @"\bзаявление\b\s+(?<value>.+?)(?=\s+(?:прошу|в связи|настоящим|довожу|сообщаю)\b|$)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        if (headingMatch.Success)
+        {
+            var heading = CleanValue(headingMatch.Groups["value"].Value);
+            if (!string.IsNullOrWhiteSpace(heading))
+                return BuildField("application_topic", "Тема обращения", TrimTo(heading, 180), 0.79m);
+        }
+
+        return null;
+    }
+
+    private static ExtractedFieldResult? TryExtractApplicationBody(string text)
+    {
+        var lowerText = text.ToLowerInvariant();
+        var startCandidates = new[]
+        {
+            "прошу ",
+            "в связи ",
+            "настоящим ",
+            "довожу до вашего сведения",
+            "сообщаю ",
+            "о моем ",
+            "об утере ",
+            "о критическом ",
+            "о выявленном ",
+            "о том, что "
+        };
+
+        var startIndex = startCandidates
+            .Select(candidate => lowerText.IndexOf(candidate, StringComparison.Ordinal))
+            .Where(index => index >= 0)
+            .DefaultIfEmpty(-1)
+            .Min();
+
+        if (startIndex < 0)
+            return TryExtractApplicationText(text, "application_text", "Текст обращения");
+
+        var body = text[startIndex..];
+        var stopMarkers = new[] { "дата подачи", "личная подпись", "подпись", "дата:" };
+        foreach (var marker in stopMarkers)
+        {
+            var stopIndex = body.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (stopIndex > 0)
+            {
+                body = body[..stopIndex];
+                break;
+            }
+        }
+
+        body = CleanValue(body);
+        return string.IsNullOrWhiteSpace(body)
+            ? null
+            : BuildField("application_text", "Текст обращения", TrimTo(body, 420), 0.84m);
+    }
+
     private static ExtractedFieldResult BuildField(string fieldKey, string label, string value, decimal confidenceScore)
         => new()
         {
@@ -448,6 +543,33 @@ public sealed class RuleBasedDocumentFieldExtractor : IDocumentFieldExtractor
                 continue;
 
             var candidate = CleanValue(value[(separatorIndex + separator.Length)..]);
+            if (!string.IsNullOrWhiteSpace(candidate))
+                return candidate;
+        }
+
+        return null;
+    }
+
+    private static string? TryExtractSection(string text, IReadOnlyList<string> anchors, IReadOnlyList<string> stopTokens)
+    {
+        foreach (var anchor in anchors)
+        {
+            var index = text.IndexOf(anchor, StringComparison.OrdinalIgnoreCase);
+            if (index < 0)
+                continue;
+
+            var value = text[(index + anchor.Length)..];
+            var separated = TrySplitBySeparators(value) ?? value;
+            var bestStop = separated.Length;
+
+            foreach (var stopToken in stopTokens)
+            {
+                var stopIndex = separated.IndexOf(stopToken, StringComparison.OrdinalIgnoreCase);
+                if (stopIndex >= 0 && stopIndex < bestStop)
+                    bestStop = stopIndex;
+            }
+
+            var candidate = CleanValue(separated[..bestStop]);
             if (!string.IsNullOrWhiteSpace(candidate))
                 return candidate;
         }

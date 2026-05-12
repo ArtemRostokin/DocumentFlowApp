@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using DocumentFlowApp.Core.Audit;
 using DocumentFlowApp.Core.Models;
+using DocumentFlowApp.Infrastructure.Data;
 using DocumentFlowApp.Web.Controllers;
 using DocumentFlowApp.Web.Models;
 using Microsoft.AspNetCore.Http;
@@ -9,6 +10,8 @@ using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.Routing;
 using DocumentFlowApp.Tests.TestDoubles;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DocumentFlowApp.Tests;
 
@@ -97,8 +100,9 @@ public class AccountControllerTests
         {
             User = user ?? new ClaimsPrincipal(new ClaimsIdentity())
         };
+        var dbContext = CreateDbContext();
 
-        var controller = new AccountController(authService, auditService)
+        var controller = new AccountController(authService, auditService, dbContext, NullLogger<AccountController>.Instance)
         {
             ControllerContext = new ControllerContext
             {
@@ -112,6 +116,15 @@ public class AccountControllerTests
         };
 
         return controller;
+    }
+
+    private static ApplicationDbContext CreateDbContext()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        return new ApplicationDbContext(options);
     }
 
     private static ClaimsPrincipal CreatePrincipal(params (string Type, string Value)[] claims)
